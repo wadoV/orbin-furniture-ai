@@ -1,0 +1,236 @@
+import { useState, useId } from 'react'
+import { Download, Filter, ArrowUpDown, FileText } from 'lucide-react'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import { usePreferences } from '../context/PreferencesContext.jsx'
+
+const EDGE_LABEL = (eb) => {
+  if (!eb) return '—'
+  const sides = []
+  if (eb.front)  sides.push('F')
+  if (eb.back)   sides.push('V')
+  if (eb.top)    sides.push('T')
+  if (eb.bottom) sides.push('B')
+  if (eb.left)   sides.push('E')
+  if (eb.right)  sides.push('D')
+  if (eb.all)    return 'All'
+  return sides.join('+') || '—'
+}
+
+const TYPE_COLOR = {
+  structural:    'text-blue-400',
+  shelf:         'text-green-400',
+  baseboard:     'text-yellow-500',
+  drawer_front:  'text-purple-400',
+  standard_door: 'text-rose-400',
+  drawer_box:    'text-purple-300',
+  drawer_bottom: 'text-purple-200',
+}
+
+function exportCSV(cutList, getTypeLabel) {
+  const headers = ['ID', 'Nombre / Nome', 'Tipo', 'Ancho/Largura (mm)', 'Alto/Altura (mm)', 'Esp.(mm)', 'Veta/Veio', 'Cantos/Bordos']
+  const rows = cutList.map(p => [
+    p.id,
+    p.name,
+    getTypeLabel(p.type),
+    p.cutWidth,
+    p.cutHeight,
+    p.thickness,
+    p.grainDirection,
+    EDGE_LABEL(p.edgeBanding)
+  ])
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c ?? '')}"`).join(',')).join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `lista-de-corte-orbin-${Date.now()}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function exportPDF(cutList, getTypeLabel) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+
+  doc.setFontSize(18)
+  doc.setTextColor(245, 166, 35)
+  doc.text('Orbin AI — Lista de Corte', 14, 18)
+
+  doc.setFontSize(9)
+  doc.setTextColor(160, 160, 160)
+  doc.text(`Generado: ${new Date().toLocaleString()}  |  Total piezas: ${cutList.length}`, 14, 26)
+
+  const headers = [['ID', 'Nombre / Nome', 'Tipo', 'Ancho (mm)', 'Alto (mm)', 'Esp. (mm)', 'Veta', 'Cantos']]
+  const rows = cutList.map(p => [
+    p.id,
+    p.name,
+    getTypeLabel(p.type),
+    p.cutWidth,
+    p.cutHeight,
+    p.thickness,
+    p.grainDirection,
+    EDGE_LABEL(p.edgeBanding)
+  ])
+
+  autoTable(doc, {
+    startY: 32,
+    head: headers,
+    body: rows,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [20, 20, 20],
+      textColor: [245, 166, 35],
+      fontStyle: 'bold',
+      fontSize: 8
+    },
+    alternateRowStyles: { fillColor: [25, 25, 25] },
+    bodyStyles: { textColor: [220, 220, 220], fontSize: 7.5, fillColor: [15, 15, 15] },
+    columnStyles: {
+      0: { cellWidth: 28, fontStyle: 'bold' },
+      1: { cellWidth: 55 },
+      2: { cellWidth: 30 },
+      3: { cellWidth: 22, halign: 'right' },
+      4: { cellWidth: 22, halign: 'right' },
+      5: { cellWidth: 18, halign: 'right' },
+      6: { cellWidth: 20 },
+      7: { cellWidth: 20 }
+    },
+    margin: { top: 32, left: 14, right: 14 }
+  })
+
+  const pageCount = doc.getNumberOfPages()
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i)
+    doc.setFontSize(7)
+    doc.setTextColor(100, 100, 100)
+    doc.text(`Orbin AI v2.2 — Pág. ${i}/${pageCount}`, doc.internal.pageSize.getWidth() - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' })
+  }
+
+  doc.save(`lista-de-corte-orbin-${Date.now()}.pdf`)
+}
+
+export default function CutListTable({ cutList }) {
+  const { t, unit } = usePreferences()
+  const [filter, setFilter] = useState('')
+  const [sortKey, setSortKey] = useState('type')
+  const [sortDir, setSortDir] = useState(1)
+  const searchId = useId()
+
+  const typeLabel = (type) => {
+    if (type === 'drawer_front')  return t('drawer_front_label')
+    if (type === 'standard_door') return t('standard_door_label')
+    return type
+  }
+
+  if (!cutList?.length) return null
+
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir(d => -d)
+    else { setSortKey(key); setSortDir(1) }
+  }
+
+  const filtered = cutList
+    .filter(p => !filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.type.includes(filter.toLowerCase()))
+    .sort((a, b) => {
+      const va = a[sortKey] ?? '', vb = b[sortKey] ?? ''
+      return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir
+    })
+
+  const Th = ({ k, children }) => (
+    <th
+      scope="col"
+      onClick={() => toggleSort(k)}
+      className="px-3 py-2.5 text-left text-xs font-semibold text-muted uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSort(k) } }}
+      aria-sort={sortKey === k ? (sortDir === 1 ? 'ascending' : 'descending') : 'none'}
+    >
+      <span className="flex items-center gap-1">{children} <ArrowUpDown size={10} aria-hidden="true" /></span>
+    </th>
+  )
+
+  const f = n => unit === 'm' ? (n / 1000).toFixed(3) : n
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <h3 className="font-semibold text-white flex items-center gap-2">
+          {t('cut_list')}
+          <span className="bg-surface-3 text-primary text-xs px-2 py-0.5 rounded-full font-mono">
+            {filtered.length} {t('pieces')}
+          </span>
+        </h3>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-none">
+            <label htmlFor={searchId} className="sr-only">Filtrar tabla</label>
+            <Filter size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+            <input
+              id={searchId}
+              className="input-field pl-7 py-1.5 text-xs w-full sm:w-40 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
+              placeholder="Filtrar..."
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={() => exportPDF(cutList, typeLabel)}
+            className="btn-secondary flex items-center justify-center gap-1.5 text-xs py-1.5 flex-1 sm:flex-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <FileText size={12} aria-hidden="true" /> {t('export_pdf')}
+          </button>
+          <button
+            onClick={() => exportCSV(cutList, typeLabel)}
+            className="btn-secondary flex items-center justify-center gap-1.5 text-xs py-1.5 flex-1 sm:flex-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Download size={12} aria-hidden="true" /> {t('export_csv')}
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-border" tabIndex={0} role="region" aria-label="Tabla de lista de corte">
+        <table className="w-full text-sm">
+          <caption className="sr-only">Lista de piezas requeridas para ensamblar el mueble</caption>
+          <thead className="bg-surface-3 border-b border-border">
+            <tr>
+              <Th k="id">ID</Th>
+              <Th k="name">{t('piece_name')}</Th>
+              <Th k="type">Tipo</Th>
+              <Th k="cutWidth">{unit === 'm' ? t('w_m') : t('w_mm')}</Th>
+              <Th k="cutHeight">{unit === 'm' ? t('h_m') : t('h_mm')}</Th>
+              <Th k="thickness">Esp.(mm)</Th>
+              <Th k="grainDirection">Veio</Th>
+              <th scope="col" className="px-3 py-2.5 text-left text-xs font-semibold text-muted uppercase tracking-wider">Bordos</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {filtered.length === 0 ? (
+              <tr><td colSpan={8} className="px-3 py-6 text-center text-muted">No se encontraron piezas.</td></tr>
+            ) : filtered.map((p, i) => (
+              <tr key={p.id + i} className="hover:bg-surface-2 transition-colors">
+                <td className="px-3 py-2.5 font-mono text-xs text-muted">{p.id}</td>
+                <td className="px-3 py-2.5 font-medium text-white">{p.name}</td>
+                <td className={`px-3 py-2.5 text-xs font-mono ${TYPE_COLOR[p.type] || 'text-muted'}`}>{typeLabel(p.type)}</td>
+                <td className="px-3 py-2.5 font-mono text-right">{f(p.cutWidth)}</td>
+                <td className="px-3 py-2.5 font-mono text-right">{f(p.cutHeight)}</td>
+                <td className="px-3 py-2.5 font-mono text-right text-muted">{p.thickness}</td>
+                <td className="px-3 py-2.5 text-xs text-muted capitalize">{p.grainDirection}</td>
+                <td className="px-3 py-2.5 font-mono text-xs text-primary">{EDGE_LABEL(p.edgeBanding)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex flex-wrap gap-3 text-xs text-muted" aria-hidden="true">
+        <span><span className="text-primary font-mono">F</span>=Frente</span>
+        <span><span className="text-primary font-mono">V</span>=Verso</span>
+        <span><span className="text-primary font-mono">T</span>=Topo</span>
+        <span><span className="text-primary font-mono">B</span>=Base</span>
+        <span><span className="text-primary font-mono">E/D</span>=Esq/Dir</span>
+        <span>Medidas em <span className="text-white font-mono">{unit.toUpperCase()}</span></span>
+      </div>
+    </div>
+  )
+}
