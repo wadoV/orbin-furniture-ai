@@ -7,6 +7,7 @@
 const express = require('express')
 const router  = express.Router()
 const { generateProject } = require('../engine/closetEngine')
+const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
 const { parseNaturalLanguage } = require('../engine/nlParser')
 
 // ─── POST /api/design/generate ────────────────────────────────────────────────
@@ -17,17 +18,28 @@ router.post('/generate', (req, res) => {
 
     let finalParams = {}
     let nlResult    = null
-
     if (naturalLanguage && typeof naturalLanguage === 'string' && naturalLanguage.trim()) {
-      // Parse natural language → params
-      nlResult    = parseNaturalLanguage(naturalLanguage)
-      finalParams = { ...nlResult.params, ...(params || {}) } // manual params override NL
+      // Parse natural language → params (using Vertex AI/Ollama)
+      try {
+        const result = await parseDesignIntent(naturalLanguage)
+        nlResult = {
+          params: result,
+          interpreted: result.interpreted || naturalLanguage,
+          confidence: result.confidence || 0.9,
+          source: result.source
+        }
+        finalParams = { ...nlResult.params, ...(params || {}) }
+      } catch (err) {
+        console.warn('[design/generate] AI parsing failed, using regex:', err.message)
+        nlResult = parseNaturalLanguage(naturalLanguage)
+        finalParams = { ...nlResult.params, ...(params || {}) }
+      }
     } else if (params && typeof params === 'object') {
       finalParams = params
     } else {
       return res.status(400).json({
         success: false,
-        error: 'Forneça "params" (objeto) ou "naturalLanguage" (string).',
+        error: 'Forneça "params" (objeto) o "naturalLanguage" (string).',
       })
     }
 

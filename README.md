@@ -27,13 +27,22 @@ The following geometric rules are the "Master Standard" for Orbin AI. Any engine
 - **Design System**: Glassmorphism 2.0 with premium dark mode aesthetics.
 - **Local AI**: Support for Ollama (`llama3.2:1b`) for private, offline design generation.
 
-## 🚀 Local AI Setup (Ollama)
-Orbin AI is optimized for local execution using Ollama:
-1.  **Install Ollama**: Download from [ollama.com](https://ollama.com).
-2.  **Pull Model**: Run `ollama pull llama3.2:1b` in your terminal.
-3.  **Automatic Fallback**: The system uses `llama3.2:1b` by default. If the local server doesn't respond within 5 seconds, it automatically falls back to **Gemini 1.5 Flash** to ensure continuity.
+## 🚀 Hybrid AI Architecture (Cloud-First)
+Orbin AI utilizes a robust hybrid orchestration logic to ensure high-performance design generation:
+1.  **Primary: Google Cloud Vertex AI**: Leverages **Gemini 1.5 Flash** for low-latency, high-precision parametric design parsing.
+2.  **Fallback: Local Ollama**: Seamlessly switches to `llama3.2:1b` if cloud latency exceeds thresholds or connectivity is lost.
+3.  **Safety Net: Regex Parser**: A deterministic fallback engine for basic structural generation if all LLMs are unavailable.
 
 ## 🔧 Patch Notes
+
+### v3.5.0 — Cloud Integration & Stabilization
+- **Vertex AI Implementation**: Migrated primary generation logic to Google Cloud (GCP) for superior reasoning and speed.
+- **AI Orchestrator**: Centralized routing logic in `aiOrchestrator.js` for managed failover (Cloud → Local → Regex).
+- **v3.5 Construction Stabilization**: 
+    - **Laterales al Suelo**: External laterals strictly extend to the floor (y=H/2).
+    - **Vertical Baseboards**: Optimized grain direction for baseboard structural pieces.
+    - **Back Deduction Sync**: Unified depth calculation for internal laterals across all generation engines.
+- **UI/UX "Cloud Active"**: New status indicators and initial greeting: *"Nuestro motor ya está en la nube."*
 
 ### v3.0.0 — CONSTRUCTION_STABLE_V3 (Precision Upgrade)
 - **Technical Recess Engine**: Automated 50mm recess for internal shelving when doors are present.

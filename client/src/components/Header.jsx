@@ -55,9 +55,9 @@ export default function Header() {
           </div>
 
           {/* Status Indicator */}
-          <div className="hidden lg:flex items-center gap-2.5 bg-success/5 px-4 py-1.5 rounded-full border border-success/20">
-            <span className="w-2 h-2 rounded-full bg-success animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" aria-hidden="true"></span>
-            <span className="text-[10px] font-black text-success uppercase tracking-widest">Active Engine</span>
+          <div className="hidden lg:flex items-center gap-2.5 bg-primary/5 px-4 py-1.5 rounded-full border border-primary/20">
+            <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(var(--primary-rgb),0.6)]" aria-hidden="true"></span>
+            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{t('cloud_model_active')}</span>
           </div>
 
         </div>

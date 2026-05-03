@@ -18,6 +18,7 @@ export const translations = {
     tab_projects:    'Projetos',
     settings:        'Configurações',
     local_model_active: 'Modelo Local Ativo (Ollama)',
+    cloud_model_active: 'Nuvem Ativa (Vertex AI)',
     low_memory:         'Memória Baixa',
 
     // ── InputPanel ──────────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ export const translations = {
     edge_banding_2: 'Borda 2',
 
     // ── Chat ─────────────────────────────────────────────────────────────────
-    bot_welcome:          'Olá, sou Orbin. O que vamos criar hoje?',
+    bot_welcome:          'Olá, sou Orbin. Nosso motor já está na nuvem. O que vamos projetar?',
     type_message:         'Digite sua mensagem...',
     design_assistant:     'Agente Orbin AI',
     calculating:          'Calculando',
@@ -165,6 +166,7 @@ export const translations = {
     tab_projects:   'Proyectos',
     settings:       'Configuración',
     local_model_active: 'Modelo Local Activo (Ollama)',
+    cloud_model_active: 'Nube Activa (Vertex AI)',
     low_memory:         'Bajo de Memoria',
 
     // ── InputPanel ──────────────────────────────────────────────────────────
@@ -260,7 +262,7 @@ export const translations = {
     edge_banding_2: 'Canto 2',
 
     // ── Chat ─────────────────────────────────────────────────────────────────
-    bot_welcome:            'Hola, soy Orbin. ¿Qué vamos a crear hoy?',
+    bot_welcome:            'Hola, soy Orbin. Nuestro motor ya está en la nube. ¿Qué vamos a diseñar?',
     type_message:           'Escribe tu mensaje...',
     design_assistant:       'Orbin AI Agent',
     calculating:            'Calculando',
@@ -312,6 +314,7 @@ export const translations = {
     tab_projects:   'Projects',
     settings:       'Settings',
     local_model_active: 'Local Model Active (Ollama)',
+    cloud_model_active: 'Cloud Active (Vertex AI)',
     low_memory:         'Low Memory',
 
     // ── InputPanel ──────────────────────────────────────────────────────────
@@ -407,7 +410,7 @@ export const translations = {
     edge_banding_2: 'Edge 2',
 
     // ── Chat ─────────────────────────────────────────────────────────────────
-    bot_welcome:            "Hello, I'm Orbin. What are we creating today?",
+    bot_welcome:            "Hello, I'm Orbin. Our engine is now in the cloud. What are we designing?",
     type_message:           'Type your message...',
     design_assistant:       'Orbin AI Agent',
     calculating:            'Thinking',
