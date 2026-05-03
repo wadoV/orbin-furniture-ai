@@ -32,7 +32,7 @@ router.post('/generate', (req, res) => {
     }
 
     // Validate numeric ranges
-    const numFields = ['width', 'height', 'depth', 'thickness', 'numShelves', 'numDrawers', 'drawerHeight']
+    const numFields = ['width', 'height', 'depth', 'thickness', 'numShelves', 'numDrawers', 'numDividers', 'drawerHeight']
     for (const field of numFields) {
       if (finalParams[field] !== undefined) {
         finalParams[field] = Number(finalParams[field])
@@ -53,12 +53,16 @@ router.post('/generate', (req, res) => {
       return res.status(400).json({ success: false, error: 'Profundidade deve estar entre 100mm e 1000mm.' })
     }
 
-    // Generate design (includes validation internally via generateProject → validateDesign)
-    const design = generateProject(finalParams)
+    // Generate design
+    const result = generateProject(finalParams)
+
+    if (!result.success) {
+      return res.status(500).json(result)
+    }
 
     const response = {
       success: true,
-      design,
+      design:  result,
     }
 
     if (nlResult) {

@@ -1,87 +1,60 @@
-# 🪵 Orbin Furniture AI
+# Orbin AI — Modular Kitchen & Cabinet System v3.0.0 (CONSTRUCTION_STABLE_V3)
 
-**Automatización de diseño paramétrico de muebles asistida por IA.**
+Orbin is a state-of-the-art parametric design engine and AI assistant for modular furniture manufacturing. It transforms natural language descriptions and technical parameters into precise manufacturing data, 3D visualizations, and optimized cutlists.
 
-> **Estado actual (2026-05-02): ✅ Estable — v2.1 operativa**
+## 🚀 Key Features
 
-## 🎯 Visión
-Eliminar la dependencia de diseñadores externos en la marcenaria tradicional, automatizando el 80% del diseño estándar y generando listas de corte instantáneas.
+- **Multi-Typology Engine**: Support for Standard Closets, Kitchen Base Modules (with structural tie-strips), and Upper (Aéreo) Cabinets.
+- **Reactive Unit System**: Instant toggle between Millimeters (MM) and Centimeters (CM) across the entire UI and cutlist generation.
+- **Parametric 3D Viewer**: High-fidelity Three.js visualization with SketchUp-style rendering (White Solid + Black Edges).
+- **AI Design Assistant**: Multi-lingual (ES/PT/EN) conversational agent with persistence and direct engine integration.
+- **Divided Drawer Logic**: Column-specific drawer instantiation within multi-section modules.
+- **Manufacturing Precision**: Automatic back-thickness deductions and zero-gap structural alignments.
 
-## 🏗️ Arquitectura del Sistema
+## 📐 CONSTRUCTION_STABLE_V3 (Master Standard)
+The following geometric rules are the "Master Standard" for Orbin AI. Any engine refactor must strictly adhere to these formulas:
 
-| Capa | Tecnología | Estado |
-|------|-----------|--------|
-| Frontend | React 18 + Vite + Tailwind | ✅ Activo — puerto 5173 |
-| Backend | Node.js + Express | ✅ Activo — puerto 3001 |
-| Motor Paramétrico | `server/src/engine/` | ✅ v2 con holguras independientes |
-| Validación | `closetEngine + validator` | ✅ Reglas estructurales activas |
-| Database | Supabase | ⚙️ Opcional (fallback a memoria) |
-| AI Layer | Claude (NL) + Ollama (validación) | ⚙️ Opcional (regex fallback) |
-| Visualización 3D | Three.js | ✅ Viewer con selección y highlight |
+1. **Internal Lateral Depth**: `D_internal = D_total - Back_Thickness - Front_Recess`. `Front_Recess` is 50mm if doors are present, else 2mm.
+2. **Technical Recess**: Internal shelves must have a 50mm recess from the front if the module has doors, to prevent hinge/door interference.
+3. **Structural Drawer Cap**: The shelf immediately above a drawer bank MUST be full depth (no recess) to serve as a structural seal.
+4. **Multi-Door Calculation**: Door width is calculated as `(Total_Width - (Num_Doors + 1) * 3mm) / Num_Doors`.
+5. **Lateral Alignment**: External laterals go to ground. Internal laterals are captured between the top/base (`Height - 2*Thickness`).
+6. **Interaction Standard**: Doors rotate 90° on animation; Drawers slide 400mm. Camera reset is manual only.
 
-## 🚀 Arranque Rápido
+## 🛠 Tech Stack
+- **Frontend**: React 18, Three.js (R3F), TailwindCSS, Lucide.
+- **Backend**: Node.js, Express, Claude 3.5 Sonnet / Gemini 1.5 Flash.
+- **Design System**: Glassmorphism 2.0 with premium dark mode aesthetics.
+- **Local AI**: Support for Ollama (`llama3.2:1b`) for private, offline design generation.
 
-```bash
-# Windows — doble clic en:
-start.bat
+## 🚀 Local AI Setup (Ollama)
+Orbin AI is optimized for local execution using Ollama:
+1.  **Install Ollama**: Download from [ollama.com](https://ollama.com).
+2.  **Pull Model**: Run `ollama pull llama3.2:1b` in your terminal.
+3.  **Automatic Fallback**: The system uses `llama3.2:1b` by default. If the local server doesn't respond within 5 seconds, it automatically falls back to **Gemini 1.5 Flash** to ensure continuity.
 
-# Manual
-cd server && npm install && npm run dev   # API en :3001
-cd client && npm install && npm run dev   # UI en :5173
-```
+## 🔧 Patch Notes
 
-## 🧠 Features Activas (v2.2)
+### v3.0.0 — CONSTRUCTION_STABLE_V3 (Precision Upgrade)
+- **Technical Recess Engine**: Automated 50mm recess for internal shelving when doors are present.
+- **Structural Drawer Capping**: Guaranteed full-depth seal for shelves directly above drawer banks.
+- **Multi-Door Parametric Control**: Support for 1-4 doors with automatic gap calculation (3mm).
+- **Interactive 3D Mechanics**: Implemented correct pivot points for door rotation (90°) and extended drawer travel (400mm).
+- **Free Camera Control**: Disabled auto-reset of camera during configuration to allow free structural inspection.
+- **Enhanced i18n**: Full technical terminology support for ES/PT/EN.
+- **Precise Depth Deductions**: Implemented automatic subtraction of back thickness (3/6mm) from internal lateral pieces.
+- **Dividir Gavetas por Coluna**: Added sidebar toggle and logic to place drawers within specific columns created by internal dividers.
+- **AI Chat Restoration**: Reconnected `ChatPanel` with `App.jsx` state; added message persistence and design generation feedback loop.
+- **Zero-Gap Integration**: Refactored shelf placement to eliminate air gaps between drawer fronts and base shelving.
+- **State Locking Fix**: Resolved "Input Snapping" by skipping external state sync while fields are focused, allowing full value deletion.
+- **Defensive Rendering**: Resolved `TypeError: Cannot read properties of undefined (reading length)` in `ResultPanel` via robust prop validation.
 
-1. **Natural Language Input:** "Closet de 2.40m con 3 cajones y maletero".
-2. **Generación de JSON Maestro:** Desglose de piezas, medidas y componentes.
-3. **Lista de Corte:** Cálculo automático basado en espesores (15/18/25mm).
-4. **Validación Estructural:** Reglas de carpintería aplicadas por código.
-5. **Motor de Nesting:** Estimación de chapas y eficiencia de material.
-6. **Visor 3D:** Three.js con selección de piezas, vista explotada, wireframe y highlight por color.
-7. **Modo Órbita/Navegación:** Botón `Move` en toolbar 3D — desactiva selección para rotar libremente sin interferencias.
-8. **Laterales Internos (Divisorias):** Campo `Laterales Internos` en el panel de parámetros. Genera divisorias verticales con altura paramétrica (`H - 2×Espesor`), distribuidas uniformemente. Las prateleiras se dividen automáticamente por sección.
-9. **Highlight de Selección:** Piezas cambian a verde neón al ser seleccionadas; módulo activo pulsa en dorado.
-10. **Historial Undo/Redo:** Pila de 20 estados con Ctrl+Z / Ctrl+Y.
-11. **Borrado por teclado:** Tecla `Delete` elimina el módulo seleccionado del array global.
-12. **Módulos múltiples:** Composición de closets multimodulares en una sesión.
-13. **Exportación:** PDF, CSV, imagen 3D y JSON maestro.
-14. **Multilenguaje:** PT / ES / EN con selector dinámico.
-
-## 🔧 Motor Paramétrico — Holguras de Manufactura
-
-Las holguras de frentes de gaveta y puertas son **independientes** y están definidas en `server/src/engine/constants.js`:
-
-| Pieza | Constante | Valor | Motivo |
-|-------|-----------|-------|--------|
-| Frente Gaveta (altura) | `HARDWARE.DRAWER_FRONT_GAP_H` | 3mm | Recorrido de correderas + reveal |
-| Puerta (ancho total) | `HARDWARE.DOOR_GAP_W_TOTAL` | 5mm | Solape 2.5mm por lado (bisagras) |
-| Puerta (alto) | `HARDWARE.DOOR_GAP_H` | 4mm | Copa de bisagra superior/inferior |
-
-## ⌨️ Atajos de Teclado
-
-| Atajo / Control | Acción |
-|----------------|--------|
-| `Ctrl+Z` | Deshacer |
-| `Ctrl+Y` / `Ctrl+Shift+Z` | Rehacer |
-| `Delete` | Eliminar módulo seleccionado |
-| Botón `Move` (toolbar 3D) | Activar/desactivar Modo Órbita — rota sin seleccionar |
-| Click en pieza 3D | Seleccionar pieza (highlight verde neón) |
-| `Shift+Click` | Selección múltiple de piezas |
-| Click+Drag en 3D | Box selection (rectángulo de selección) |
-
-## 🤖 Orbin AI Persona
-- **Saludo:** "Hola, soy Orbin. ¿Qué vamos a crear hoy?"
-- **Especialidad:** Consultoría técnica en diseño paramétrico y manufactura.
-- **Identidad:** Agente experto, amigable y preciso.
-
-## 🧭 Roadmap
-
-- ✅ **Fase 1:** Motor paramétrico básico y lista de corte.
-- ✅ **Fase 2:** Integración NL con prompts de texto.
-- ✅ **Fase 3:** Visualización 3D (Three.js).
-- ✅ **Fase 4:** Nesting y BOM de ferragens.
-- 🔜 **Fase 5:** Presupuestos automáticos + integración Supabase.
-- 🔜 **Fase 6:** App móvil / exportación a CNC.
-
----
-*Desarrollado por Eduardo Ventura — Orbin AI Agent v2.2 — 2026-05-02*
+## 🛡️ PROTECTED Features (Zero Regression Policy)
+1. **Drawer Layouts (`drawerLayout`)**: Left, Right, and Center configurations.
+2. **Vertical Dividers (`numDividers`)**: Multiple internal vertical partitions.
+3. **Kitchen Structural Logic**: `hasCountertop` toggle and `travesaños` (tie-strips).
+4. **CAD Interaction**: Multi-Selection (`Shift+Click`), Marquee Selection, and Orbit Mode toggles.
+5. **Unit System (MM/CM)**: Reactive conversion across all modules.
+6. **SketchUp Render Style**: White-solid + black-edge (`EdgesGeometry`) mandatory default.
+7. **Industrial Export**: CSV, BOM hardware count (auto-hinge/slide detection), and CNC G-code.
+8. **Master Construction Logic**: All 4 rules defined in the 📐 section above are immutable.

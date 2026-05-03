@@ -11,3 +11,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# AI Test Scripts
+server/src/ai/test_ollama.js
+server/src/ai/test_ollama_fetch.js

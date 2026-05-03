@@ -1,38 +1,52 @@
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import { Globe, Ruler } from 'lucide-react'
 
 export default function Header() {
-  const { lang, setLang, unit, setUnit } = usePreferences()
+  const { lang, setLang, unit, setUnit, t } = usePreferences()
+  
   return (
-    <header className="border-b border-border bg-surface/80 backdrop-blur sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 min-h-[3.5rem] py-2 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl" aria-hidden="true">🪵</span>
-          <div>
-            <span className="font-bold text-white text-lg tracking-tight">Orbin</span>
-            <span className="text-primary font-bold text-lg tracking-tight"> AI</span>
+    <header className="border-b border-white/5 bg-surface/80 backdrop-blur-xl sticky top-0 z-50">
+      <div className="max-w-screen-2xl mx-auto px-6 min-h-[4rem] flex items-center justify-between gap-6">
+        
+        {/* Logo Section */}
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/60 rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
+            <span className="text-black font-black text-xl italic" aria-hidden="true">O</span>
           </div>
-          <span className="hidden sm:block text-muted text-xs border border-border rounded px-2 py-0.5">MVP · Closets</span>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-black text-white text-xl tracking-tight uppercase">Orbin</span>
+              <span className="text-primary font-black text-xl tracking-tight uppercase">AI</span>
+            </div>
+            <span className="text-[10px] text-muted font-bold tracking-[0.3em] uppercase opacity-60">Modular System v2.1</span>
+          </div>
         </div>
-        <div className="flex items-center flex-wrap gap-4 text-xs text-muted">
+
+        {/* Global Controls */}
+        <div className="flex items-center gap-6">
           
-          <div className="flex items-center gap-2">
-            <label htmlFor="unit-select" className="sr-only">Unidad de medida</label>
+          {/* Unit Selector */}
+          <div className="flex items-center gap-3 bg-surface-3/50 px-3 py-1.5 rounded-xl border border-white/5 group hover:border-primary/30 transition-all">
+            <Ruler size={14} className="text-muted group-hover:text-primary transition-colors" />
             <select 
               id="unit-select"
-              value={unit} onChange={e => setUnit(e.target.value)}
-              className="bg-surface-3 border border-border text-white text-xs rounded px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              value={unit} 
+              onChange={e => setUnit(e.target.value)}
+              className="bg-transparent text-white text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer"
             >
               <option value="mm">MM</option>
-              <option value="m">Metros</option>
+              <option value="cm">CM</option>
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <label htmlFor="lang-select" className="sr-only">Idioma</label>
+          {/* Language Selector */}
+          <div className="flex items-center gap-3 bg-surface-3/50 px-3 py-1.5 rounded-xl border border-white/5 group hover:border-primary/30 transition-all">
+            <Globe size={14} className="text-muted group-hover:text-primary transition-colors" />
             <select 
               id="lang-select"
-              value={lang} onChange={e => setLang(e.target.value)}
-              className="bg-surface-3 border border-border text-white text-xs rounded px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              value={lang} 
+              onChange={e => setLang(e.target.value)}
+              className="bg-transparent text-white text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer"
             >
               <option value="PT">PT</option>
               <option value="ES">ES</option>
@@ -40,10 +54,12 @@ export default function Header() {
             </select>
           </div>
 
-          <span className="hidden sm:flex items-center gap-1.5" title="Motor activo y funcional">
-            <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" aria-hidden="true"></span>
-            Motor v1.0
-          </span>
+          {/* Status Indicator */}
+          <div className="hidden lg:flex items-center gap-2.5 bg-success/5 px-4 py-1.5 rounded-full border border-success/20">
+            <span className="w-2 h-2 rounded-full bg-success animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" aria-hidden="true"></span>
+            <span className="text-[10px] font-black text-success uppercase tracking-widest">Active Engine</span>
+          </div>
+
         </div>
       </div>
     </header>

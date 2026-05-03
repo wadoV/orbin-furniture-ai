@@ -6,7 +6,7 @@
 
 const express = require('express')
 const router  = express.Router()
-const { parseDesignIntent, chatDesign } = require('../ai/claudeClient')
+const { parseDesignIntent, chatDesign } = require('../ai/ollamaClient')
 const { generateProject } = require('../engine/closetEngine')
 
 // In-memory session store (replace with Redis/Supabase for production)
