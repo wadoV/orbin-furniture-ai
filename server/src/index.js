@@ -12,7 +12,7 @@ const chatRouter     = require('./routes/chat')
 const projectsRouter = require('./routes/projects')
 
 const app  = express()
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 3003
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 

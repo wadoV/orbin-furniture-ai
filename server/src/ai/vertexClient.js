@@ -12,14 +12,14 @@ const location = process.env.GCP_LOCATION || 'us-central1';
 
 // Initialize Vertex AI with the project and location
 const vertex_ai = new VertexAI({ project, location });
-const model = 'gemini-1.5-flash';
+const model = 'gemini-1.5-pro';
 
 // Instantiate the generative models
 const generativeModel = vertex_ai.getGenerativeModel({
   model,
   generationConfig: {
-    maxOutputTokens: 2048,
-    temperature: 0.2,
+    maxOutputTokens: 4096,
+    temperature: 0.1, // Lower temperature for higher precision
     topP: 0.8,
   },
 });

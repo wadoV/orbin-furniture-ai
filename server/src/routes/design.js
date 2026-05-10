@@ -12,7 +12,7 @@ const { parseNaturalLanguage } = require('../engine/nlParser')
 
 // ─── POST /api/design/generate ────────────────────────────────────────────────
 
-router.post('/generate', (req, res) => {
+router.post('/generate', async (req, res) => {
   try {
     const { params, naturalLanguage } = req.body
 
