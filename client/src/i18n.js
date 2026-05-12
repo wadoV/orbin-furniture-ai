@@ -225,6 +225,38 @@ export const translations = {
     export_json:             'Projeto (JSON)',
     export_obj:              'Modelo 3D (OBJ)',
     export_technical_pdf:    'Ficha Técnica (PDF)',
+
+    // ── Project Memory ─────────────────────────────────────────────────────
+    memory_title:            'Memória do Projeto',
+    version_history:         'Histórico de Versões',
+    recent_actions:          'Ações Recentes',
+    project_summary:         'Resumo do Projeto',
+    revert_version:          'Reverter',
+    no_versions:             'Nenhuma versão salva.',
+    no_actions:              'Nenhuma ação registrada.',
+    version_saved:           'Versão salva',
+    version_reverted:        'Revertido para',
+    modules_label:           'módulo(s)',
+    pieces_label:            'peças',
+    sheets_label:            'chapas',
+    waste_label:             'desperdício',
+    versions_label:          'versões',
+    clear_memory:            'Limpar Memória',
+    confirm_clear:           'Tem certeza? Isso apagará todo o histórico.',
+
+    // -- Design Health --
+    design_health:           'Saúde do Design',
+    suggestions:             'sugestões',
+    no_issues:               'Sem problemas encontrados',
+    ai_suggestions:          'Sugestões da IA',
+    export_dxf:              'Exportar DXF (AutoCAD)',
+    export_gltf:             'Exportar GLTF (3D)',
+    export_nesting:          'Otimizar Nesting',
+    export_success:          'Exportado com sucesso',
+    export_error:            'Erro na exportação',
+    nesting_result:          'Resultado do nesting',
+    sheets_used:             'Chapas necessárias',
+    utilization:             'Aproveitamento',
   },
 
   ES: {
@@ -442,6 +474,38 @@ export const translations = {
     export_json:             'Proyecto (JSON)',
     export_obj:              'Modelo 3D (OBJ)',
     export_technical_pdf:    'Ficha Técnica (PDF)',
+
+    // ── Project Memory ─────────────────────────────────────────────────────
+    memory_title:            'Memoria del Proyecto',
+    version_history:         'Historial de Versiones',
+    recent_actions:          'Acciones Recientes',
+    project_summary:         'Resumen del Proyecto',
+    revert_version:          'Revertir',
+    no_versions:             'Sin versiones guardadas.',
+    no_actions:              'Sin acciones registradas.',
+    version_saved:           'Versión guardada',
+    version_reverted:        'Revertido a',
+    modules_label:           'módulo(s)',
+    pieces_label:            'piezas',
+    sheets_label:            'chapas',
+    waste_label:             'desperdicio',
+    versions_label:          'versiones',
+    clear_memory:            'Limpiar Memoria',
+    confirm_clear:           '¿Estás seguro? Esto borrará todo el historial.',
+
+    // -- Design Health --
+    design_health:           'Salud del Diseño',
+    suggestions:             'sugerencias',
+    no_issues:               'Sin problemas encontrados',
+    ai_suggestions:          'Sugerencias de IA',
+    export_dxf:              'Exportar DXF (AutoCAD)',
+    export_gltf:             'Exportar GLTF (3D)',
+    export_nesting:          'Optimizar Nesting',
+    export_success:          'Exportado con éxito',
+    export_error:            'Error en la exportación',
+    nesting_result:          'Resultado del nesting',
+    sheets_used:             'Chapas necesarias',
+    utilization:             'Aprovechamiento',
   },
 
   EN: {
@@ -615,6 +679,7 @@ export const translations = {
     empty_viewer:        'Configure and generate your furniture',
     empty_viewer_hint:   'Use the left panel to define parameters',
 
+
     // ── v2.5 UX Enhancement Keys ───────────────────────────────────────────
     optimize_design:     'Optimize Design',
     prompt_history:      'Prompt History',
@@ -659,9 +724,42 @@ export const translations = {
     export_json:             'Project (JSON)',
     export_obj:              '3D Model (OBJ)',
     export_technical_pdf:    'Technical Sheet (PDF)',
+
+    // -- Project Memory --
+    memory_title:            'Project Memory',
+    version_history:         'Version History',
+    recent_actions:          'Recent Actions',
+    project_summary:         'Project Summary',
+    revert_version:          'Revert',
+    no_versions:             'No versions saved.',
+    no_actions:              'No actions recorded.',
+    version_saved:           'Version saved',
+    version_reverted:        'Reverted to',
+    modules_label:           'module(s)',
+    pieces_label:            'pieces',
+    sheets_label:            'sheets',
+    waste_label:             'waste',
+    versions_label:          'versions',
+    clear_memory:            'Clear Memory',
+    confirm_clear:           'Are you sure? This will erase all history.',
+
+    // -- Design Health --
+    design_health:           'Design Health',
+    suggestions:             'suggestions',
+    no_issues:               'No issues found',
+    ai_suggestions:          'AI Suggestions',
+    export_dxf:              'Export DXF (AutoCAD)',
+    export_gltf:             'Export GLTF (3D)',
+    export_nesting:          'Optimize Nesting',
+    export_success:          'Exported successfully',
+    export_error:            'Export error',
+    nesting_result:          'Nesting result',
+    sheets_used:             'Sheets used',
+    utilization:             'Utilization',
   },
 }
 
 export const useTranslation = (lang = 'PT') => {
   return (key) => translations[lang]?.[key] || translations.PT?.[key] || key
 }
+

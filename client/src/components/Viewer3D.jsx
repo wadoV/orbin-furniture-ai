@@ -1,5 +1,5 @@
 /**
- * Orbin AI — 3D Closet Viewer (V2.3 StrictMode-Safe + Drag & Snap)
+ * Orbin AI — 3D Closet Viewer (V2.7 Premium Visual + Drag & Snap)
  * Parametric rendering from configuration with construction logic.
  * Dark theme, MeshStandard materials, wireframe, exploded view, orbit mode,
  * box selection, hover info, PNG export, drawer open/close animation.
@@ -192,41 +192,95 @@ export default function Viewer3D({
     renderer.setSize(container.clientWidth, container.clientHeight)
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
-    renderer.setClearColor(0x0f0f0f, 1)
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.1
+    renderer.outputColorSpace = THREE.SRGBColorSpace
+    renderer.setClearColor(0x0a0a0f, 1)
     container.appendChild(renderer.domElement)
     rendererRef.current = renderer
 
     // --- Scene ---
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x0f0f0f)
+    scene.background = new THREE.Color(0x0a0a0f)
+    scene.fog = new THREE.FogExp2(0x0a0a0f, 0.0008)
+
+    // --- Premium Environment Map (subtle reflections) ---
+    const pmremGenerator = new THREE.PMREMGenerator(renderer)
+    pmremGenerator.compileEquirectangularShader()
+    const envScene = new THREE.Scene()
+    envScene.background = new THREE.Color(0x1a1a2e)
+    // Gradient hemisphere for soft ambient reflections
+    const envHemi = new THREE.HemisphereLight(0xffeedd, 0x080820, 1.0)
+    envScene.add(envHemi)
+    const envTexture = pmremGenerator.fromScene(envScene, 0.04).texture
+    scene.environment = envTexture
+    pmremGenerator.dispose()
+    envScene.clear()
     sceneRef.current = scene
 
     // --- Camera ---
-    const cam = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 50000)
+    const cam = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 1, 50000)
     cam.position.set(350, 250, 450)
     camRef.current = cam
 
-    // --- Lights ---
-    scene.add(new THREE.AmbientLight(0xffffff, 0.8))
-    const mainLight = new THREE.DirectionalLight(0xffffff, 0.7)
-    mainLight.position.set(200, 400, 300)
+    // --- Premium Lighting Rig ---
+    // Hemisphere: warm sky + cool ground for natural ambient
+    const hemiLight = new THREE.HemisphereLight(0xffeedd, 0x080820, 0.6)
+    scene.add(hemiLight)
+    // Soft ambient fill
+    scene.add(new THREE.AmbientLight(0xffffff, 0.25))
+    // Key light — warm directional with high-res shadows
+    const mainLight = new THREE.DirectionalLight(0xfff4e6, 0.9)
+    mainLight.position.set(250, 500, 350)
     mainLight.castShadow = true
-    mainLight.shadow.mapSize.set(2048, 2048)
+    mainLight.shadow.mapSize.set(4096, 4096)
+    mainLight.shadow.camera.near = 10
+    mainLight.shadow.camera.far = 2000
+    mainLight.shadow.camera.left = -600
+    mainLight.shadow.camera.right = 600
+    mainLight.shadow.camera.top = 600
+    mainLight.shadow.camera.bottom = -600
+    mainLight.shadow.bias = -0.0005
+    mainLight.shadow.normalBias = 0.02
+    mainLight.shadow.radius = 4
     scene.add(mainLight)
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3)
-    fillLight.position.set(-200, 200, -100)
+    // Fill light — cooler, softer
+    const fillLight = new THREE.DirectionalLight(0xc4d4f0, 0.35)
+    fillLight.position.set(-300, 250, -150)
     scene.add(fillLight)
+    // Rim/back light for edge definition
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.2)
+    rimLight.position.set(0, 100, -400)
+    scene.add(rimLight)
 
     // --- Grid ---
-    const grid = new THREE.GridHelper(1000, 100, 0x222222, 0x111111)
+    const grid = new THREE.GridHelper(1000, 100, 0x1a1a2e, 0x0e0e1a)
     grid.position.y = -0.2
     scene.add(grid)
     gridRef.current = grid
 
+    // --- Premium Ground Plane (subtle shadow receiver) ---
+    const groundGeo = new THREE.PlaneGeometry(2000, 2000)
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x0a0a0f,
+      roughness: 0.85,
+      metalness: 0.15,
+      transparent: true,
+      opacity: 0.9,
+    })
+    const groundMesh = new THREE.Mesh(groundGeo, groundMat)
+    groundMesh.rotation.x = -Math.PI / 2
+    groundMesh.position.y = -0.3
+    groundMesh.receiveShadow = true
+    groundMesh.userData._isGround = true
+    scene.add(groundMesh)
+
     // --- Controls ---
     const controls = new OrbitControls(cam, renderer.domElement)
     controls.enableDamping = true
-    controls.dampingFactor = 0.05
+    controls.dampingFactor = 0.08
+    controls.rotateSpeed = 0.7
+    controls.zoomSpeed = 0.9
     controlsRef.current = controls
 
     // --- Group for furniture ---
@@ -595,6 +649,35 @@ export default function Viewer3D({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [onDeleteModule])
 
+
+  // ★ Premium: Smooth camera focus on module selection
+  const cameraTargetRef = useRef(null)
+  useEffect(() => {
+    if (!selectedModuleId || !moduleGroupsRef.current[selectedModuleId]) return
+    const mGroup = moduleGroupsRef.current[selectedModuleId]
+    const box = new THREE.Box3().setFromObject(mGroup)
+    const center = new THREE.Vector3()
+    box.getCenter(center)
+    cameraTargetRef.current = center
+    // Smooth orbit target transition
+    const controls = controlsRef.current
+    if (controls) {
+      const startTarget = controls.target.clone()
+      const startTime = Date.now()
+      const duration = 600
+      const smoothFocus = () => {
+        const elapsed = Date.now() - startTime
+        const t = Math.min(elapsed / duration, 1)
+        // Ease-out cubic
+        const ease = 1 - Math.pow(1 - t, 3)
+        controls.target.lerpVectors(startTarget, center, ease)
+        controls.update()
+        if (t < 1) requestAnimationFrame(smoothFocus)
+      }
+      smoothFocus()
+    }
+  }, [selectedModuleId])
+
   // ─── 2. Build Geometry from Configuration (Parametric Construction Logic) ──
   useEffect(() => {
     if (!modules || modules.length === 0 || !isReady) return
@@ -685,19 +768,33 @@ export default function Viewer3D({
       // Helper: create a mesh with edge helper
       const makeMesh = (w, h, d, color, pieceName, type, drawerKey = null) => {
         const geo = new THREE.BoxGeometry(w, h, d)
+        // ★ Premium material: type-aware surface properties
+        const matProps = (() => {
+          switch (type) {
+            case 'drawer_front':
+            case 'standard_door': return { roughness: 0.35, metalness: 0.05 }
+            case 'countertop':    return { roughness: 0.25, metalness: 0.08 }
+            case 'feet':          return { roughness: 0.4,  metalness: 0.6  }
+            case 'drawer_box':
+            case 'drawer_bottom': return { roughness: 0.7,  metalness: 0.02 }
+            case 'baseboard':     return { roughness: 0.55, metalness: 0.05 }
+            default:              return { roughness: 0.5,  metalness: 0.04 }
+          }
+        })()
         const mat = new THREE.MeshStandardMaterial({
           color,
-          roughness: 0.6,
-          metalness: 0.1,
+          roughness: matProps.roughness,
+          metalness: matProps.metalness,
           transparent: true,
           opacity: 1,
+          envMapIntensity: 0.5,
         })
         const mesh = new THREE.Mesh(geo, mat)
         mesh.castShadow = true
         mesh.receiveShadow = true
 
         const edgesGeo = new THREE.EdgesGeometry(geo)
-        const edgesMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.1 })
+        const edgesMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.06 })
         const edgeHelper = new THREE.LineSegments(edgesGeo, edgesMat)
         edgeHelper.userData._isEdge = true
 
@@ -951,13 +1048,13 @@ export default function Viewer3D({
       const color = TYPE_COLORS[p.type] || TYPE_COLORS.structural
 
       const geo = new THREE.BoxGeometry(w, h, d)
-      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.1, transparent: true })
+      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.04, transparent: true, envMapIntensity: 0.5 })
       const mesh = new THREE.Mesh(geo, mat)
       mesh.castShadow = true
       mesh.position.set((p.x || 0) * SCALE, (p.y || 0) * SCALE, (p.z || 0) * SCALE)
 
       const edgesGeo = new THREE.EdgesGeometry(geo)
-      const edgesMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.1 })
+      const edgesMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.06 })
       const edgeHelper = new THREE.LineSegments(edgesGeo, edgesMat)
       edgeHelper.userData._isEdge = true
 

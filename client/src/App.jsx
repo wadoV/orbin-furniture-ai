@@ -8,8 +8,15 @@ import ProjectsPanel from './components/ProjectsPanel.jsx'
 import CarpentryAdvisor from './components/CarpentryAdvisor.jsx'
 import Viewer3D from './components/Viewer3D.jsx'
 import ExportPanel from './components/ExportPanel.jsx'
+import MemoryPanel from './components/MemoryPanel.jsx'
+import DesignHealthPanel from './components/DesignHealthPanel.jsx'
 import WelcomeScreen from './components/WelcomeScreen.jsx'
 import { api } from './api/client.js'
+import {
+  loadMemory, saveMemory, saveVersion, revertToVersion,
+  getVersionHistory, logPrompt, logAction, logExport,
+  getRecentActions, generateProjectSummary, clearMemory
+} from './engine/projectMemory.js'
 import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2 } from 'lucide-react'
 
 import { usePreferences } from './context/PreferencesContext.jsx'
@@ -34,7 +41,7 @@ class ErrorBoundary extends Component {
                 {this.state.error?.message || 'Algo salió mal durante el renderizado 3D.'}
               </p>
             </div>
-            <button 
+            <button
               onClick={() => window.location.reload()}
               className="btn-primary w-full h-12 text-sm font-bold uppercase tracking-widest"
             >
@@ -53,7 +60,6 @@ export default function App() {
   const [showWelcome, setShowWelcome] = useState(true)
   const [activeTab, setActiveTab] = useState('params')
   const [loading,   setLoading]   = useState(false)
-  // ★ PROTECTED: Auto-save — restore modules from localStorage on mount
   const [modules,   setModules]   = useState(() => {
     try {
       const saved = localStorage.getItem('orbin-autosave')
@@ -70,8 +76,11 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
   const [lastPrompt, setLastPrompt] = useState('')
-  // ★ PROTECTED: AI processing status phases for UX
   const [aiStatus, setAiStatus] = useState('')
+
+  // Project Memory state
+  const [projectMemory, setProjectMemory] = useState(() => loadMemory())
+  const refreshMemory = () => setProjectMemory(loadMemory())
 
   const TABS = [
     { id: 'params', label: t('tab_parameters'), icon: Sliders },
@@ -79,20 +88,24 @@ export default function App() {
     { id: 'saved',  label: t('tab_projects'),   icon: FolderOpen },
   ]
 
-  // ★ PROTECTED: Auto-save modules to localStorage on every change
   useEffect(() => {
     try {
       if (modules.length > 0) {
         localStorage.setItem('orbin-autosave', JSON.stringify(modules))
         localStorage.setItem('orbin-autosave-ts', new Date().toISOString())
       }
-    } catch { /* quota exceeded — fail silently */ }
+    } catch {}
   }, [modules])
 
-  const saveHistory = (newModules) => {
+  const saveHistory = (newModules, label) => {
     setHistory(prev => [...prev, modules].slice(-20))
     setRedoStack([])
     setModules(newModules)
+    try {
+      const mem = loadMemory()
+      saveVersion(mem, newModules, label || '')
+      refreshMemory()
+    } catch {}
   }
 
   const handleGenerate = async (payload) => {
@@ -101,15 +114,26 @@ export default function App() {
     try {
       const data = await api.generateDesign(payload)
       const design = data?.design || (data?.modules && data.modules[0])
-      
       if (design && design.pieces) {
-        const newModule = { ...design, id: design.id || `MOD-${Date.now()}` }
-        saveHistory([...modules, newModule])
+        const newModule = { ...design, id: design.id || ('MOD-' + Date.now()) }
+        saveHistory([...modules, newModule], 'Generated ' + (design.type || 'module'))
         setSelectedModuleId(newModule.id)
-        setTimeout(() => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' }), 100)
-      } else if (data?.error) {
+        try {
+          const mem = loadMemory()
+          logAction(mem, 'generate', {
+            moduleType: design.type || (design.configuration && design.configuration.moduleType),
+            width: design.configuration && design.configuration.width,
+            height: design.configuration && design.configuration.height,
+          })
+          refreshMemory()
+        } catch {}
+        setTimeout(() => {
+          const el = document.getElementById('results')
+          if (el) el.scrollIntoView({ behavior: 'smooth' })
+        }, 100)
+      } else if (data && data.error) {
         console.error('[App/Generate] Server Error:', data.error, data.detail)
-        setError(`${data.error} ${data.detail || ''}`)
+        setError(data.error + ' ' + (data.detail || ''))
       }
     } catch (err) {
       console.error('[App/Generate] Connection Error:', err)
@@ -120,13 +144,12 @@ export default function App() {
   }
 
   const handleChatDesign = ({ design }) => {
-    const newModule = { ...design, id: design.id || `MOD-${Date.now()}` }
+    const newModule = { ...design, id: design.id || ('MOD-' + Date.now()) }
     saveHistory([...modules, newModule])
     setSelectedModuleId(newModule.id)
     setActiveTab('params')
   }
 
-  // ★ PROTECTED: AI Status phases for perceived intelligence
   const AI_PHASES = [
     { msg: 'Routing request...', delay: 0 },
     { msg: 'Thinking...', delay: 800 },
@@ -139,26 +162,26 @@ export default function App() {
     setChatLoading(true)
     setLastPrompt(text)
     setChatMessages(prev => [...prev, { role: 'user', content: text }])
-
-    // ★ PROTECTED: Animated AI status phases
     const timers = AI_PHASES.map(p => setTimeout(() => setAiStatus(p.msg), p.delay))
-
     try {
       const data = await api.chatDesign(text, 'default-session')
-      // ★ PROTECTED: Include AI source in message for badge display
       setChatMessages(prev => [...prev, {
         role: 'assistant',
         content: data.reply,
         source: data.source || 'unknown'
       }])
-
+      try {
+        const mem = loadMemory()
+        logPrompt(mem, text, data.reply, data.source || 'unknown', !!data.design)
+        refreshMemory()
+      } catch {}
       if (data.design) {
         handleChatDesign({ design: data.design })
       }
     } catch (err) {
       setChatMessages(prev => [...prev, {
         role: 'assistant',
-        content: `Error: ${err.message}`,
+        content: 'Error: ' + err.message,
         source: 'error'
       }])
     } finally {
@@ -169,18 +192,21 @@ export default function App() {
   }
 
   const handleUpdateModule = (id, newConfig) => {
-    if (!id) return;
+    if (!id) return
     saveHistory(modules.map(m => m.id === id ? { ...m, configuration: { ...m.configuration, ...newConfig } } : m))
   }
 
   const handleDeleteModule = (id) => {
     const target = modules.find(m => m.id === id)
     if (!target) return
-    
-    saveHistory(modules.filter(m => m.id !== id))
+    try {
+      const mem = loadMemory()
+      logAction(mem, 'delete', { moduleId: id })
+      refreshMemory()
+    } catch {}
+    saveHistory(modules.filter(m => m.id !== id), 'Deleted module')
     setShowUndoToast(true)
     setTimeout(() => setShowUndoToast(false), 5000)
-    
     if (selectedModuleId === id) {
       setSelectedModuleId(null)
       setSelectedPieceIds(new Set())
@@ -205,29 +231,51 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      const isInput = ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName);
+      const isInput = ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        if (isInput) return;
-        e.preventDefault();
-        undo();
+        if (isInput) return
+        e.preventDefault()
+        undo()
       }
       if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
-        if (isInput) return;
-        e.preventDefault();
-        redo();
+        if (isInput) return
+        e.preventDefault()
+        redo()
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (isInput) return;
+        if (isInput) return
         if (selectedPieceIds.size > 0) {
-          setSelectedPieceIds(new Set());
+          setSelectedPieceIds(new Set())
         } else if (selectedModuleId) {
-          handleDeleteModule(selectedModuleId);
+          handleDeleteModule(selectedModuleId)
         }
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [modules, history, redoStack, selectedModuleId, selectedPieceIds]);
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [modules, history, redoStack, selectedModuleId, selectedPieceIds])
+
+  const handleMemoryRevert = (versionId) => {
+    try {
+      const mem = loadMemory()
+      const snapshot = revertToVersion(mem, versionId)
+      if (snapshot) {
+        saveHistory(snapshot, 'Reverted to ' + versionId)
+        setSelectedModuleId(null)
+        setSelectedPieceIds(new Set())
+        refreshMemory()
+      }
+    } catch {}
+  }
+
+  const handleClearMemory = () => {
+    clearMemory()
+    refreshMemory()
+  }
+
+  const memVersions = getVersionHistory(projectMemory)
+  const memActions = getRecentActions(projectMemory, 8)
+  const memSummary = modules.length > 0 ? generateProjectSummary(projectMemory, modules) : null
 
   const currentResult = (modules || []).find(m => m.id === selectedModuleId)
 
@@ -243,32 +291,23 @@ export default function App() {
     <ErrorBoundary>
       <div className="min-h-screen bg-[#0D0D0D]">
         <Header />
-
         <main className="max-w-screen-2xl mx-auto px-4 py-6">
           <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-6">
-
             <aside className="xl:sticky xl:top-20 xl:self-start space-y-4 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-1 pb-4 scrollbar-thin scrollbar-thumb-surface-3 scrollbar-track-transparent">
-              {/* ★ PROTECTED: Undo/Redo navigation buttons */}
               <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-white leading-tight">
                   {(t('title') || '').split('—')[0]}<br />
-                  <span className="text-primary">— {(t('title') || '').split('—')[1]}</span>
+                  <span className="text-primary">{'—'} {(t('title') || '').split('—')[1]}</span>
                 </h1>
                 <div className="flex gap-1">
-                  <button
-                    onClick={undo}
-                    disabled={history.length === 0}
+                  <button onClick={undo} disabled={history.length === 0}
                     className="p-2 rounded-xl text-muted hover:text-white hover:bg-surface-3 disabled:opacity-20 disabled:pointer-events-none transition-all"
-                    title={t('undo') || 'Deshacer'}
-                  >
+                    title={t('undo') || 'Deshacer'}>
                     <Undo2 size={16} />
                   </button>
-                  <button
-                    onClick={redo}
-                    disabled={redoStack.length === 0}
+                  <button onClick={redo} disabled={redoStack.length === 0}
                     className="p-2 rounded-xl text-muted hover:text-white hover:bg-surface-3 disabled:opacity-20 disabled:pointer-events-none transition-all"
-                    title={t('redo') || 'Rehacer'}
-                  >
+                    title={t('redo') || 'Rehacer'}>
                     <Redo2 size={16} />
                   </button>
                 </div>
@@ -276,29 +315,26 @@ export default function App() {
 
               <div className="flex gap-1 bg-surface-3 p-1 rounded-lg" role="tablist">
                 {TABS.map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    onClick={() => setActiveTab(id)}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-all
-                      ${activeTab === id ? 'bg-primary text-black shadow-sm' : 'text-muted hover:text-white hover:bg-surface-2'}`}
-                  >
+                  <button key={id} onClick={() => setActiveTab(id)}
+                    className={'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-all ' +
+                      (activeTab === id ? 'bg-primary text-black shadow-sm' : 'text-muted hover:text-white hover:bg-surface-2')}>
                     <Icon size={12} /> {label}
                   </button>
                 ))}
               </div>
 
-              <div id={`panel-${activeTab}`}>
+              <div id={'panel-' + activeTab}>
                 {activeTab === 'params' && (
                   <>
-                    <InputPanel 
-                      onGenerate={handleGenerate} 
-                      loading={loading} 
-                      currentConfig={currentResult?.configuration}
+                    <InputPanel
+                      onGenerate={handleGenerate}
+                      loading={loading}
+                      currentConfig={currentResult && currentResult.configuration}
                       onUpdateConfig={(newConfig) => handleUpdateModule(selectedModuleId, newConfig)}
                     />
                     {error && (
                       <div className="mt-4 bg-danger/10 border border-danger/30 rounded-xl px-4 py-3 text-sm text-danger" role="alert">
-                        ⚠ {error}
+                        {error}
                       </div>
                     )}
                   </>
@@ -324,37 +360,50 @@ export default function App() {
                 )}
               </div>
               {currentResult && <CarpentryAdvisor design={currentResult} />}
-              {currentResult && <ExportPanel design={currentResult} />}
+              {modules.length > 0 && <ExportPanel modules={modules} />}
+
+              {modules.length > 0 && <DesignHealthPanel modules={modules} />}
+
+              <MemoryPanel
+                versions={memVersions}
+                recentActions={memActions}
+                summary={memSummary}
+                onRevert={handleMemoryRevert}
+                onClearMemory={handleClearMemory}
+              />
             </aside>
 
             <div className="space-y-6">
               <div className="card p-0 overflow-hidden border-primary/10 shadow-2xl shadow-primary/5 min-h-[600px] relative">
                 {show3D ? (
-                    <Viewer3D 
-                      modules={modules} 
-                      selectedModuleId={selectedModuleId}
-                      selectedPieceIds={selectedPieceIds}
-                      onSelectModule={setSelectedModuleId}
-                      onSelectPiece={setSelectedPieceIds}
-                      onDeleteModule={handleDeleteModule}
-                      onUpdateModule={handleUpdateModule}
-                      onAddModule={() => {
-                        setActiveTab('params')
-                        setTimeout(() => document.getElementById('panel-params')?.scrollIntoView({ behavior: 'smooth' }), 80)
-                      }}
-                    />
+                  <Viewer3D
+                    modules={modules}
+                    selectedModuleId={selectedModuleId}
+                    selectedPieceIds={selectedPieceIds}
+                    onSelectModule={setSelectedModuleId}
+                    onSelectPiece={setSelectedPieceIds}
+                    onDeleteModule={handleDeleteModule}
+                    onUpdateModule={handleUpdateModule}
+                    onAddModule={() => {
+                      setActiveTab('params')
+                      setTimeout(() => {
+                        const el = document.getElementById('panel-params')
+                        if (el) el.scrollIntoView({ behavior: 'smooth' })
+                      }, 80)
+                    }}
+                  />
                 ) : (
                   <div className="w-full h-[600px] flex flex-col items-center justify-center gap-4 text-muted bg-surface/50 backdrop-blur-sm border-dashed border-2 border-white/5">
                     <Box size={48} className="opacity-20" />
-                    <p className="font-medium tracking-widest uppercase text-xs">Visualización 3D Desactivada</p>
-                    <button onClick={() => setShow3D(true)} className="btn-primary px-6 py-2 mt-2">Activar Visor</button>
+                    <p className="font-medium tracking-widest uppercase text-xs">3D Disabled</p>
+                    <button onClick={() => setShow3D(true)} className="btn-primary px-6 py-2 mt-2">Activate Viewer</button>
                   </div>
                 )}
               </div>
 
               <div id="results">
-                <ResultPanel 
-                  design={currentResult} 
+                <ResultPanel
+                  design={currentResult}
                   selectedPieceIds={selectedPieceIds}
                   onSelectPieces={setSelectedPieceIds}
                   onDeleteModule={handleDeleteModule}
@@ -367,9 +416,9 @@ export default function App() {
 
         {showUndoToast && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface-4 border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50">
-            <span className="text-sm text-white">Módulo eliminado</span>
+            <span className="text-sm text-white">Module deleted</span>
             <button onClick={undo} className="text-primary text-sm font-bold uppercase tracking-widest hover:underline flex items-center gap-1.5">
-              <RotateCcw size={14} /> Deshacer
+              <RotateCcw size={14} /> Undo
             </button>
           </div>
         )}
@@ -379,9 +428,9 @@ export default function App() {
             <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center">
               <span className="text-[10px] font-black text-black">O</span>
             </div>
-            <span className="text-xs font-bold tracking-widest uppercase">Orbin Furniture AI — v2.2.0</span>
+            <span className="text-xs font-bold tracking-widest uppercase">Orbin Furniture AI — v2.7.0</span>
           </div>
-          <p className="text-[10px] uppercase tracking-widest opacity-50">© 2026 Orbin Technologies. Design for manufacture.</p>
+          <p className="text-[10px] uppercase tracking-widest opacity-50">2026 Orbin Technologies. Design for manufacture.</p>
         </footer>
       </div>
     </ErrorBoundary>
