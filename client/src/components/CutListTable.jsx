@@ -1,5 +1,5 @@
 import { useState, useId } from 'react'
-import { Download, Filter, ArrowUpDown, FileText } from 'lucide-react'
+import { Download, Filter, ArrowUpDown, FileText, X, Eye, EyeOff } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { usePreferences } from '../context/PreferencesContext.jsx'
@@ -111,12 +111,39 @@ function exportPDF(cutList, getTypeLabel) {
   doc.save(`lista-de-corte-orbin-${Date.now()}.pdf`)
 }
 
-export default function CutListTable({ cutList }) {
+// ─── Genera el ID determinístico que usa Viewer3D ─────────────────────────────
+const makePieceKey = (moduleId, type, name) =>
+  moduleId ? `${moduleId}::${type}::${name.replace(/\s+/g, '_')}` : null
+
+export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece, onDeletePiece, moduleId }) {
   const { t, unit } = usePreferences()
   const [filter, setFilter] = useState('')
   const [sortKey, setSortKey] = useState('type')
   const [sortDir, setSortDir] = useState(1)
+  const [hiddenPieceIds, setHiddenPieceIds] = useState(new Set())
   const searchId = useId()
+
+  // Genera la key usada tanto aquí como en Viewer3D
+  const pieceKey = (p) => makePieceKey(moduleId, p.type, p.name) || p.id
+
+  const isPieceSelected = (p) => {
+    const key = pieceKey(p)
+    if (!selectedPieceIds) return false
+    if (selectedPieceIds instanceof Set) return selectedPieceIds.has(key)
+    if (Array.isArray(selectedPieceIds)) return selectedPieceIds.includes(key)
+    return false
+  }
+
+  const toggleHidden = (p) => {
+    setHiddenPieceIds(prev => {
+      const next = new Set(prev)
+      const key = pieceKey(p)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
+  const isHidden = (p) => hiddenPieceIds.has(pieceKey(p))
 
   const typeLabel = (type) => {
     if (type === 'drawer_front')  return t('drawer_front_label')
@@ -133,6 +160,7 @@ export default function CutListTable({ cutList }) {
 
   const filtered = cutList
     .filter(p => !filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.type.includes(filter.toLowerCase()))
+    .filter(p => !hiddenPieceIds.has(pieceKey(p)))
     .sort((a, b) => {
       const va = a[sortKey] ?? '', vb = b[sortKey] ?? ''
       return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir
@@ -156,11 +184,20 @@ export default function CutListTable({ cutList }) {
   return (
     <div className="card space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h3 className="font-semibold text-white flex items-center gap-2">
+        <h3 className="font-semibold text-white flex items-center gap-2 flex-wrap">
           {t('cut_list')}
           <span className="bg-surface-3 text-primary text-xs px-2 py-0.5 rounded-full font-mono">
             {filtered.length} {t('pieces')}
           </span>
+          {hiddenPieceIds.size > 0 && (
+            <button
+              onClick={() => setHiddenPieceIds(new Set())}
+              className="flex items-center gap-1 bg-yellow-500/10 text-yellow-400 text-xs px-2 py-0.5 rounded-full font-mono hover:bg-yellow-500/20 transition-all"
+              title="Mostrar todas las piezas ocultas"
+            >
+              <EyeOff size={10} /> {hiddenPieceIds.size} ocultas — mostrar todas
+            </button>
+          )}
         </h3>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-none">
@@ -202,23 +239,60 @@ export default function CutListTable({ cutList }) {
               <Th k="thickness">Esp.(mm)</Th>
               <Th k="grainDirection">Veio</Th>
               <th scope="col" className="px-3 py-2.5 text-left text-xs font-semibold text-muted uppercase tracking-wider">Bordos</th>
+              <th scope="col" className="px-3 py-2.5 w-8" aria-label="Visibilidad" />
+              <th scope="col" className="px-3 py-2.5 w-10" aria-label="Eliminar" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-6 text-center text-muted">No se encontraron piezas.</td></tr>
-            ) : filtered.map((p, i) => (
-              <tr key={p.id + i} className="hover:bg-surface-2 transition-colors">
-                <td className="px-3 py-2.5 font-mono text-xs text-muted">{p.id}</td>
-                <td className="px-3 py-2.5 font-medium text-white">{p.name}</td>
+              <tr><td colSpan={10} className="px-3 py-6 text-center text-muted">No se encontraron piezas.</td></tr>
+            ) : filtered.map((p, i) => {
+              const selected = isPieceSelected(p)
+              const key = pieceKey(p)
+              return (
+              <tr
+                key={key + i}
+                onClick={() => onSelectPiece && onSelectPiece(new Set([key]))}
+                className={`group transition-all cursor-pointer ${
+                  selected
+                    ? 'bg-primary/15 border-l-2 border-primary shadow-[inset_0_0_8px_rgba(245,166,35,0.08)]'
+                    : 'hover:bg-surface-2 border-l-2 border-transparent'
+                }`}
+                title="Click para resaltar pieza en el visor 3D"
+              >
+                <td className={`px-3 py-2.5 font-mono text-xs ${selected ? 'text-primary font-bold' : 'text-muted'}`}>{p.id}</td>
+                <td className={`px-3 py-2.5 font-medium ${selected ? 'text-primary' : 'text-white'}`}>{p.name}</td>
                 <td className={`px-3 py-2.5 text-xs font-mono ${TYPE_COLOR[p.type] || 'text-muted'}`}>{typeLabel(p.type)}</td>
-                <td className="px-3 py-2.5 font-mono text-right">{f(p.cutWidth)}</td>
-                <td className="px-3 py-2.5 font-mono text-right">{f(p.cutHeight)}</td>
+                <td className="px-3 py-2.5 font-mono text-right">{f(p.cutWidth ?? p.width)}</td>
+                <td className="px-3 py-2.5 font-mono text-right">{f(p.cutHeight ?? p.height)}</td>
                 <td className="px-3 py-2.5 font-mono text-right text-muted">{p.thickness}</td>
                 <td className="px-3 py-2.5 text-xs text-muted capitalize">{p.grainDirection}</td>
                 <td className="px-3 py-2.5 font-mono text-xs text-primary">{EDGE_LABEL(p.edgeBanding)}</td>
+                {/* ── Botón Ojo ───────────────────────────────────── */}
+                <td className="px-1 py-2.5 text-center">
+                  <button
+                    onClick={e => { e.stopPropagation(); toggleHidden(p) }}
+                    className="p-1 rounded text-muted hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                    title={isHidden(p) ? 'Mostrar pieza' : 'Ocultar pieza de la lista'}
+                  >
+                    <Eye size={12} />
+                  </button>
+                </td>
+                {/* ── Botón Eliminar ──────────────────────────────── */}
+                <td className="px-3 py-2.5 text-right">
+                  {onDeletePiece && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onDeletePiece(p.id) }}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted hover:text-red-400 hover:bg-red-400/10 transition-all"
+                      title="Eliminar pieza — Ctrl+Z para deshacer"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>

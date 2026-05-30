@@ -1,5 +1,7 @@
 node_modules/
 .env
+.env.local
+.env.production
 .DS_Store
 __pycache__/
 *.pyc
@@ -15,3 +17,24 @@ venv.bak/
 # AI Test Scripts
 server/src/ai/test_ollama.js
 server/src/ai/test_ollama_fetch.js
+
+# Build artifacts
+client/vite.config.js.timestamp-*.mjs
+client/dist/
+
+# QA / Benchmark logs — never commit these
+BRAIN_TRAINER_REPORT_*.json
+QA_STRESS_TEST_REPORT.md
+verify_result.txt
+
+# Scratchpads
+client/src/components/combined.txt
+
+# Legacy V1 files (kept for reference only — exclude from CI)
+v1_engine_utf8.js
+v1_input_utf8.jsx
+v1_viewer_utf8.jsx
+
+# Supabase local
+.supabase/
+supabase-file.zip

@@ -31,9 +31,26 @@ Orbin/
 - `skills/b2b_deploy.md`      — Before any production deployment.
 
 ## Active Agents (invoke as sub-agents)
-- `agentes/structural_validator.md` — Must respond VALIDADO or RECHAZADO on all furniture JSON.
-- `agentes/security_auditor.md`     — Must run before every deploy.
-- `agentes/ux_ui_critic.md`         — Must run before any UI release or component change.
+- `agentes/structural_validator.md`    — Must respond VALIDADO or RECHAZADO on all furniture JSON.
+- `agentes/security_auditor.md`        — Must run before every deploy.
+- `agentes/ux_ui_critic.md`            — Must run before any UI release or component change.
+- `.cloud/agents/orbin_engine.md`      — Parametric calculation + Gemini budget audit engine.
+  Invoke for: cut lists >10 pieces | budget audits | clinic/lab material validation.
+  API: GOOGLE_API_KEY in server/.env | gemini-1.5-flash (classify) / gemini-1.5-pro (audit).
+
+## i18n Route Architecture (Roadmap — implement before public launch)
+Target structure for SEO-optimized multilingual routing:
+```
+src/
+├── pages/
+│   ├── pt/           ← Mercado Brasil (primary — PT-BR)
+│   ├── es/           ← Hispanoamérica (secondary)
+│   ├── en/           ← Global Anglo (tertiary)
+│   └── components/   ← Shared interactive modules (language-agnostic)
+```
+i18n config: `client/src/i18n.js` already bootstrapped.
+Next step: add `react-router-dom` locale prefix + `hreflang` meta tags in `index.html`.
+Canonical URL pattern: `orbin.app/pt/armario-sob-medida` | `/es/armario-a-medida` | `/en/custom-closet`.
 
 ## Hard Rules (always enforced)
 - MDF/MDP plate max: 2750mm × 1840mm. No single piece may exceed this.

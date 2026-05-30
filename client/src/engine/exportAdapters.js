@@ -24,6 +24,8 @@ const SHEET_HEIGHT = 1830  // mm
 const SAW_KERF     = 4     // mm — blade thickness
 const EDGE_MARGIN  = 10    // mm — safety margin from sheet edge
 
+import { generateFactoryCutlist } from './CutlistGenerator.js'
+
 // ─── Base Export Adapter (Interface) ─────────────────────────────────────────
 class ExportAdapter {
   constructor(name, extension, mimeType) {
@@ -366,11 +368,24 @@ export function nestPieces(pieces, options = {}) {
   }
 }
 
+// ─── CSV Cutlist Adapter ─────────────────────────────────────────────────────
+class CSVAdapter extends ExportAdapter {
+  constructor() {
+    super('Factory CSV', '.csv', 'text/csv')
+  }
+
+  async export(modules, options = {}) {
+    const pieces = this.extractPieces(modules)
+    return generateFactoryCutlist(pieces, options)
+  }
+}
+
 // ─── Export Registry ─────────────────────────────────────────────────────────
 const adapters = {
   dxf:  new DXFAdapter(),
   gltf: new GLTFAdapter(),
   cnc:  new CNCAdapter(),
+  csv:  new CSVAdapter(),
 }
 
 /**
@@ -416,5 +431,5 @@ export function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url)
 }
 
-export { ExportAdapter, DXFAdapter, GLTFAdapter, CNCAdapter }
+export { ExportAdapter, DXFAdapter, GLTFAdapter, CNCAdapter, CSVAdapter }
 export default exportDesign

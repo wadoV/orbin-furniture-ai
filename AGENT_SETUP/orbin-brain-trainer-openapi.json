@@ -1,0 +1,174 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Orbin IA — QA Stress Test API",
+    "version": "1.0.0",
+    "description": "Endpoint dedicado para agentes de QA automatizado. Permite enviar dimensiones extremas directamente al motor parametrico de Orbin IA y recibir el resultado estructural completo."
+  },
+  "servers": [
+    {
+      "url": "https://slimy-eyes-search.loca.lt",
+      "description": "Tunel publico localtunnel -> localhost:3003"
+    }
+  ],
+  "paths": {
+    "/api/v1/stress-test": {
+      "post": {
+        "operationId": "runStressTest",
+        "summary": "Ejecutar test de stress en el motor parametrico de closets",
+        "description": "Envia parametros de diseno al motor Orbin IA y recibe validacion estructural completa. Usar bypassRangeGuards=true para probar dimensiones extremas fuera del rango normal de produccion.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "testId": {
+                    "type": "string",
+                    "description": "Identificador unico del test (ej: 'T01', 'extreme_width_test')"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Descripcion del caso de test"
+                  },
+                  "bypassRangeGuards": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Si true, omite validaciones de rango para enviar dimensiones extremas directamente al motor"
+                  },
+                  "params": {
+                    "type": "object",
+                    "description": "Parametros de diseno del closet en milimetros",
+                    "properties": {
+                      "width": {
+                        "type": "number",
+                        "description": "Ancho total del closet en mm (ej: 2400)"
+                      },
+                      "height": {
+                        "type": "number",
+                        "description": "Alto total del closet en mm (ej: 2400)"
+                      },
+                      "depth": {
+                        "type": "number",
+                        "description": "Profundidad del closet en mm (ej: 600)"
+                      },
+                      "thickness": {
+                        "type": "number",
+                        "description": "Espesor del tablero en mm (default: 18)"
+                      },
+                      "numShelves": {
+                        "type": "integer",
+                        "description": "Numero de estantes internos"
+                      },
+                      "numDrawers": {
+                        "type": "integer",
+                        "description": "Numero de cajones"
+                      },
+                      "drawerHeight": {
+                        "type": "number",
+                        "description": "Altura de cada cajon en mm"
+                      },
+                      "numDividers": {
+                        "type": "integer",
+                        "description": "Numero de divisores verticales"
+                      },
+                      "baseboard": {
+                        "type": "boolean",
+                        "description": "Si el closet tiene rodapie"
+                      },
+                      "baseboardHeight": {
+                        "type": "number",
+                        "description": "Altura del rodapie en mm (default: 100)"
+                      }
+                    }
+                  }
+                },
+                "required": ["params"]
+              },
+              "example": {
+                "testId": "extreme_narrow",
+                "description": "Closet extremadamente angosto para verificar limites del motor",
+                "bypassRangeGuards": true,
+                "params": {
+                  "width": 100,
+                  "height": 2400,
+                  "depth": 600,
+                  "thickness": 18,
+                  "numShelves": 3
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado del test ejecutado correctamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "testId": { "type": "string" },
+                    "qaResult": {
+                      "type": "string",
+                      "enum": ["PASS", "WARNINGS", "STRUCTURAL_FAIL", "ENGINE_FAIL", "ENGINE_CRASH", "RANGE_BLOCKED", "CRITICAL_CRASH"],
+                      "description": "Resultado del QA: PASS=diseno valido, WARNINGS=valido con advertencias, STRUCTURAL_FAIL=invalido estructuralmente, ENGINE_CRASH=error interno del motor"
+                    },
+                    "preflightWarnings": {
+                      "type": "array",
+                      "description": "Antipatrones detectados antes de llegar al motor"
+                    },
+                    "validation": {
+                      "type": "object",
+                      "properties": {
+                        "status": { "type": "string", "enum": ["VALIDADO", "RECHAZADO"] },
+                        "errors": { "type": "array", "items": { "type": "string" } },
+                        "warnings": { "type": "array", "items": { "type": "string" } },
+                        "summary": { "type": "string" }
+                      }
+                    },
+                    "engineResult": {
+                      "type": "object",
+                      "description": "Resultado completo del motor si el diseno fue generado"
+                    },
+                    "engineError": {
+                      "type": "string",
+                      "description": "Mensaje de error del motor si crasheo"
+                    },
+                    "durationMs": {
+                      "type": "number",
+                      "description": "Tiempo de ejecucion en milisegundos"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stress-test/schema": {
+      "get": {
+        "operationId": "getSchema",
+        "summary": "Obtener esquema OpenAPI del endpoint de stress test",
+        "responses": {
+          "200": {
+            "description": "Esquema OpenAPI completo"
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "summary": "Verificar que el servidor Orbin IA esta activo",
+        "responses": {
+          "200": {
+            "description": "Servidor activo"
+          }
+        }
+      }
+    }
+  }
+}

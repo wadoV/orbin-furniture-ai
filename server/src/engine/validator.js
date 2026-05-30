@@ -11,6 +11,16 @@ function validateDesign(design) {
   const warnings = []
   const { configuration: cfg, pieces } = design
 
+  // 0. Hard sanity guards — geometry impossibilities
+  if (cfg.thickness === undefined || cfg.thickness === null || isNaN(cfg.thickness)) {
+    errors.push('Espesor nao definido ou invalido. Especifique um valor entre 15mm e 25mm.')
+    return { status: 'RECHAZADO', errors, warnings, summary: errors.length + ' erro(s) critico(s). Corrija antes de produzir.' }
+  }
+  if (cfg.thickness <= 0) {
+    errors.push('Espesor (' + cfg.thickness + 'mm) invalido — deve ser maior que 0mm. Geometria impossivel.')
+    return { status: 'RECHAZADO', errors, warnings, summary: errors.length + ' erro(s) critico(s). Corrija antes de produzir.' }
+  }
+
   // 1. External dimensions
   if (cfg.width > MATERIAL.PLATE_WIDTH) {
     warnings.push(`Largura total (${cfg.width}mm) excede a chapa (${MATERIAL.PLATE_WIDTH}mm). Divida em modulos.`)
@@ -27,8 +37,10 @@ function validateDesign(design) {
     const maxDim = Math.max(piece.width, piece.height)
     const minDim = Math.min(piece.width, piece.height)
 
-    // Fundo pode ser unido em 2 partes - apenas aviso
-    if (piece.name && piece.name.toLowerCase().includes('fundo')) {
+    // Fundo/Fondo pode ser unido em 2 partes - apenas aviso
+    // BUG FIX: engine uses Spanish "Fondo", validator was only checking Portuguese "fundo"
+    const pieceLower = piece.name ? piece.name.toLowerCase() : ''
+    if (pieceLower.includes('fundo') || pieceLower.includes('fondo')) {
       if (maxDim > MATERIAL.PLATE_WIDTH || minDim > MATERIAL.PLATE_HEIGHT) {
         warnings.push(
           'Painel de fundo (' + piece.width + 'x' + piece.height + 'mm) nao cabe em uma unica chapa. ' +
@@ -49,9 +61,13 @@ function validateDesign(design) {
     }
   }
 
-  // 3. Shelf span
+  // 3. Internal width — minimum structural viability
   const internalWidth = cfg.width - 2 * cfg.thickness
-  if (internalWidth > STRUCTURAL_LIMITS.MAX_SHELF_SPAN) {
+  if (internalWidth <= 0) {
+    errors.push('Ancho interno (' + internalWidth + 'mm) negativo ou zero. Espessura maior que a metade da largura — geometria impossivel.')
+  } else if (internalWidth < 100) {
+    errors.push('Ancho interno (' + internalWidth + 'mm) insuficiente. Minimo estrutural: 100mm (largura atual ' + cfg.width + 'mm com espessura ' + cfg.thickness + 'mm).')
+  } else if (internalWidth > STRUCTURAL_LIMITS.MAX_SHELF_SPAN) {
     warnings.push(
       'Vao interno (' + internalWidth + 'mm) supera ' + STRUCTURAL_LIMITS.MAX_SHELF_SPAN + 'mm. ' +
       'Adicione um montante central divisorio.'
@@ -72,12 +88,40 @@ function validateDesign(design) {
     const isHorizontal = cfg.drawerLayout === 'horizontal' && cfg.numDrawers > 1
     const cols = isHorizontal ? 2 : 1
     const drawersPerCol = Math.ceil(cfg.numDrawers / cols)
-    const drawerStack = drawersPerCol * cfg.drawerHeight
+    // BUG FIX: Each drawer needs its nominal height PLUS top clearance for the slide
+    // mechanism (DRAWER_TOP_CLEARANCE = 16mm). Without this, 20×100mm drawers in
+    // a 2264mm cabinet appeared valid (2000 < 2037 threshold) but physically don't fit
+    // when slide clearance is added (20 × 116mm = 2320mm > 2264mm → STRUCTURAL_FAIL).
+    const slotHeight = cfg.drawerHeight + STRUCTURAL_LIMITS.DRAWER_TOP_CLEARANCE
+    const drawerStack = drawersPerCol * slotHeight
     const availableHeight = cfg.height - (cfg.baseboard ? (cfg.baseboardHeight || 100) : 0) - (2 * cfg.thickness)
-    if (drawerStack > availableHeight * 0.9) {
-      errors.push('Pilha de gavetas (' + drawerStack + 'mm) excede a altura interna util.')
+    if (drawerStack > availableHeight) {
+      errors.push(
+        'Pilha de gavetas (' + drawersPerCol + ' × ' + slotHeight + 'mm c/folga = ' + drawerStack + 'mm) ' +
+        'excede a altura interna util (' + availableHeight + 'mm).'
+      )
+    } else if (drawerStack > availableHeight * 0.85) {
+      errors.push(
+        'Pilha de gavetas (' + drawerStack + 'mm) ocupa ' +
+        Math.round(drawerStack/availableHeight*100) + '% da altura interna — sem espaco para estantes ou separador.'
+      )
     } else if (drawerStack > availableHeight * 0.7) {
       warnings.push('Pilha de gavetas (' + drawerStack + 'mm) ocupa mais de 70% da altura interna.')
+    }
+  }
+
+  // 4b. Dividers — compartment width minimum
+  if (cfg.numDividers > 0 && internalWidth > 0) {
+    const compartmentWidth = internalWidth / (cfg.numDividers + 1)
+    if (compartmentWidth < 150) {
+      errors.push(
+        'Compartimento (' + Math.round(compartmentWidth) + 'mm) muito estreito com ' + cfg.numDividers +
+        ' divisores em ' + internalWidth + 'mm interno. Minimo: 150mm por compartimento.'
+      )
+    } else if (compartmentWidth < 250) {
+      warnings.push(
+        'Compartimento (' + Math.round(compartmentWidth) + 'mm) estreito. Considere reduzir o numero de divisores.'
+      )
     }
   }
 

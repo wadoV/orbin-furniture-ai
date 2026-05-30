@@ -11,8 +11,14 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
-import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft } from 'lucide-react'
+import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan } from 'lucide-react'
+
+import PresentationMode from './PresentationMode.jsx'
+import AIVisualStylist from './AIVisualStylist.jsx'
+import ViralShare from './ViralShare.jsx'
+import { getPBRMaterial } from '../engine/materialLibrary.js'
 
 // ─── Color Palette ────────────────────────────────────────────────────────────
 const MATERIAL_COLORS = {
@@ -39,7 +45,7 @@ const TYPE_COLORS = {
   countertop:    0xeeeeee,
 }
 
-const SELECTION_COLOR = 0x00FF99
+const SELECTION_COLOR = 0xFFD700
 const MODULE_HIGHLIGHT_COLOR = 0xF5A623
 const SCALE = 0.1
 const SNAP_THRESHOLD = 3  // ★ PROTECTED: snap distance in scene units (~30mm real)
@@ -55,7 +61,7 @@ export default function Viewer3D({
   onUpdateModule   = () => {},
   onAddModule      = () => {},
 }) {
-  const { t } = usePreferences()
+  const { t, lang } = usePreferences()
   const mountRef = useRef(null)
 
   // ★ StrictMode guard — prevents double init
@@ -95,6 +101,13 @@ export default function Viewer3D({
   // ★ PROTECTED: Layers panel state
   const [showLayers, setShowLayers] = useState(false)
   const [hiddenModules, setHiddenModules] = useState(new Set())
+
+  // Presentation mode
+  const [isPresentationMode, setIsPresentationMode] = useState(false)
+
+  // ★ PROTECTED: AR State
+  const [arModelUrl, setArModelUrl] = useState(null)
+  const [isExportingAR, setIsExportingAR] = useState(false)
 
   // ★ PROTECTED: Module positions persist across rebuilds (key: moduleId → {x, z})
   const modulePositionsRef = useRef({})
@@ -680,11 +693,39 @@ export default function Viewer3D({
 
   // ─── 2. Build Geometry from Configuration (Parametric Construction Logic) ──
   useEffect(() => {
-    if (!modules || modules.length === 0 || !isReady) return
+    // ★ FIX: Guard on rendererRef (persists across StrictMode remount) instead of
+    //   `isReady` state (which resets to false on remount, blocking geometry forever).
+    if (!rendererRef.current) return
     if (!groupRef.current) return
 
     const group = groupRef.current
     const scene = sceneRef.current
+
+    // ★ FIX: When all modules are deleted, clear geometry completely
+    if (!modules || modules.length === 0) {
+      while (group.children.length > 0) {
+        const child = group.children[0]
+        group.remove(child)
+        child.traverse?.((obj) => {
+          if (obj.geometry) obj.geometry.dispose()
+          if (obj.material) {
+            if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose())
+            else obj.material.dispose()
+          }
+        })
+      }
+      // Clean stray edge helpers from scene root
+      if (scene) {
+        const toRemove = []
+        scene.traverse((obj) => { if (obj.userData?._isEdge) toRemove.push(obj) })
+        toRemove.forEach(o => { scene.remove(o); o.geometry?.dispose(); o.material?.dispose() })
+      }
+      meshesRef.current = []
+      moduleGroupsRef.current = {}
+      modulePositionsRef.current = {}
+      return
+    }
+
     const isFirstBuild = meshesRef.current.length === 0
 
     // ★ PROTECTED: Save existing module positions before rebuild
@@ -742,6 +783,8 @@ export default function Viewer3D({
       }
     })
 
+    let currentXOffset = 0  // ★ FIX: fallback offset for legacy pieces (not used by cfg-based modules)
+
     modules.forEach((design, dIdx) => {
       const cfg = design?.configuration
 
@@ -768,27 +811,8 @@ export default function Viewer3D({
       // Helper: create a mesh with edge helper
       const makeMesh = (w, h, d, color, pieceName, type, drawerKey = null) => {
         const geo = new THREE.BoxGeometry(w, h, d)
-        // ★ Premium material: type-aware surface properties
-        const matProps = (() => {
-          switch (type) {
-            case 'drawer_front':
-            case 'standard_door': return { roughness: 0.35, metalness: 0.05 }
-            case 'countertop':    return { roughness: 0.25, metalness: 0.08 }
-            case 'feet':          return { roughness: 0.4,  metalness: 0.6  }
-            case 'drawer_box':
-            case 'drawer_bottom': return { roughness: 0.7,  metalness: 0.02 }
-            case 'baseboard':     return { roughness: 0.55, metalness: 0.05 }
-            default:              return { roughness: 0.5,  metalness: 0.04 }
-          }
-        })()
-        const mat = new THREE.MeshStandardMaterial({
-          color,
-          roughness: matProps.roughness,
-          metalness: matProps.metalness,
-          transparent: true,
-          opacity: 1,
-          envMapIntensity: 0.5,
-        })
+        // ★ Premium material: type-aware surface properties using PBR
+        const mat = getPBRMaterial(type, color)
         const mesh = new THREE.Mesh(geo, mat)
         mesh.castShadow = true
         mesh.receiveShadow = true
@@ -799,7 +823,7 @@ export default function Viewer3D({
         edgeHelper.userData._isEdge = true
 
         mesh.userData = {
-          id: `${design.id}-${type}-${pieceName}-${dIdx}-${Math.random().toString(36).substr(2, 5)}`,
+          id: `${design.id}::${type}::${pieceName.replace(/\s+/g, '_')}`,
           moduleId: design.id,
           w: w / SCALE, h: h / SCALE, d: d / SCALE,
           name: pieceName,
@@ -881,14 +905,8 @@ export default function Viewer3D({
       }
 
       // === COUNTERTOP ===
-      if (cfg.hasCountertop) {
-        const ctW = W + 4
-        const ctD = D + 2
-        const ctH = 3
-        const ct = makeMesh(ctW, ctH, ctD, ctColor, 'Encimera', 'countertop')
-        ct.position.set(xOffset, yBase + H + ctH / 2, ctD / 2 - 1)
-        mGroup.add(ct)
-      }
+      // ★ Individual countertops suppressed — handled by UNIFIED COUNTERTOP SYSTEM below
+      // (Countertops are merged across adjacent modules into a single slab)
 
       // === DRAWERS ===
       const nD = cfg.numDrawers || 0
@@ -999,6 +1017,111 @@ export default function Viewer3D({
       group.add(mGroup)
     })
 
+    // ─── UNIFIED COUNTERTOP SYSTEM ────────────────────────────────────────────
+    // After all module groups are built, detect X-adjacent chains and render
+    // a single merged countertop slab spanning the full width of each chain.
+    // This eliminates the seam / gap between side-by-side module countertops.
+    {
+      const ctModules = modules.filter(m =>
+        m?.configuration?.hasCountertop &&
+        !hiddenModules.has(m.id) &&
+        moduleGroupsRef.current[m.id]
+      )
+
+      if (ctModules.length > 0) {
+        // ★ Compute bounding boxes directly from config + mGroup.position
+        // (avoids world-matrix update race — setFromObject needs a render pass first)
+        const ctBoxes = ctModules
+          .map(m => {
+            const cfg  = m.configuration
+            const W    = (cfg.width  || 600) * SCALE
+            const H    = (cfg.height || 720) * SCALE
+            const D    = (cfg.depth  || 580) * SCALE
+            const mGrp = moduleGroupsRef.current[m.id]
+            return {
+              module: m,
+              box: {
+                min: { x: mGrp.position.x - W / 2, y: 0,  z: 0 },
+                max: { x: mGrp.position.x + W / 2, y: H,  z: D },
+              }
+            }
+          })
+          .sort((a, b) => a.box.min.x - b.box.min.x)   // order left → right
+
+        // Tolerance constants (scene units: 1 unit = 10 mm)
+        const X_TOUCH = 15   // ≈ 150 mm gap tolerance — catches default placement + snapped modules
+        const Z_ALIGN = 15   // ≈ 150 mm front-face depth alignment tolerance
+
+        // Build adjacency chains (all values are plain numbers now)
+        const chains = [[ctBoxes[0]]]
+        for (let i = 1; i < ctBoxes.length; i++) {
+          const prev = ctBoxes[i - 1]
+          const curr = ctBoxes[i]
+          const xGap  = curr.box.min.x - prev.box.max.x
+          const zDiff = Math.abs(curr.box.max.z - prev.box.max.z)
+          if (xGap <= X_TOUCH && zDiff <= Z_ALIGN) {
+            chains[chains.length - 1].push(curr)
+          } else {
+            chains.push([curr])
+          }
+        }
+
+
+        // Create one unified slab per chain
+        chains.forEach(chain => {
+          const xMin   = chain[0].box.min.x
+          const xMax   = chain[chain.length - 1].box.max.x
+          const topY   = Math.max(...chain.map(c => c.box.max.y))
+          const frontZ = Math.max(...chain.map(c => c.box.max.z))
+          const backZ  = Math.min(...chain.map(c => c.box.min.z))
+
+          const cfg0     = chain[0].module.configuration
+          const ctColor  = MATERIAL_COLORS[cfg0.countertopMaterial] || TYPE_COLORS.countertop
+
+          const ctW = (xMax - xMin) + 4   // 20 mm side overhang on each end
+          const ctD = (frontZ - backZ) + 2 // 10 mm overhang front + back
+          const ctH = 3                    // 30 mm slab thickness
+
+          const geo = new THREE.BoxGeometry(ctW, ctH, ctD)
+          const mat = getPBRMaterial('countertop', ctColor)
+          const ct  = new THREE.Mesh(geo, mat)
+          ct.castShadow    = true
+          ct.receiveShadow = true
+          const ctPosX = (xMin + xMax) / 2
+          const ctPosY = topY + ctH / 2
+          const ctPosZ = backZ + ctD / 2 - 1
+          ct.position.set(ctPosX, ctPosY, ctPosZ)
+
+          const edgesGeo   = new THREE.EdgesGeometry(geo)
+          const edgesMat   = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.08 })
+          const edgeHelper = new THREE.LineSegments(edgesGeo, edgesMat)
+          edgeHelper.userData._isEdge = true
+          edgeHelper.position.set(ctPosX, ctPosY, ctPosZ)   // ★ Fix: sync edgeHelper with slab
+
+          const slabName = chain.length > 1
+            ? `Encimera Unificada (${chain.length} módulos)`
+            : 'Encimera'
+
+          ct.userData = {
+            id:            `unified-ct-${chain.map(c => c.module.id).join('_')}-${Math.random().toString(36).substr(2, 5)}`,
+            moduleId:      chain[0].module.id,
+            w:             Math.round(ctW / SCALE),
+            h:             Math.round(ctH / SCALE),
+            d:             Math.round(ctD / SCALE),
+            name:          slabName,
+            type:          'countertop',
+            originalColor: ctColor,
+            edgeHelper,
+          }
+
+          meshesRef.current.push(ct)
+          group.add(ct)           // lives in parent group — spans module boundaries
+          group.add(edgeHelper)
+        })
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Set original + exploded positions
     const bbox = new THREE.Box3().setFromObject(group)
     if (bbox.isEmpty()) return
@@ -1030,7 +1153,7 @@ export default function Viewer3D({
       controlsRef.current.target.copy(bCenter)
       controlsRef.current.update()
     }
-  }, [modules, isReady, hiddenModules])
+  }, [modules, hiddenModules])
 
   // --- Fallback: build from raw pieces array ---
   function buildFromPieces(design, dIdx, group, xOff) {
@@ -1058,6 +1181,7 @@ export default function Viewer3D({
       const edgeHelper = new THREE.LineSegments(edgesGeo, edgesMat)
       edgeHelper.userData._isEdge = true
 
+      const pos = mesh.position.clone()
       mesh.userData = {
         id: p.id || `piece-${dIdx}-${i}`,
         moduleId: design.id,
@@ -1066,6 +1190,15 @@ export default function Viewer3D({
         type: p.type,
         originalColor: color,
         edgeHelper,
+        // ★ FIX: exploded-view animation requires these on ALL meshes (incl. fallback builder)
+        originalPosition: pos,
+        explodedPosition: pos.clone().add(
+          new THREE.Vector3(
+            (Math.random() - 0.5) * 5,
+            (Math.random() - 0.5) * 5,
+            (Math.random() - 0.5) * 5
+          )
+        ),
       }
 
       meshesRef.current.push(mesh)
@@ -1087,6 +1220,51 @@ export default function Viewer3D({
 
   // --- Empty State ---
   const isEmpty = modules.length === 0
+
+  // --- AR Export Logic ---
+  const handleViewInAR = useCallback(() => {
+    if (!groupRef.current) return
+    setIsExportingAR(true)
+
+    // Dynamically load model-viewer if not present
+    if (!document.querySelector('script[src*="model-viewer"]')) {
+      const script = document.createElement('script')
+      script.type = 'module'
+      script.src = 'https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js'
+      document.head.appendChild(script)
+    }
+
+    const exporter = new GLTFExporter()
+    const exportGroup = groupRef.current.clone()
+    
+    // ★ AR SCALE FIX: 
+    // Orbin SCALE = 0.1 (1 unit = 10mm). 
+    // AR requires 1 unit = 1 meter (1000mm).
+    // Therefore, multiply by 0.01 to convert to meters.
+    exportGroup.scale.set(0.01, 0.01, 0.01)
+
+    // Center geometry and align to floor for AR
+    const box = new THREE.Box3().setFromObject(exportGroup)
+    const center = box.getCenter(new THREE.Vector3())
+    const bottom = box.min.y
+    exportGroup.position.sub(center)
+    exportGroup.position.y += (center.y - bottom)
+
+    exporter.parse(
+      exportGroup,
+      (gltf) => {
+        const blob = new Blob([gltf], { type: 'model/gltf-binary' })
+        const url = URL.createObjectURL(blob)
+        setArModelUrl(url)
+        setIsExportingAR(false)
+      },
+      (error) => {
+        console.error('AR Export Error:', error)
+        setIsExportingAR(false)
+      },
+      { binary: true }
+    )
+  }, [])
 
   return (
     <div className="relative w-full h-full group select-none overflow-hidden" style={{ minHeight: '600px' }}>
@@ -1164,39 +1342,110 @@ export default function Viewer3D({
         </div>
       )}
 
-      {/* Floating controls */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-surface/80 backdrop-blur-md p-2 px-4 rounded-full border border-white/10 shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 z-20">
+      {/* ─── PROFESSIONAL CAD TOOLBAR (SketchUp style - Always Visible) ─── */}
+      <div className="absolute top-1/2 -translate-y-1/2 left-4 flex flex-col gap-3 bg-black/60 backdrop-blur-xl p-2 rounded-2xl border border-white/10 shadow-2xl z-30 transition-all duration-300 hover:border-white/20">
+        {/* Selection Mode */}
         <button
-          onClick={() => setOrbitMode(m => !m)}
-          className={`p-2.5 rounded-full transition-all ${orbitMode ? 'bg-primary text-black shadow-[0_0_15px_rgba(245,166,35,0.4)]' : 'hover:bg-surface-3 text-white'}`}
-          title="Orbit Mode"
+          onClick={() => { setOrbitMode(false); setRulerMode(false); }}
+          className={`p-2.5 rounded-xl transition-all duration-200 group/btn relative ${
+            !orbitMode && !rulerMode
+              ? 'bg-primary text-black shadow-[0_0_15px_rgba(245,166,35,0.3)]'
+              : 'hover:bg-white/10 text-white/80 hover:text-white'
+          }`}
+        >
+          <Scan size={18} />
+          <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-black border border-white/10 text-white text-[10px] font-bold py-1 px-2 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'ES' ? 'Modo Selección (Abrir puertas/cajones)' : lang === 'PT' ? 'Modo Seleção' : 'Selection Mode'}
+          </span>
+        </button>
+
+        {/* Orbit Mode */}
+        <button
+          onClick={() => { setOrbitMode(true); setRulerMode(false); }}
+          className={`p-2.5 rounded-xl transition-all duration-200 group/btn relative ${
+            orbitMode && !rulerMode
+              ? 'bg-primary text-black shadow-[0_0_15px_rgba(245,166,35,0.3)]'
+              : 'hover:bg-white/10 text-white/80 hover:text-white'
+          }`}
         >
           <Move size={18} />
+          <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-black border border-white/10 text-white text-[10px] font-bold py-1 px-2 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'ES' ? 'Modo Órbita (Girar Cámara)' : lang === 'PT' ? 'Modo Órbita' : 'Orbit Mode'}
+          </span>
         </button>
-        <div className="w-[1px] h-4 bg-white/10" />
-        <button onClick={() => setExploded(e => !e)} className={`p-2.5 rounded-full transition-all ${exploded ? 'bg-primary text-black shadow-[0_0_15px_rgba(245,166,35,0.4)]' : 'hover:bg-surface-3 text-white'}`} title="Exploded View">
-          <Maximize size={18} />
-        </button>
-        <button onClick={() => setWireframe(w => !w)} className={`p-2.5 rounded-full transition-all ${wireframe ? 'bg-primary text-black shadow-[0_0_15px_rgba(245,166,35,0.4)]' : 'hover:bg-surface-3 text-white'}`} title="Wireframe">
-          <Layers size={18} />
-        </button>
-        {/* ★ PROTECTED: Ruler tool — measure distances between modules/points */}
+
+        <div className="h-px bg-white/10 mx-1.5" />
+
+        {/* Ruler tool - NEON GREEN */}
         <button
           onClick={() => { setRulerMode(m => !m); setRulerPoints([]); setRulerDistance(null) }}
-          className={`p-2.5 rounded-full transition-all ${rulerMode ? 'bg-[#00FF99] text-black shadow-[0_0_15px_rgba(0,255,153,0.4)]' : 'hover:bg-surface-3 text-white'}`}
-          title="Ruler / Measure"
+          className={`p-2.5 rounded-xl transition-all duration-200 group/btn relative ${
+            rulerMode
+              ? 'bg-[#00FF99] text-black shadow-[0_0_15px_rgba(0,255,153,0.4)] font-bold'
+              : 'hover:bg-white/10 text-white/80 hover:text-white'
+          }`}
         >
           <Ruler size={18} />
+          <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-black border border-white/10 text-white text-[10px] font-bold py-1 px-2 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'ES' ? 'Cinta Métrica / Medición' : lang === 'PT' ? 'Trena de Medição' : 'Tape Measure'}
+          </span>
+        </button>
+
+        <div className="h-px bg-white/10 mx-1.5" />
+
+        {/* Exploded View */}
+        <button
+          onClick={() => setExploded(e => !e)}
+          className={`p-2.5 rounded-xl transition-all duration-200 group/btn relative ${
+            exploded
+              ? 'bg-primary text-black shadow-[0_0_15px_rgba(245,166,35,0.3)]'
+              : 'hover:bg-white/10 text-white/80 hover:text-white'
+          }`}
+        >
+          <Maximize size={18} />
+          <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-black border border-white/10 text-white text-[10px] font-bold py-1 px-2 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'ES' ? 'Vista Explosionada' : lang === 'PT' ? 'Vista Explodida' : 'Exploded View'}
+          </span>
+        </button>
+
+        {/* Wireframe Mode */}
+        <button
+          onClick={() => setWireframe(w => !w)}
+          className={`p-2.5 rounded-xl transition-all duration-200 group/btn relative ${
+            wireframe
+              ? 'bg-primary text-black shadow-[0_0_15px_rgba(245,166,35,0.3)]'
+              : 'hover:bg-white/10 text-white/80 hover:text-white'
+          }`}
+        >
+          <Layers size={18} />
+          <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-black border border-white/10 text-white text-[10px] font-bold py-1 px-2 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'ES' ? 'Modo Estructura / Alambre' : lang === 'PT' ? 'Modo Estrutura' : 'Wireframe Mode'}
+          </span>
+        </button>
+      </div>
+
+      {/* Floating Operations Bar (Module Operations - Always Visible and Clean) */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/60 backdrop-blur-xl p-2 px-4 rounded-full border border-white/10 shadow-2xl z-20">
+        <button
+          onClick={() => setIsPresentationMode(true)}
+          className="p-2.5 rounded-full hover:bg-white/10 text-white transition-all flex items-center justify-center"
+          title={lang === 'ES' ? 'Modo Presentación' : lang === 'PT' ? 'Modo Apresentação' : 'Presentation Mode'}
+        >
+          <MonitorPlay size={18} />
         </button>
         <div className="w-[1px] h-4 bg-white/10" />
-        <button onClick={onAddModule} className="p-2.5 rounded-full hover:bg-surface-3 text-white transition-all" title="Add Module">
+        <button
+          onClick={onAddModule}
+          className="p-2.5 rounded-full hover:bg-primary bg-primary/10 text-primary hover:text-black transition-all flex items-center justify-center"
+          title={lang === 'ES' ? 'Agregar Módulo' : lang === 'PT' ? 'Adicionar Módulo' : 'Add Module'}
+        >
           <Plus size={18} />
         </button>
         {selectedModuleId && (
           <button
             onClick={() => onDeleteModule(selectedModuleId)}
-            className="p-2.5 rounded-full hover:bg-danger bg-danger/10 text-danger hover:text-white transition-all"
-            title="Delete Module"
+            className="p-2.5 rounded-full hover:bg-danger bg-danger/10 text-danger hover:text-white transition-all flex items-center justify-center"
+            title={lang === 'ES' ? 'Eliminar Módulo' : lang === 'PT' ? 'Excluir Módulo' : 'Delete Module'}
           >
             <Trash2 size={18} />
           </button>
@@ -1206,11 +1455,79 @@ export default function Viewer3D({
       {/* Export button */}
       <button
         onClick={handleExport}
-        className="absolute top-4 right-4 p-2.5 bg-surface/40 hover:bg-primary text-white hover:text-black rounded-xl backdrop-blur-md transition-all border border-white/5 shadow-lg z-20"
+        className="absolute top-4 right-16 p-2.5 bg-surface/40 hover:bg-primary text-white hover:text-black rounded-xl backdrop-blur-md transition-all border border-white/5 shadow-lg z-20"
         title="Export PNG"
       >
         <Download size={16} />
       </button>
+
+      {/* AR Button */}
+      <button
+        onClick={handleViewInAR}
+        disabled={isExportingAR || isEmpty}
+        className="absolute top-16 right-16 px-4 py-2 bg-primary hover:bg-primary/90 text-black font-bold text-sm rounded-xl backdrop-blur-md transition-all shadow-[0_0_15px_rgba(245,166,35,0.4)] z-20 flex items-center gap-2 disabled:opacity-50"
+        title="Ver en mi espacio (Realidad Aumentada)"
+      >
+        {isExportingAR ? <Loader2 size={16} className="animate-spin" /> : <Scan size={16} />}
+        Ver en mi espacio
+      </button>
+
+      {/* AR Model Viewer Overlay */}
+      {arModelUrl && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm">
+          <button 
+            onClick={() => { setArModelUrl(null); URL.revokeObjectURL(arModelUrl); }}
+            className="absolute top-6 right-6 text-white hover:text-primary z-[60] p-2 bg-surface/40 rounded-full"
+          >
+            Cerrar
+          </button>
+          
+          <model-viewer
+            src={arModelUrl}
+            ar="true"
+            ar-modes="webxr scene-viewer quick-look"
+            camera-controls="true"
+            auto-rotate="true"
+            shadow-intensity="1"
+            environment-image="neutral"
+            style={{ width: '100%', height: '100%' }}
+          >
+            <button slot="ar-button" className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white text-black px-6 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 z-[60]">
+              <Scan size={18} />
+              Iniciar Realidad Aumentada
+            </button>
+          </model-viewer>
+        </div>
+      )}
+
+      {/* Presentation Mode */}
+      <PresentationMode 
+        camera={camRef.current}
+        controls={controlsRef.current}
+        isEnabled={isPresentationMode}
+        onToggle={() => setIsPresentationMode(false)}
+      />
+
+      {/* AI Visual Stylist */}
+      {!isPresentationMode && (
+        <AIVisualStylist 
+          currentDesign={modules.find(m => m.id === selectedModuleId)}
+          onApplyStyle={(style) => {
+            if (selectedModuleId) {
+              onUpdateModule(selectedModuleId, { materialBody: 'custom', materialFront: 'custom' }) // Simplification for demo
+            }
+          }}
+        />
+      )}
+
+      {/* Viral Share */}
+      {!isPresentationMode && (
+        <ViralShare 
+          renderer={rendererRef.current}
+          scene={sceneRef.current}
+          camera={camRef.current}
+        />
+      )}
 
       {/* ★ PROTECTED: Layers panel toggle (top-left) */}
       <button

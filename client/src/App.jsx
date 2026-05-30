@@ -11,13 +11,17 @@ import ExportPanel from './components/ExportPanel.jsx'
 import MemoryPanel from './components/MemoryPanel.jsx'
 import DesignHealthPanel from './components/DesignHealthPanel.jsx'
 import WelcomeScreen from './components/WelcomeScreen.jsx'
+import PricingDisplay from './components/PricingDisplay.jsx'
+import MultiplayerLayer from './components/MultiplayerLayer.jsx'
+import ImageToParametricPanel from './components/ImageToParametricPanel.jsx'
 import { api } from './api/client.js'
+import { initCollaboration, getSocket, disconnectCollaboration } from './engine/collaboration.js'
 import {
   loadMemory, saveMemory, saveVersion, revertToVersion,
   getVersionHistory, logPrompt, logAction, logExport,
   getRecentActions, generateProjectSummary, clearMemory
 } from './engine/projectMemory.js'
-import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2 } from 'lucide-react'
+import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users, Camera } from 'lucide-react'
 
 import { usePreferences } from './context/PreferencesContext.jsx'
 
@@ -82,10 +86,40 @@ export default function App() {
   const [projectMemory, setProjectMemory] = useState(() => loadMemory())
   const refreshMemory = () => setProjectMemory(loadMemory())
 
+  // Collaboration State
+  const [roomId, setRoomId] = useState(null)
+  const [socket, setSocket] = useState(null)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const room = params.get('room')
+    if (room) {
+      let userName = localStorage.getItem('orbin-username')
+      if (!userName) {
+        userName = prompt('Estás ingresando a una sala compartida. ¿Cuál es tu nombre?') || 'Invitado'
+        localStorage.setItem('orbin-username', userName)
+      }
+      const sock = initCollaboration(room, userName)
+      setSocket(sock)
+      setRoomId(room)
+
+      sock.on('state-change', (incomingModules) => {
+        setModules(incomingModules)
+      })
+
+      return () => {
+        sock.off('state-change')
+        disconnectCollaboration()
+      }
+    }
+  }, [])
+
   const TABS = [
     { id: 'params', label: t('tab_parameters'), icon: Sliders },
     { id: 'chat',   label: t('tab_chat'),    icon: MessageSquare },
-    { id: 'saved',  label: t('tab_projects'),   icon: FolderOpen },
+    { id: 'vision', label: 'AI Vision',      icon: Camera },
+    { id: 'projects', label: t('tab_projects'),  icon: FolderOpen },
+    { id: 'export', label: t('tab_export'),    icon: Box },
   ]
 
   useEffect(() => {
@@ -93,14 +127,24 @@ export default function App() {
       if (modules.length > 0) {
         localStorage.setItem('orbin-autosave', JSON.stringify(modules))
         localStorage.setItem('orbin-autosave-ts', new Date().toISOString())
+      } else {
+        // BUG FIX: When all modules are deleted, clear autosave so reload doesn't restore stale data
+        localStorage.removeItem('orbin-autosave')
+        localStorage.removeItem('orbin-autosave-ts')
       }
     } catch {}
   }, [modules])
 
-  const saveHistory = (newModules, label) => {
+  const saveHistory = (newModules, label, isRemote = false) => {
     setHistory(prev => [...prev, modules].slice(-20))
     setRedoStack([])
     setModules(newModules)
+
+    if (!isRemote) {
+      const sock = getSocket()
+      if (sock) sock.emit('state-change', newModules)
+    }
+
     try {
       const mem = loadMemory()
       saveVersion(mem, newModules, label || '')
@@ -113,8 +157,32 @@ export default function App() {
     setError(null)
     try {
       const data = await api.generateDesign(payload)
-      const design = data?.design || (data?.modules && data.modules[0])
+      let design = data?.design || (data?.modules && data.modules[0])
       if (design && design.pieces) {
+        // ★ FIX: Ensure configuration wrapper exists so Viewer3D uses the parametric builder
+        // (not the legacy buildFromPieces fallback which lacks drawer animation, countertop system, drag & snap)
+        if (!design.configuration) {
+          const md = design.metadata?.dimensions || {}
+          design = {
+            ...design,
+            configuration: {
+              moduleType:     design.type || 'standard',
+              width:          md.width    || design.dimensions?.width    || 600,
+              height:         md.height   || design.dimensions?.height   || 2200,
+              depth:          md.depth    || design.dimensions?.depth    || 580,
+              thickness:      18,
+              backThickness:  6,
+              numShelves:     0,
+              numDrawers:     0,
+              hasDoors:       false,
+              baseboard:      true,
+              baseboardHeight: 100,
+              hasCountertop:  false,
+              materialBody:   'oak_light',
+              materialFront:  'white',
+            }
+          }
+        }
         const newModule = { ...design, id: design.id || ('MOD-' + Date.now()) }
         saveHistory([...modules, newModule], 'Generated ' + (design.type || 'module'))
         setSelectedModuleId(newModule.id)
@@ -143,9 +211,52 @@ export default function App() {
     }
   }
 
-  const handleChatDesign = ({ design }) => {
-    const newModule = { ...design, id: design.id || ('MOD-' + Date.now()) }
-    saveHistory([...modules, newModule])
+  const handleGenerateFromVision = (analysisResult) => {
+    try {
+      if (!analysisResult.modules || analysisResult.modules.length === 0) {
+        throw new Error('La IA no pudo detectar módulos válidos en la imagen.')
+      }
+
+      // ★ FIX: Wrap in `configuration` object so Viewer3D can build geometry correctly
+      const newModules = analysisResult.modules.map(mod => ({
+        id: crypto.randomUUID(),
+        type: 'base',
+        configuration: {
+          moduleType:   'base',
+          width:        mod.width        || 600,
+          height:       analysisResult.height || 2000,
+          depth:        analysisResult.depth  || 600,
+          thickness:    18,
+          hasCountertop: analysisResult.hasCountertop || false,
+          numShelves:   mod.numShelves   || 0,
+          numDrawers:   mod.numDrawers   || 0,
+          numDividers:  mod.numDividers  || 0,
+          materialBody:  'oak_light',
+          materialFront: 'white',
+        }
+      }))
+      
+      saveHistory(newModules, 'Generado desde IA Vision')
+      setActiveTab('params')
+      
+      if (analysisResult.obstacles && analysisResult.obstacles.length > 0) {
+        setTimeout(() => alert(`AI Notó los siguientes obstáculos:\n\n- ${analysisResult.obstacles.join('\n- ')}`), 500)
+      }
+    } catch (err) {
+      alert(err.message || 'Error aplicando diseño de IA Vision')
+    }
+  }
+
+  const handleApplyModification = (updates) => {
+    // ★ FIX: `design` was undefined — use selected module as base or create from updates
+    const baseModule = modules.find(m => m.id === selectedModuleId) || {}
+    const newModule = {
+      ...baseModule,
+      ...updates,
+      id: baseModule.id || ('MOD-' + Date.now()),
+      configuration: { ...(baseModule.configuration || {}), ...(updates.configuration || updates) }
+    }
+    saveHistory(modules.map(m => m.id === newModule.id ? newModule : m), 'Modificado')
     setSelectedModuleId(newModule.id)
     setActiveTab('params')
   }
@@ -156,6 +267,42 @@ export default function App() {
     { msg: 'Analyzing design intent...', delay: 2200 },
     { msg: 'Generating 3D model...', delay: 4000 },
   ]
+
+  // ★ FIX: handleChatDesign was called in handleSendMessage but never defined.
+  //   Converts a raw AI design object into a proper module and pushes it to history.
+  const handleChatDesign = ({ design }) => {
+    if (!design) return
+    // Normalize: wrap bare params object into full module shape expected by Viewer3D
+    const configuration = design.configuration
+      ? design.configuration
+      : {
+          moduleType:   design.moduleType   || design.type || 'standard',
+          width:        design.width        || 600,
+          height:       design.height       || 2200,
+          depth:        design.depth        || 580,
+          thickness:    Number(design.thickness)    || 18,
+          backThickness: Number(design.backThickness) || 6,
+          numShelves:   design.numShelves   ?? 1,
+          numDrawers:   design.numDrawers   ?? 0,
+          drawerHeight: design.drawerHeight || 180,
+          hasDoors:     design.hasDoors     ?? true,
+          numDoors:     design.numDoors     ?? 2,
+          baseboard:    design.baseboard    ?? true,
+          baseboardHeight: design.baseboardHeight || 100,
+          hasCountertop:  design.hasCountertop ?? false,
+          materialBody:  design.materialBody  || 'oak_light',
+          materialFront: design.materialFront || 'white',
+        }
+    const newModule = {
+      ...design,
+      id:            design.id || ('CHAT-' + Date.now()),
+      type:          design.type || configuration.moduleType || 'standard',
+      configuration,
+    }
+    saveHistory([...modules, newModule], 'Chat — ' + (newModule.type || 'módulo'))
+    setSelectedModuleId(newModule.id)
+    setActiveTab('params')
+  }
 
   const handleSendMessage = async (text) => {
     if (!text.trim() || chatLoading) return
@@ -196,6 +343,21 @@ export default function App() {
     saveHistory(modules.map(m => m.id === id ? { ...m, configuration: { ...m.configuration, ...newConfig } } : m))
   }
 
+  // ★ Delete a single piece from a module — undoable with Ctrl+Z
+  const handleDeletePiece = (moduleId, pieceId) => {
+    const module = modules.find(m => m.id === moduleId)
+    if (!module) return
+    const updatedPieces   = (module.pieces  || []).filter(p => p.id !== pieceId)
+    const updatedCutList  = (module.cutList || []).filter(p => p.id !== pieceId)
+    const updatedModules  = modules.map(m =>
+      m.id === moduleId ? { ...m, pieces: updatedPieces, cutList: updatedCutList } : m
+    )
+    saveHistory(updatedModules, 'Deleted piece')
+    setShowUndoToast(true)
+    setTimeout(() => setShowUndoToast(false), 5000)
+    setSelectedPieceIds(prev => { const next = new Set(prev); next.delete(pieceId); return next })
+  }
+
   const handleDeleteModule = (id) => {
     const target = modules.find(m => m.id === id)
     if (!target) return
@@ -219,6 +381,8 @@ export default function App() {
     setRedoStack(rs => [...rs, modules])
     setHistory(h => h.slice(0, -1))
     setModules(prev)
+    const sock = getSocket()
+    if (sock) sock.emit('state-change', prev)
   }
 
   const redo = () => {
@@ -227,6 +391,8 @@ export default function App() {
     setHistory(h => [...h, modules])
     setRedoStack(rs => rs.slice(0, -1))
     setModules(next)
+    const sock = getSocket()
+    if (sock) sock.emit('state-change', next)
   }
 
   useEffect(() => {
@@ -268,6 +434,18 @@ export default function App() {
     } catch {}
   }
 
+  const handleShareRoom = () => {
+    if (roomId) {
+      navigator.clipboard.writeText(window.location.href)
+      alert('Enlace de la sala copiado al portapapeles!')
+    } else {
+      const newRoom = 'orbin-' + Math.random().toString(36).substr(2, 6)
+      const url = new URL(window.location.href)
+      url.searchParams.set('room', newRoom)
+      window.location.href = url.toString()
+    }
+  }
+
   const handleClearMemory = () => {
     clearMemory()
     refreshMemory()
@@ -290,6 +468,8 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-[#0D0D0D]">
+        {/* ── Dynamic Quoting — overlay esquina superior izquierda ── */}
+        <PricingDisplay modules={modules} currency="USD" />
         <Header />
         <main className="max-w-screen-2xl mx-auto px-4 py-6">
           <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-6">
@@ -300,6 +480,11 @@ export default function App() {
                   <span className="text-primary">{'—'} {(t('title') || '').split('—')[1]}</span>
                 </h1>
                 <div className="flex gap-1">
+                  <button onClick={handleShareRoom}
+                    className={`p-2 rounded-xl text-muted transition-all ${roomId ? 'text-primary bg-primary/10 hover:bg-primary/20' : 'hover:text-white hover:bg-surface-3'}`}
+                    title={roomId ? 'Copiar Enlace de Sala' : 'Crear Sala Compartida'}>
+                    <Users size={16} />
+                  </button>
                   <button onClick={undo} disabled={history.length === 0}
                     className="p-2 rounded-xl text-muted hover:text-white hover:bg-surface-3 disabled:opacity-20 disabled:pointer-events-none transition-all"
                     title={t('undo') || 'Deshacer'}>
@@ -349,7 +534,8 @@ export default function App() {
                     currentDesign={currentResult}
                   />
                 )}
-                {activeTab === 'saved' && (
+                {activeTab === 'vision' && <ImageToParametricPanel onApplyDesign={handleGenerateFromVision} />}
+                {activeTab === 'projects' && (
                   <ProjectsPanel
                     modules={modules}
                     onLoadDesign={(data) => {
@@ -407,6 +593,7 @@ export default function App() {
                   selectedPieceIds={selectedPieceIds}
                   onSelectPieces={setSelectedPieceIds}
                   onDeleteModule={handleDeleteModule}
+                  onDeletePiece={handleDeletePiece}
                   onSave={() => console.log('Saving module', currentResult.id)}
                 />
               </div>
@@ -433,6 +620,7 @@ export default function App() {
           <p className="text-[10px] uppercase tracking-widest opacity-50">2026 Orbin Technologies. Design for manufacture.</p>
         </footer>
       </div>
+      {socket && <MultiplayerLayer socket={socket} />}
     </ErrorBoundary>
   )
 }

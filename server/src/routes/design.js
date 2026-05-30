@@ -22,10 +22,15 @@ router.post('/generate', async (req, res) => {
       // Parse natural language → params (using Vertex AI/Ollama)
       try {
         const result = await parseDesignIntent(naturalLanguage)
+        // BUG FIX CRITICAL: Vertex AI returns { params: {...}, confidence, interpreted }
+        // — the actual design params are nested under result.params, NOT at root level.
+        // Without this fix, finalParams spreads the wrapper object (params: {…}, confidence: X)
+        // and finalParams.width / height / etc. are all undefined → always falls back to defaults.
+        const aiParams = result.params || result
         nlResult = {
-          params: result,
-          interpreted: result.interpreted || naturalLanguage,
-          confidence: result.confidence || 0.9,
+          params: aiParams,
+          interpreted: result.interpreted || aiParams.interpreted || naturalLanguage,
+          confidence: result.confidence ?? aiParams.confidence ?? 0.9,
           source: result.source
         }
         finalParams = { ...nlResult.params, ...(params || {}) }
@@ -48,21 +53,45 @@ router.post('/generate', async (req, res) => {
     for (const field of numFields) {
       if (finalParams[field] !== undefined) {
         finalParams[field] = Number(finalParams[field])
-        if (isNaN(finalParams[field])) {
-          return res.status(400).json({ success: false, error: `Campo "${field}" deve ser numérico.` })
+        // BUG FIX T30: NaN check MUST come before range comparisons — NaN < 100 is false in JS
+        if (isNaN(finalParams[field]) || !isFinite(finalParams[field])) {
+          return res.status(400).json({ success: false, error: `Campo "${field}" deve ser numérico e finito.` })
         }
       }
     }
 
-    // Clamp values to safe ranges
-    if (finalParams.width  && (finalParams.width  < 100 || finalParams.width  > 6000)) {
-      return res.status(400).json({ success: false, error: 'Largura deve estar entre 100mm e 6000mm.' })
+    // Clamp values to safe ranges (never reject — clamp silently so engine never crashes)
+    if (finalParams.width)  finalParams.width  = Math.max(100,  Math.min(6000, finalParams.width))
+    if (finalParams.height) finalParams.height = Math.max(200,  Math.min(3500, finalParams.height))
+    if (finalParams.depth)  finalParams.depth  = Math.max(100,  Math.min(1000, finalParams.depth))
+
+    // Apply defaults for any missing structural fields so cross-field checks are always valid
+    finalParams.width         = Number(finalParams.width)         || 600
+    finalParams.height        = Number(finalParams.height)        || 2200
+    finalParams.depth         = Number(finalParams.depth)         || 580
+    finalParams.thickness     = Number(finalParams.thickness)     || 18
+    finalParams.backThickness = Number(finalParams.backThickness) || 6
+    finalParams.numShelves    = finalParams.numShelves    != null ? Number(finalParams.numShelves)    : 1
+    finalParams.numDrawers    = finalParams.numDrawers    != null ? Number(finalParams.numDrawers)    : 0
+    finalParams.drawerHeight  = Number(finalParams.drawerHeight)  || 180
+    finalParams.baseboard     = finalParams.baseboard     ?? true
+    finalParams.baseboardHeight = Number(finalParams.baseboardHeight) || 100
+
+    // BUG FIX: Normalize type → moduleType so Viewer3D renders the correct geometry.
+    // nlParser returns type:'kitchen_low' but Viewer3D expects moduleType:'base'.
+    if (!finalParams.moduleType) {
+      const typeMap = { kitchen_low: 'base', kitchen_high: 'aereo', kitchen_island: 'base', closet: 'standard' }
+      finalParams.moduleType = typeMap[finalParams.type] || 'standard'
     }
-    if (finalParams.height && (finalParams.height < 200 || finalParams.height > 3500)) {
-      return res.status(400).json({ success: false, error: 'Altura deve estar entre 200mm e 3500mm.' })
+
+    // BUG FIX T12/T15/T23: Cross-field constraints that cause ENGINE_CRASH if unchecked
+    // FIXED: was using (width || 0)/2 which caused 18 >= 0 = always true → always rejected
+    const t = finalParams.thickness
+    if (t <= 0 || t >= finalParams.width / 2) {
+      return res.status(400).json({ success: false, error: `Espessura (${t}mm) inválida para largura (${finalParams.width}mm). Deve ser < metade da largura.` })
     }
-    if (finalParams.depth  && (finalParams.depth  < 100 || finalParams.depth  > 1000)) {
-      return res.status(400).json({ success: false, error: 'Profundidade deve estar entre 100mm e 1000mm.' })
+    if (finalParams.baseboard && finalParams.baseboardHeight >= finalParams.height) {
+      return res.status(400).json({ success: false, error: `Altura do rodapé (${finalParams.baseboardHeight}mm) deve ser menor que a altura total (${finalParams.height}mm).` })
     }
 
     // Generate design

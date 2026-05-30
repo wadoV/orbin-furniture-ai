@@ -14,6 +14,25 @@ const { DEFAULTS } = require('./constants')
 // ─── Unit Normalizer ──────────────────────────────────────────────────────────
 
 function normalizeMeasurements(text) {
+  // Map Spanish / Portuguese / English words to digits before keywords
+  const wordToDigitMap = {
+    'uma?': '1', 'un[ao]?': '1', 'one': '1',
+    'duas?': '2', 'dos': '2', 'two': '2',
+    'três': '3', 'tres': '3', 'three': '3',
+    'quatro': '4', 'cuatro': '4', 'four': '4',
+    'cinco': '5', 'five': '5',
+    'seis': '6', 'six': '6',
+    'sete': '7', 'siete': '7', 'seven': '7',
+    'oito': '8', 'ocho': '8', 'eight': '8',
+    'nove': '9', 'nueve': '9', 'nine': '9',
+    'dez': '10', 'diez': '10', 'ten': '10'
+  }
+  
+  Object.entries(wordToDigitMap).forEach(([word, digit]) => {
+    const regex = new RegExp(`\\b${word}\\s+(?=porta|puerta|door|repisa|shelf|prateleira|estante|gaveta|cajon|cajón|drawer|lateral|divisor|divisoria)`, 'ig')
+    text = text.replace(regex, digit + ' ')
+  })
+
   // "2m40" -> 2m + 40cm = 2400mm (before single-m rule)
   text = text.replace(/(\d+)\s*m\s*(\d{2})\b/g, (_, a, b) => (parseInt(a) * 1000 + parseInt(b) * 10) + 'mm')
   // "2.40m" or "2,40m" -> mm
@@ -61,9 +80,14 @@ function extractDimensionByKeyword(text, keywords) {
 // ─── Count Extractor ──────────────────────────────────────────────────────────
 
 function extractCount(text, keywords) {
-  for (const kw of keywords) {
+  // BUG FIX #10: deduplicate keywords before iterating
+  const seen = new Set()
+  const uniqueKws = keywords.filter(kw => { if (seen.has(kw)) return false; seen.add(kw); return true })
+
+  for (const kw of uniqueKws) {
     const patterns = [
-      new RegExp('(\\d+)\\s+' + kw, 'i'),
+      // BUG FIX #10: \s* (0 or more spaces) — matches "2gavetas" and "2 gavetas"
+      new RegExp('(\\d+)\\s*' + kw, 'i'),
       new RegExp(kw + 's?\\s*[:\\-]?\\s*(\\d+)', 'i'),
     ]
     for (const p of patterns) {
@@ -97,7 +121,6 @@ function parseNaturalLanguage(input) {
     result.width  = triple.width
     result.height = triple.height
     result.depth  = triple.depth
-    notes.push('Dimensoes: ' + triple.width + 'mm L x ' + triple.height + 'mm A x ' + triple.depth + 'mm P')
     confidence += 40
   } else {
     const w = extractDimensionByKeyword(text, ['larg', 'anch', 'width', 'largura', 'ancho'])
@@ -112,24 +135,35 @@ function parseNaturalLanguage(input) {
       const first = text.match(/\b(\d{3,4})\s*mm/)
       if (first) {
         result.width = parseInt(first[1])
-        notes.push('Largura assumida: ' + result.width + 'mm')
         confidence += 5
       }
     }
-
-    if (w || h || d) notes.push('L=' + result.width + ' A=' + result.height + ' P=' + result.depth)
   }
 
   // --- Type Detection ---
-  if (detectFeature(text, ['cocina baja', 'cozinha baixa', 'modulo bajo', 'mueble bajo'])) {
-    result.type = 'kitchen_low'; result.height = 900; result.depth = 600;
+  // NOTE: runs BEFORE the dimension note so interpreted reflects FINAL dimensions.
+  // BUG FIX: also set moduleType so Viewer3D renders the correct geometry
+  // ('kitchen_low' → 'base', 'kitchen_high' → 'aereo', default → 'standard')
+  if (detectFeature(text, ['cocina baja', 'cozinha baixa', 'modulo bajo', 'mueble bajo', 'bajo de cocina'])) {
+    result.type = 'kitchen_low'; result.moduleType = 'base';
+    result.height = 900; result.depth = 600; result.hasCountertop = true;
     notes.push('Tipo: Módulo Bajo');
   } else if (detectFeature(text, ['cocina alta', 'cozinha alta', 'aereo', 'suspendido'])) {
-    result.type = 'kitchen_high'; result.height = 700; result.depth = 350;
+    result.type = 'kitchen_high'; result.moduleType = 'aereo';
+    result.height = 700; result.depth = 350;
     notes.push('Tipo: Módulo Alto');
   } else if (detectFeature(text, ['isla', 'ilha', 'island'])) {
-    result.type = 'kitchen_island';
+    result.type = 'kitchen_island'; result.moduleType = 'base';
     notes.push('Tipo: Isla');
+  } else {
+    result.moduleType = result.moduleType || 'standard';
+  }
+
+  // Dimension note built AFTER type overrides — shows final values
+  if (triple) {
+    notes.push('L=' + result.width + 'mm A=' + result.height + 'mm P=' + result.depth + 'mm')
+  } else {
+    notes.push('L=' + result.width + ' A=' + result.height + ' P=' + result.depth)
   }
 
   // --- Material/Color Detection ---
@@ -150,23 +184,49 @@ function parseNaturalLanguage(input) {
   }
 
   const drawers = extractCount(text, ['gaveta', 'cajon', 'cajón', 'drawer', 'gavetao'])
-  if (drawers > 0) { result.numDrawers = drawers; notes.push(drawers + ' gaveta(s)'); confidence += 10 }
+  if (drawers > 0) {
+    result.numDrawers = drawers
+    notes.push(drawers + ' gaveta(s)')
+    confidence += 10
 
-  const shelves = extractCount(text, ['prateleira', 'estante', 'shelf', 'shelve', 'repisa'])
+    // --- Drawer layout position (ES/PT/EN) ---
+    if (detectFeature(text, ['izquierda', 'esquerda', 'left side', 'on the left', 'à esquerda'])) {
+      result.drawerLayout = 'left'; notes.push('Layout: Esquerda')
+    } else if (detectFeature(text, ['direita', 'derecha', 'right side', 'on the right', 'à direita'])) {
+      result.drawerLayout = 'right'; notes.push('Layout: Direita')
+    } else if (detectFeature(text, ['centro', 'center', 'centre', 'central', 'meio'])) {
+      result.drawerLayout = 'vertical'; notes.push('Layout: Centro')
+    }
+  }
+
+  const shelves = extractCount(text, ['prateleira', 'estante', 'shelf', 'shelves', 'repisa', 'prateleiras'])
   if (shelves > 0) { result.numShelves = shelves; notes.push(shelves + ' prateleira(s)'); confidence += 5 }
 
-  if (detectFeature(text, ['maletero', 'cabideiro', 'cabide', 'hang', 'pendurar'])) {
+  const dividers = extractCount(text, ['divisor', 'divisória', 'divisoria', 'divider', 'lateral interno', 'separador'])
+  if (dividers > 0) { result.numDividers = dividers; notes.push(dividers + ' divisor(es)'); confidence += 5 }
+
+  if (detectFeature(text, ['maletero', 'cabideiro', 'cabide', 'hang', 'pendurar', 'hanging rod', 'barra de ropa'])) {
     result.hasHangingArea = true; notes.push('Cabideiro'); confidence += 5
   }
-  if (detectFeature(text, ['porta', 'puerta', 'door'])) {
+  if (detectFeature(text, ['porta', 'puerta', 'door', 'doors', 'portas', 'puertas'])) {
     result.hasDoors = true
-    result.doorType = detectFeature(text, ['correr', 'corrediz', 'sliding', 'desliz']) ? 'sliding' : 'hinged'
+    result.doorType = detectFeature(text, ['correr', 'corrediz', 'sliding', 'desliz', 'correderas']) ? 'sliding' : 'hinged'
+    // Number of doors
+    const numDoors = extractCount(text, ['porta', 'puerta', 'door'])
+    if (numDoors > 0) result.numDoors = numDoors
     notes.push('Portas: ' + result.doorType)
     confidence += 5
   }
+  if (detectFeature(text, ['sem porta', 'sin puerta', 'no door', 'open', 'aberto', 'abierto'])) {
+    result.hasDoors = false; result.numDoors = 0; notes.push('Sem portas')
+  }
   if (detectFeature(text, ['espelho', 'espejo', 'mirror'])) { result.hasMirror = true; notes.push('Espelho') }
-  if (detectFeature(text, ['15mm', 'espessura 15'])) { result.thickness = 15; confidence += 5 }
-  if (detectFeature(text, ['borda grossa', 'bordo 2mm', 'pvc 2'])) { result.edgeBandingType = 'thick'; confidence += 3 }
+  if (detectFeature(text, ['15mm', 'espessura 15', 'grosor 15', 'thickness 15'])) { result.thickness = 15; confidence += 5 }
+  if (detectFeature(text, ['25mm', 'espessura 25', 'grosor 25', 'thickness 25'])) { result.thickness = 25; confidence += 5 }
+  if (detectFeature(text, ['borda grossa', 'bordo 2mm', 'pvc 2', 'thick edge'])) { result.edgeBandingType = 'thick'; confidence += 3 }
+  if (detectFeature(text, ['led', 'iluminação', 'iluminacion', 'lighting', 'luz'])) { result.hasLED = true; notes.push('LED'); confidence += 3 }
+  if (detectFeature(text, ['push', 'push-to-open', 'toque', 'sem tirador', 'sin tirador', 'no handle'])) { result.handleType = 'push'; notes.push('Push') }
+  if (detectFeature(text, ['gola', 'perfil gola', 'gola profile'])) { result.handleType = 'gola'; notes.push('Gola') }
 
   confidence = Math.min(100, Math.max(20, confidence))
 

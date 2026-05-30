@@ -99,10 +99,22 @@ function generateFurniture(params) {
   const internalWidth = W - (2 * T)
   const internalDepth = D - BT
 
-  if (internalWidth < 50 || structuralHeight < 100) {
-    const err = new Error('INSUFFICIENT_SPACE');
-    err.statusCode = 400;
-    throw err;
+  // BUG FIX T06/T09/T10/T12/T15/T23/T29: Descriptive guard before any calculation
+  if (internalWidth <= 0) {
+    const err = new Error(`INSUFFICIENT_SPACE: internalWidth=${internalWidth}mm (width=${W} - 2×thickness=${T}). Largura insuficiente para acomodar as laterais.`)
+    err.statusCode = 400; throw err;
+  }
+  if (internalWidth < 50) {
+    const err = new Error(`INSUFFICIENT_SPACE: internalWidth=${internalWidth}mm é menor que 50mm mínimo. Aumente a largura ou reduza o espessura.`)
+    err.statusCode = 400; throw err;
+  }
+  if (structuralHeight <= 0) {
+    const err = new Error(`INSUFFICIENT_SPACE: structuralHeight=${structuralHeight}mm (height=${H} - baseboard=${BH3}). Rodapé maior ou igual à altura total.`)
+    err.statusCode = 400; throw err;
+  }
+  if (structuralHeight < 100) {
+    const err = new Error(`INSUFFICIENT_SPACE: structuralHeight=${structuralHeight}mm é menor que 100mm mínimo. Reduza o rodapé ou aumente a altura.`)
+    err.statusCode = 400; throw err;
   }
 
   pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', D, H, T, 1, T/2, H/2, D/2, 'vertical', { front: true }))
@@ -117,7 +129,10 @@ function generateFurniture(params) {
 
   pieces.push(makePiece(nextId('BASE'), 'Base Inferior', 'piso', internalWidth, D, T, 1, W/2, BH3 + T/2, D/2, 'horizontal', { front: true }))
 
-  const backH = H - BH3 - (isBase && hasCountertop && moduleType !== 'standard' ? T : 2*T)
+  // BUG FIX #5: base+countertop has traversaños (70mm) at top, not a techo (T).
+  // Standard/aereo use 2*T (bottom base + top techo). Base+countertop uses T+70.
+  const topDeduction = (isBase && hasCountertop && moduleType !== 'standard') ? 70 : T
+  const backH = H - BH3 - T - topDeduction
   pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', internalWidth, backH, BT, 1, W/2, BH3 + T + backH/2, D - BT/2, 'none'))
 
   if (BH3 > 0) {
@@ -160,27 +175,54 @@ function generateFurniture(params) {
       const boxH = safeDrawerHeight - 40
       const boxZ = D/2 + BT/2
 
-      pieces.push({
-        ...makePiece(nextId('GAV-LAT'), `Lateral Cajón ${i+1}`, 'drawer_box', boxD, boxH, T, 2, xPos, yPos, boxZ, 'horizontal', { front: true }),
-        drawerGroupId: drawerId
-      })
+      // BUG FIX #2: skip drawer box if it's physically impossible (too narrow)
+      if (boxOuterW > 2 * T && boxInnerW > 10 && boxD > 50 && boxH > 20) {
+        pieces.push({
+          ...makePiece(nextId('GAV-LAT'), `Lateral Cajón ${i+1}`, 'drawer_box', boxD, boxH, T, 2, xPos, yPos, boxZ, 'horizontal', { front: true }),
+          drawerGroupId: drawerId
+        })
 
-      pieces.push({
-        ...makePiece(nextId('GAV-EST'), `Frente/Trasera Cajón ${i+1}`, 'drawer_box', boxInnerW, boxH, T, 2, xPos, yPos, boxZ, 'horizontal', { front: true }),
-        drawerGroupId: drawerId
-      })
+        pieces.push({
+          ...makePiece(nextId('GAV-EST'), `Frente/Trasera Cajón ${i+1}`, 'drawer_box', boxInnerW, boxH, T, 2, xPos, yPos, boxZ, 'horizontal', { front: true }),
+          drawerGroupId: drawerId
+        })
 
-      pieces.push({
-        ...makePiece(nextId('GAV-FUNDO'), `Fondo Cajón ${i+1}`, 'drawer_bottom', boxOuterW, boxD, 6, 1, xPos, yPos - boxH/2 + 3, boxZ, 'horizontal', { none: true }),
-        drawerGroupId: drawerId
-      })
+        pieces.push({
+          ...makePiece(nextId('GAV-FUNDO'), `Fondo Cajón ${i+1}`, 'drawer_bottom', boxOuterW, boxD, 6, 1, xPos, yPos - boxH/2 + 3, boxZ, 'horizontal', { none: true }),
+          drawerGroupId: drawerId
+        })
+      } else {
+        console.warn(`[Engine] Cajón ${i+1}: caja imposible (boxOuterW=${boxOuterW}, boxInnerW=${boxInnerW}) — solo frente generado.`)
+      }
     }
   }
 
   let shelfYStart = drawerYStart + (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight + T/2
+
+  // ★ PROTECTED: Separator shelf on top of drawer zone (closes gap visually)
+  if (numDrawers > 0) {
+    const sepY = shelfYStart
+    if (sepY < H - 100) {
+      const technicalDepth = hasDoors ? (internalDepth - 20) : internalDepth
+      pieces.push(makePiece(
+        nextId('SEP'), 'Repisa Separadora (encima gavetas)', 'shelf',
+        internalWidth - 2, technicalDepth, T, 1,
+        W/2, sepY, internalDepth/2 + BT, 'horizontal', { front: true },
+        'Separador estructural gavetas/estantes'
+      ))
+      shelfYStart = sepY + T + 10  // offset regular shelves above separator
+    }
+  }
+
+  // BUG FIX #9: dynamic shelf spacing — distribute evenly in available zone.
+  // Available zone: from shelfYStart to H - T (below techo), minus 50mm headroom.
+  const shelfZoneTop = H - T - 50
+  const shelfZoneH   = Math.max(0, shelfZoneTop - shelfYStart)
+  const shelfSpacing = numShelves > 0 ? Math.floor(shelfZoneH / (numShelves + 1)) : 0
+
   for (let i = 0; i < numShelves; i++) {
-    const yPos = shelfYStart + (i * 350)
-    if (yPos < H - 100) {
+    const yPos = shelfYStart + (i + 1) * shelfSpacing
+    if (yPos > shelfYStart && yPos < shelfZoneTop) {
       const technicalDepth = hasDoors ? (internalDepth - 20) : internalDepth
       pieces.push(makePiece(
         nextId('PRAT'), `Estante ${i + 1}`, 'repisa',

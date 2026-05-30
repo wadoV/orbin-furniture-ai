@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileText, Download, Save, Trash2, Box, Wrench, DollarSign, Layers, Package } from 'lucide-react'
+import { FileText, Download, Save, Trash2, Box, Wrench, DollarSign, Layers, Package, X } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import CutListTable from './CutListTable.jsx'
 import { calculateCostEstimation } from '../data/materials.js'
@@ -133,7 +133,7 @@ const TAB_ITEMS = [
 ]
 
 // ─── Main ResultPanel ───────────────────────────────────────────────────────
-export default function ResultPanel({ design, onSave, loadingSave, onDeleteModule, selectedPieceIds, onSelectPieces }) {
+export default function ResultPanel({ design, onSave, loadingSave, onDeleteModule, onDeletePiece, selectedPieceIds, onSelectPieces }) {
   const { t, format, convert, unit } = usePreferences()
   const [activeTab, setActiveTab] = useState('summary')
 
@@ -228,29 +228,55 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
                     <th className="pb-2 text-center">{t('qty')}</th>
                     <th className="pb-2 text-right">{t('w')} ({unit.toUpperCase()})</th>
                     <th className="pb-2 text-right">{t('h')} ({unit.toUpperCase()})</th>
-                    <th className="pb-2 text-right pr-4">{t('thickness')}</th>
+                    <th className="pb-2 text-right pr-2">{t('thickness')}</th>
+                    <th className="pb-2 w-8" />
                   </tr>
                 </thead>
                 <tbody>
-                  {pieces.map((p, idx) => (
-                    <tr key={idx} className="bg-surface-3/30 group hover:bg-surface-3 transition-colors border border-white/5">
+                  {pieces.map((p, idx) => {
+                    const pKey = `${design.id}::${p.type}::${(p.name || '').replace(/\s+/g, '_')}`
+                    const isSelected = selectedPieceIds instanceof Set
+                      ? selectedPieceIds.has(pKey)
+                      : Array.isArray(selectedPieceIds) && selectedPieceIds.includes(pKey)
+                    return (
+                    <tr
+                      key={idx}
+                      onClick={() => onSelectPieces && onSelectPieces(new Set([pKey]))}
+                      className={`group transition-all cursor-pointer border border-white/5 ${
+                        isSelected
+                          ? 'bg-primary/20 border-primary/40 shadow-[0_0_12px_rgba(245,166,35,0.15)]'
+                          : 'bg-surface-3/30 hover:bg-surface-3'
+                      }`}
+                      title="Click para resaltar en 3D"
+                    >
                       <td className="py-3.5 pl-4 rounded-l-2xl">
                         <div className="flex items-center gap-3">
-                          <span className={`w-1.5 h-6 rounded-full ${
+                          <span className={`w-1.5 h-6 rounded-full transition-all ${
+                            isSelected       ? 'bg-primary shadow-[0_0_8px_rgba(245,166,35,0.6)]' :
                             p.type === 'lateral' ? 'bg-primary' :
                             p.type === 'drawer_front' ? 'bg-[#00BFFF]' :
                             p.type === 'standard_door' ? 'bg-[#FFA500]' :
                             'bg-muted/30'
                           }`} />
-                          <span className="text-[11px] font-black text-white tracking-tight uppercase group-hover:text-primary transition-colors">{p.name}</span>
+                          <span className={`text-[11px] font-black tracking-tight uppercase transition-colors ${isSelected ? 'text-primary' : 'text-white group-hover:text-primary'}`}>{p.name}</span>
                         </div>
                       </td>
                       <td className="py-3.5 text-center text-[11px] font-black text-white/60">{p.quantity}</td>
                       <td className="py-3.5 text-right text-[11px] font-mono font-bold text-white tracking-tighter">{convert(p.width)}</td>
                       <td className="py-3.5 text-right text-[11px] font-mono font-bold text-white tracking-tighter">{convert(p.height)}</td>
-                      <td className="py-3.5 text-right pr-4 text-[10px] font-black text-muted rounded-r-2xl">{p.thickness}mm</td>
+                      <td className="py-3.5 text-right pr-2 text-[10px] font-black text-muted">{p.thickness}mm</td>
+                      <td className="py-3.5 pr-3 rounded-r-2xl">
+                        <button
+                          onClick={e => { e.stopPropagation(); onDeletePiece && onDeletePiece(design.id, p.id) }}
+                          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-muted hover:text-error hover:bg-error/10 transition-all"
+                          title="Eliminar pieza (Ctrl+Z para deshacer)"
+                        >
+                          <X size={11} />
+                        </button>
+                      </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -266,9 +292,15 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
 
       {activeTab === 'cutlist' && (
         <div className="animate-in fade-in duration-300">
-          <CutListTable cutList={cutList} />
-          {(!cutList || cutList.length === 0) && pieces.length > 0 && (
-            <p className="text-muted text-sm text-center py-8">{t('cutlist_from_pieces') || 'Cut list data not available. Showing piece summary above.'}</p>
+          <CutListTable
+            cutList={cutList.length ? cutList : pieces}
+            selectedPieceIds={selectedPieceIds}
+            onSelectPiece={onSelectPieces}
+            onDeletePiece={onDeletePiece ? (pieceId) => onDeletePiece(design.id, pieceId) : null}
+            moduleId={design.id}
+          />
+          {(!cutList?.length && !pieces.length) && (
+            <p className="text-muted text-sm text-center py-8">{t('cutlist_from_pieces') || 'Cut list data not available.'}</p>
           )}
         </div>
       )}

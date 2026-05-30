@@ -4,14 +4,20 @@ import { usePreferences } from '../context/PreferencesContext.jsx'
 
 // ★ PROTECTED: AI Model badge config — color-coded per provider
 const MODEL_BADGES = {
-  'vertex-ai-high-tier':      { label: 'Gemini Pro',   color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
-  'vertex-ai-high-tier-chat': { label: 'Gemini Pro',   color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
-  'ollama':                   { label: 'Ollama Local',  color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
-  'ollama-chat':              { label: 'Ollama Local',  color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+  // Gemini SDK path (vertexClient → @google/generative-ai)
+  'gemini-api':               { label: 'Gemini Flash',  color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
+  // Gemini REST path (geminiClient → native fetch)
+  'gemini-fallback':          { label: 'Gemini Flash',  color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
+  // Legacy source names (kept for backward-compat)
+  'vertex-ai-high-tier':      { label: 'Gemini Pro',    color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
+  'vertex-ai-high-tier-chat': { label: 'Gemini Pro',    color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
+  // Local / offline
+  'ollama':                   { label: 'Ollama Local',   color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+  'ollama-chat':              { label: 'Ollama Local',   color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
   'claude':                   { label: 'Claude Premium', color: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
-  'regex-fallback':           { label: 'Offline Mode',  color: 'bg-orange-500/15 text-orange-400 border-orange-500/30' },
-  'error':                    { label: 'Error',         color: 'bg-red-500/15 text-red-400 border-red-500/30' },
-  'unknown':                  { label: 'AI',            color: 'bg-white/10 text-white/60 border-white/10' },
+  'regex-fallback':           { label: 'Offline Mode',   color: 'bg-orange-500/15 text-orange-400 border-orange-500/30' },
+  'error':                    { label: 'Error',          color: 'bg-red-500/15 text-red-400 border-red-500/30' },
+  'unknown':                  { label: 'AI',             color: 'bg-white/10 text-white/60 border-white/10' },
 }
 
 // ★ PROTECTED: Prompt History persistence

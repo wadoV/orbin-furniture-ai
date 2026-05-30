@@ -84,7 +84,12 @@ const SELECT = ({ label, name, value, onChange, options }) => {
           id={id}
           className="input-field w-full focus-visible:ring-2 focus-visible:ring-primary focus:outline-none appearance-none cursor-pointer pr-8"
           name={name} value={value}
-          onChange={e => onChange(name, e.target.value)}
+          onChange={e => {
+            const raw = e.target.value
+            // Parse numeric strings to numbers so server engine receives the correct type
+            const parsed = raw !== '' && !isNaN(Number(raw)) ? Number(raw) : raw
+            onChange(name, parsed)
+          }}
         >
           {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
