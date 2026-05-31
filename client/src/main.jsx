@@ -12,18 +12,18 @@ import './index.css'
 import { PreferencesProvider } from './context/PreferencesContext.jsx'
 import { UserProvider, useUser } from './context/UserContext.jsx'
 
-import App        from './App.jsx'
-import LandingPage          from './components/LandingPage.jsx'
+import App from './App.jsx'
+import LandingPage from './components/LandingPage.jsx'
 import { LoginPage, RegisterPage } from './components/AuthPages.jsx'
 
-// ── Protected Route: redirects to /login if not logged in ────────────────────
+// Protected Route: redirects to /login if not logged in
 function ProtectedRoute({ children }) {
   const { user } = useUser()
   if (!user.isLoggedIn) return <Navigate to="/login" replace />
   return children
 }
 
-// ── Public Route: redirects to /app if already logged in ─────────────────────
+// Public Route: redirects to /app if already logged in
 function PublicRoute({ children }) {
   const { user } = useUser()
   if (user.isLoggedIn) return <Navigate to="/app" replace />
@@ -36,15 +36,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <PreferencesProvider>
         <UserProvider>
           <Routes>
-            {/* Public */}
             <Route path="/"         element={<LandingPage />} />
             <Route path="/login"    element={<PublicRoute><LoginPage /></PublicRoute>} />
             <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-
-            {/* Protected App */}
             <Route path="/app"      element={<ProtectedRoute><App /></ProtectedRoute>} />
-
-            {/* Fallback: redirect / for legacy entry */}
             <Route path="*"         element={<Navigate to="/" replace />} />
           </Routes>
         </UserProvider>

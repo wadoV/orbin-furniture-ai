@@ -6,7 +6,7 @@
 import { useNavigate } from 'react-router-dom'
 import {
   Zap, Box, Ruler, Layers, Check, X, ArrowRight,
-  Shield, Cpu, FileText, Download, Star, ChevronRight
+  Shield, Cpu, FileText, Star, ChevronRight, TrendingUp, Users, Clock
 } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 
@@ -114,7 +114,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-[#0D0D0D] text-white overflow-x-hidden">
 
       {/* ── Nav ──────────────────────────────────────────────────────────── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-[#0D0D0D]/90 backdrop-blur-xl border-b border-white/5">
+      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 glass border-b border-white/5">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center shadow-[0_0_12px_rgba(245,166,35,0.4)]">
             <span className="text-[11px] font-black text-black">O</span>
@@ -139,8 +139,8 @@ export default function LandingPage() {
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section className="relative pt-32 pb-24 px-6 text-center overflow-hidden">
-        {/* Background glow */}
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute inset-0 bg-hero-glow pointer-events-none" />
+        <div className="absolute inset-0 bg-grid opacity-40 pointer-events-none" />
 
         <div className="relative max-w-4xl mx-auto space-y-8">
           <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-1.5 text-[10px] font-black text-primary uppercase tracking-widest">
@@ -151,7 +151,7 @@ export default function LandingPage() {
           <h1 className="text-4xl md:text-6xl font-black tracking-tight leading-tight">
             { L === 'PT' ? 'Design Paramétrico com' : L === 'EN' ? 'Parametric Design with' : 'Diseño Paramétrico con' }
             <br />
-            <span className="text-primary">
+            <span className="text-gradient">
               { L === 'PT' ? 'Precisão Industrial' : L === 'EN' ? 'Industrial Precision' : 'Precisión Industrial' }
             </span>
           </h1>
@@ -200,7 +200,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Technical Features ────────────────────────────────────────────── */}
-      <section className="py-24 px-6">
+      <section id="features" className="py-24 px-6">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16 space-y-3">
             <p className="text-[10px] font-black text-primary uppercase tracking-[0.3em]">
@@ -215,7 +215,7 @@ export default function LandingPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {TECH_FEATURES.map((f, i) => (
-              <div key={i} className="card group hover:border-primary/20 transition-all duration-300 hover:shadow-[0_0_30px_rgba(245,166,35,0.05)]">
+              <div key={i} className="card-glass group hover:border-primary/15 transition-all duration-300">
                 <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-primary/15 transition-all">
                   <f.icon size={20} className="text-primary" />
                 </div>
@@ -333,6 +333,27 @@ export default function LandingPage() {
         </div>
       </section>
 
+
+      {/* Social proof numbers */}
+      <section className="py-12 px-6">
+        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { icon: Users,      val: '1.200+', label: { ES: 'Usuarios activos',  PT: 'Usuários ativos',   EN: 'Active users' } },
+            { icon: FileText,   val: '18.000+',label: { ES: 'Listas generadas',  PT: 'Listas geradas',    EN: 'Lists generated' } },
+            { icon: TrendingUp, val: '4.8/5',  label: { ES: 'Satisfacción',      PT: 'Satisfação',        EN: 'Satisfaction' } },
+            { icon: Clock,      val: '< 30s',  label: { ES: 'Por proyecto',      PT: 'Por projeto',       EN: 'Per project' } },
+          ].map((s, i) => (
+            <div key={i} className="card text-center space-y-2 hover:border-primary/20 transition-all">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center mx-auto">
+                <s.icon size={16} className="text-primary" />
+              </div>
+              <div className="text-2xl font-black text-primary tabular-nums">{s.val}</div>
+              <div className="text-[9px] text-muted font-bold uppercase tracking-widest">{l(s.label)}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ── CTA Bottom ───────────────────────────────────────────────────── */}
       <section className="py-24 px-6 text-center">
         <div className="max-w-2xl mx-auto space-y-6">
@@ -355,8 +376,14 @@ export default function LandingPage() {
       {/* ── Footer ───────────────────────────────────────────────────────── */}
       <footer className="border-t border-white/5 py-8 px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-muted">
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 bg-primary rounded-md flex items-center justify-center">
-            <span className="text-[8px] font-black text-black">O</span>
+          <div className="w-6 h-6 rounded-md flex items-center justify-center"
+               style={{ background: 'linear-gradient(135deg,#F5A623,#C47A0F)' }}>
+            <svg viewBox="0 0 20 20" className="w-3.5 h-3.5" fill="none">
+              <rect x="2" y="3" width="16" height="14" rx="2" stroke="black" strokeWidth="1.5"/>
+              <line x1="2" y1="9" x2="18" y2="9" stroke="black" strokeWidth="1.2"/>
+              <rect x="5" y="11" width="4" height="4" rx="0.8" fill="black" opacity="0.6"/>
+              <rect x="11" y="11" width="4" height="4" rx="0.8" fill="black" opacity="0.6"/>
+            </svg>
           </div>
           <span className="text-[10px] font-bold tracking-widest uppercase">Orbin Furniture AI</span>
         </div>

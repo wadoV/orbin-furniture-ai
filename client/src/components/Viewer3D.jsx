@@ -514,6 +514,35 @@ export default function Viewer3D({
     }
     renderer.domElement.addEventListener('mousedown', onMouseDown)
 
+    // Touch support — mobile orbit + pinch zoom
+    let _tx = 0, _ty = 0, _td = 0
+    const _getTouchDist = (t) => {
+      const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY
+      return Math.sqrt(dx*dx + dy*dy)
+    }
+    const onTouchStart = (e) => {
+      if (e.touches.length === 1) { _tx = e.touches[0].clientX; _ty = e.touches[0].clientY }
+      else if (e.touches.length === 2) { _td = _getTouchDist(e.touches) }
+    }
+    const onTouchMove = (e) => {
+      e.preventDefault()
+      const ctrl = controlsRef.current
+      if (!ctrl) return
+      if (e.touches.length === 1) {
+        const dx = (e.touches[0].clientX - _tx) * 0.01
+        const dy = (e.touches[0].clientY - _ty) * 0.01
+        ctrl.rotateLeft(-dx); ctrl.rotateUp(-dy); ctrl.update()
+        _tx = e.touches[0].clientX; _ty = e.touches[0].clientY
+      } else if (e.touches.length === 2) {
+        const nd = _getTouchDist(e.touches)
+        const delta = (_td - nd) * 0.05
+        ctrl.dollyIn(1 + delta * 0.05); ctrl.update()
+        _td = nd
+      }
+    }
+    renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: true })
+    renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false })
+
     // ─── Render Loop ────────────────────────────────────────────────────────
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate)
@@ -1267,8 +1296,8 @@ export default function Viewer3D({
   }, [])
 
   return (
-    <div className="relative w-full h-full group select-none overflow-hidden" style={{ minHeight: '600px' }}>
-      <div ref={mountRef} className="w-full h-full" style={{ minHeight: '600px' }} />
+    <div className="relative w-full h-full group select-none overflow-hidden" style={{ minHeight: 'clamp(260px, 45vw, 600px)' }}>
+      <div ref={mountRef} className="w-full h-full" style={{ minHeight: 'clamp(260px, 45vw, 600px)' }} />
 
       {/* ★ PROTECTED: Drag-to-move indicator */}
       {isDragMoving && (

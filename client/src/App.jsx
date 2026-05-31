@@ -11,6 +11,7 @@ import ExportPanel from './components/ExportPanel.jsx'
 import MemoryPanel from './components/MemoryPanel.jsx'
 import DesignHealthPanel from './components/DesignHealthPanel.jsx'
 import WelcomeScreen from './components/WelcomeScreen.jsx'
+import OnboardingFlow from './components/OnboardingFlow.jsx'
 import PricingDisplay from './components/PricingDisplay.jsx'
 import MultiplayerLayer from './components/MultiplayerLayer.jsx'
 import ImageToParametricPanel from './components/ImageToParametricPanel.jsx'
@@ -21,7 +22,7 @@ import {
   getVersionHistory, logPrompt, logAction, logExport,
   getRecentActions, generateProjectSummary, clearMemory
 } from './engine/projectMemory.js'
-import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users, Camera, Lock, Crown, AlertTriangle } from 'lucide-react'
+import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users, Camera, Lock, Crown, AlertTriangle, Eye, PanelLeft } from 'lucide-react'
 
 import { usePreferences } from './context/PreferencesContext.jsx'
 import { useUser } from './context/UserContext.jsx'
@@ -104,6 +105,10 @@ export default function App() {
   const [selectedPieceIds, setSelectedPieceIds] = useState(new Set())
   const [error,     setError]     = useState(null)
   const [show3D,    setShow3D]    = useState(true)
+  const [mobileView, setMobileView] = useState('panel')
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    try { return !localStorage.getItem('orbin-onboarding-done') } catch { return false }
+  })
   const [showUndoToast, setShowUndoToast] = useState(false)
   const [chatMessages, setChatMessages] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
@@ -512,12 +517,28 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-[#0D0D0D]">
+        {showOnboarding && (
+          <OnboardingFlow
+            onComplete={(payload) => { setShowOnboarding(false); handleGenerate(payload) }}
+            onSkip={() => setShowOnboarding(false)}
+          />
+        )}
         {/* ── Dynamic Quoting — overlay esquina superior izquierda ── */}
         <PricingDisplay modules={modules} currency="USD" />
         <Header />
-        <main className="max-w-screen-2xl mx-auto px-4 py-6">
-          <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-6">
-            <aside className="xl:sticky xl:top-20 xl:self-start space-y-4 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-1 pb-4 scrollbar-thin scrollbar-thumb-surface-3 scrollbar-track-transparent">
+        <main className="max-w-screen-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24 xl:pb-6">
+          {/* Mobile view toggle */}
+          <div className="xl:hidden flex items-center justify-between mb-3">
+            <span className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
+              {mobileView === 'panel' ? <><PanelLeft size={13} className="text-primary" /> Panel</> : <><Eye size={13} className="text-primary" /> Visor 3D</>}
+            </span>
+            <button onClick={() => setMobileView(v => v === 'panel' ? 'viewer' : 'panel')}
+              className="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/25 rounded-xl text-[10px] font-black text-primary uppercase tracking-widest hover:bg-primary/20 transition-all active:scale-95">
+              {mobileView === 'panel' ? <><Eye size={11} /> Ver 3D</> : <><PanelLeft size={11} /> Panel</>}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-4 xl:gap-6">
+            <aside className={`xl:sticky xl:top-20 xl:self-start space-y-4 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-1 pb-4 scrollbar-thin scrollbar-thumb-surface-3 scrollbar-track-transparent ${mobileView === "viewer" ? "hidden xl:block" : "block"}`}>
               <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-white leading-tight">
                   {(t('title') || '').split('—')[0]}<br />
@@ -555,14 +576,16 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex gap-1 bg-surface-3 p-1 rounded-lg" role="tablist">
-                {TABS.map(({ id, label, icon: Icon }) => (
-                  <button key={id} onClick={() => setActiveTab(id)}
-                    className={'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-all ' +
-                      (activeTab === id ? 'bg-primary text-black shadow-sm' : 'text-muted hover:text-white hover:bg-surface-2')}>
-                    <Icon size={12} /> {label}
-                  </button>
-                ))}
+              <div className="bg-surface-3 p-1 rounded-xl overflow-x-auto scrollbar-none" role="tablist">
+                <div className="flex gap-1 min-w-max sm:min-w-0">
+                  {TABS.map(({ id, label, icon: Icon }) => (
+                    <button key={id} onClick={() => setActiveTab(id)}
+                      className={'flex items-center justify-center gap-1.5 py-2 px-3 sm:flex-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ' +
+                        (activeTab === id ? 'bg-primary text-black shadow-sm' : 'text-muted hover:text-white hover:bg-surface-2')}>
+                      <Icon size={12} /> {label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div id={'panel-' + activeTab}>
@@ -617,8 +640,8 @@ export default function App() {
               />
             </aside>
 
-            <div className="space-y-6">
-              <div className="card p-0 overflow-hidden border-primary/10 shadow-2xl shadow-primary/5 min-h-[600px] relative">
+            <div className={`space-y-4 xl:space-y-6 ${mobileView === 'panel' ? 'hidden xl:block' : 'block'}`}>
+              <div className="card p-0 overflow-hidden border-primary/10 shadow-2xl shadow-primary/5 relative" style={{ minHeight: 'clamp(280px, 50vw, 600px)' }}>
                 {show3D ? (
                   <Viewer3D
                     modules={modules}
