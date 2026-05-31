@@ -21,9 +21,35 @@ import {
   getVersionHistory, logPrompt, logAction, logExport,
   getRecentActions, generateProjectSummary, clearMemory
 } from './engine/projectMemory.js'
-import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users, Camera } from 'lucide-react'
+import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users, Camera, Lock, Crown, AlertTriangle } from 'lucide-react'
 
 import { usePreferences } from './context/PreferencesContext.jsx'
+import { useUser } from './context/UserContext.jsx'
+
+// ── Plan Upgrade Banner ────────────────────────────────────────────────────────
+function PlanLimitAlert({ message, description, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-surface-2 border border-primary/30 rounded-3xl p-8 max-w-md mx-4 space-y-4 shadow-2xl shadow-primary/10 animate-in zoom-in-95 duration-300">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-primary/15 rounded-2xl flex items-center justify-center">
+            <Crown size={20} className="text-primary" />
+          </div>
+          <h3 className="text-sm font-black text-white">{message}</h3>
+        </div>
+        <p className="text-[12px] text-muted leading-relaxed">{description}</p>
+        <div className="flex gap-3">
+          <a href="/register?plan=pro" className="btn-primary flex-1 h-10 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest">
+            <Crown size={12} /> Upgrade Pro
+          </a>
+          <button onClick={onClose} className="flex-1 h-10 bg-surface-3 text-muted hover:text-white border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -61,6 +87,8 @@ class ErrorBoundary extends Component {
 
 export default function App() {
   const { t } = usePreferences()
+  const { isFree, canAddModule, canUseChat, planConfig } = useUser()
+  const [planAlert, setPlanAlert] = useState(null)   // { message, description }
   const [showWelcome, setShowWelcome] = useState(true)
   const [activeTab, setActiveTab] = useState('params')
   const [loading,   setLoading]   = useState(false)
@@ -153,6 +181,14 @@ export default function App() {
   }
 
   const handleGenerate = async (payload) => {
+    // ── PLAN RESTRICTION: Free plan max 3 modules ─────────────────────────
+    if (isFree && !canAddModule(modules.length)) {
+      setPlanAlert({
+        message:     t('plan_module_limit')     || 'Límite de módulos alcanzado',
+        description: t('plan_module_limit_desc') || 'El plan Gratuito permite hasta 3 módulos. Haz upgrade para crear proyectos ilimitados.',
+      })
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -271,6 +307,14 @@ export default function App() {
   // ★ FIX: handleChatDesign was called in handleSendMessage but never defined.
   //   Converts a raw AI design object into a proper module and pushes it to history.
   const handleChatDesign = ({ design }) => {
+    // ── PLAN RESTRICTION: Free plan max 3 modules via chat too ───────────
+    if (isFree && !canAddModule(modules.length)) {
+      setPlanAlert({
+        message:     t('plan_module_limit')     || 'Límite de módulos alcanzado',
+        description: t('plan_module_limit_desc') || 'El plan Gratuito permite hasta 3 módulos. Haz upgrade.',
+      })
+      return
+    }
     if (!design) return
     // Normalize: wrap bare params object into full module shape expected by Viewer3D
     const configuration = design.configuration
@@ -479,7 +523,20 @@ export default function App() {
                   {(t('title') || '').split('—')[0]}<br />
                   <span className="text-primary">{'—'} {(t('title') || '').split('—')[1]}</span>
                 </h1>
-                <div className="flex gap-1">
+                <div className="flex items-center gap-1">
+                  {/* ── Plan badge ──────────────────────────────────────── */}
+                  {isFree && (
+                    <a href="/register?plan=pro"
+                       className="hidden sm:flex items-center gap-1 px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all mr-1"
+                    >
+                      <Crown size={9} /> Free — Upgrade
+                    </a>
+                  )}
+                  {!isFree && (
+                    <span className="hidden sm:flex items-center gap-1 px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-[9px] font-black uppercase tracking-widest mr-1">
+                      <Crown size={9} /> {planConfig?.id === 'enterprise' ? 'Enterprise' : 'Pro'}
+                    </span>
+                  )}
                   <button onClick={handleShareRoom}
                     className={`p-2 rounded-xl text-muted transition-all ${roomId ? 'text-primary bg-primary/10 hover:bg-primary/20' : 'hover:text-white hover:bg-surface-3'}`}
                     title={roomId ? 'Copiar Enlace de Sala' : 'Crear Sala Compartida'}>
@@ -532,6 +589,7 @@ export default function App() {
                     aiStatus={aiStatus}
                     lastPrompt={lastPrompt}
                     currentDesign={currentResult}
+                    planLocked={!canUseChat}
                   />
                 )}
                 {activeTab === 'vision' && <ImageToParametricPanel onApplyDesign={handleGenerateFromVision} />}
@@ -600,6 +658,15 @@ export default function App() {
             </div>
           </div>
         </main>
+
+        {/* ── Plan Limit Alert ──────────────────────────────────────────── */}
+        {planAlert && (
+          <PlanLimitAlert
+            message={planAlert.message}
+            description={planAlert.description}
+            onClose={() => setPlanAlert(null)}
+          />
+        )}
 
         {showUndoToast && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface-4 border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50">

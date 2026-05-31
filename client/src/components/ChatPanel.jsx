@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Sparkles, Wand2, Hammer, Ruler, History, Zap, ChevronDown, ChevronUp } from 'lucide-react'
+import { Send, Bot, User, Sparkles, Wand2, Hammer, Ruler, History, Zap, ChevronDown, ChevronUp, Lock, Crown } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 
 // ★ PROTECTED: AI Model badge config — color-coded per provider
@@ -33,7 +33,7 @@ function savePromptHistory(list) {
   catch { /* quota exceeded */ }
 }
 
-export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, lastPrompt, currentDesign }) {
+export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, lastPrompt, currentDesign, planLocked = false }) {
   const { t } = usePreferences()
   const [input, setInput] = useState('')
   const scrollRef = useRef(null)
@@ -114,6 +114,27 @@ export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, 
         <span className="w-1 h-1 rounded-full bg-current" />
         {badge.label}
       </span>
+    )
+  }
+
+  // ── Plan lock overlay ───────────────────────────────────────────────────
+  if (planLocked) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-6 py-12 px-6 bg-surface/40 rounded-3xl border border-white/5 min-h-[300px] text-center">
+        <div className="w-16 h-16 bg-primary/10 rounded-3xl flex items-center justify-center border border-primary/20">
+          <Lock size={28} className="text-primary" />
+        </div>
+        <div className="space-y-2 max-w-xs">
+          <h3 className="text-sm font-black text-white">{t('plan_chat_locked') || 'Chat com IA reservado para o Plano Pro'}</h3>
+          <p className="text-[12px] text-muted leading-relaxed">{t('plan_chat_locked_desc') || 'Faça upgrade para conversar com Orbin.'}</p>
+        </div>
+        <a
+          href="/register?plan=pro"
+          className="btn-primary px-6 py-2.5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
+        >
+          <Crown size={12} /> {t('plan_upgrade_btn') || 'Fazer Upgrade'}
+        </a>
+      </div>
     )
   }
 

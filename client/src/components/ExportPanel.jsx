@@ -5,12 +5,36 @@
  */
 
 import { useState } from 'react'
-import { Download, FileType, Box, Cpu, Scissors, Loader2, Check, AlertCircle, FileSpreadsheet } from 'lucide-react'
+import { Download, FileType, Box, Cpu, Scissors, Loader2, Check, AlertCircle, FileSpreadsheet, Lock, Crown } from 'lucide-react'
 import { exportDesign, nestPieces, downloadBlob, getExportFormats } from '../engine/exportAdapters.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import { useUser } from '../context/UserContext.jsx'
+
+// ── Locked export button overlay ──────────────────────────────────────────────
+function LockedExportBtn({ label, ext, reason }) {
+  return (
+    <div className="relative overflow-hidden group w-full text-left p-3.5 rounded-xl border border-white/5 bg-surface-3/30 opacity-50 cursor-not-allowed select-none">
+      <div className="flex items-start gap-3">
+        <div className="p-2.5 rounded-lg bg-white/5 text-muted">
+          <Lock size={18} />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-sm text-muted">{label}</span>
+            <span className="text-[9px] font-bold text-yellow-400/60 uppercase tracking-widest bg-yellow-500/10 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+              <Crown size={8} /> Pro
+            </span>
+          </div>
+          <p className="text-[10px] text-muted/50 mt-1">{reason}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function ExportPanel({ modules = [] }) {
   const { t, lang } = usePreferences()
+  const { canExportPDF, canExportCSV, canExportCNC, canExportBOM, isFree } = useUser()
   const [exporting, setExporting] = useState(null)
   const [success, setSuccess] = useState(null)
   const [error, setError] = useState(null)
@@ -164,34 +188,57 @@ export default function ExportPanel({ modules = [] }) {
         </p>
         
         <div className="grid grid-cols-2 gap-2">
-          {/* CNC Export */}
-          <button
-            onClick={() => handleExport('cnc')}
-            disabled={!!exporting}
-            className="flex items-center gap-2 p-2 rounded-lg bg-surface-3 hover:bg-surface-1 border border-white/5 transition-all text-xs group disabled:opacity-50"
-          >
-            <Cpu size={14} className="text-amber-400 group-hover:scale-110 transition-transform" />
-            <span className="flex-1 text-left text-white/70 group-hover:text-white truncate">
-              {t('export_cnc') || 'Cortes CNC'}
-            </span>
-            {exporting === 'cnc' && <Loader2 size={10} className="animate-spin text-amber-400" />}
-            {success === 'cnc' && <Check size={10} className="text-green-400" />}
-          </button>
+          {/* CNC Export — Enterprise only */}
+          {canExportCNC ? (
+            <button
+              onClick={() => handleExport('cnc')}
+              disabled={!!exporting}
+              className="flex items-center gap-2 p-2 rounded-lg bg-surface-3 hover:bg-surface-1 border border-white/5 transition-all text-xs group disabled:opacity-50"
+            >
+              <Cpu size={14} className="text-amber-400 group-hover:scale-110 transition-transform" />
+              <span className="flex-1 text-left text-white/70 group-hover:text-white truncate">
+                {t('export_cnc') || 'Cortes CNC'}
+              </span>
+              {exporting === 'cnc' && <Loader2 size={10} className="animate-spin text-amber-400" />}
+              {success === 'cnc' && <Check size={10} className="text-green-400" />}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-surface-3/30 border border-white/5 text-xs opacity-50 cursor-not-allowed">
+              <Lock size={12} className="text-yellow-400/60 shrink-0" />
+              <span className="text-muted truncate text-[10px]">CNC <Crown size={8} className="inline" /> Ent.</span>
+            </div>
+          )}
 
-          {/* CSV Factory Export */}
-          <button
-            onClick={() => handleExport('csv')}
-            disabled={!!exporting}
-            className="flex items-center gap-2 p-2 rounded-lg bg-surface-3 hover:bg-surface-1 border border-white/5 transition-all text-xs group disabled:opacity-50"
-          >
-            <FileSpreadsheet size={14} className="text-emerald-400 group-hover:scale-110 transition-transform" />
-            <span className="flex-1 text-left text-white/70 group-hover:text-white truncate">
-              CSV Fábrica
-            </span>
-            {exporting === 'csv' && <Loader2 size={10} className="animate-spin text-emerald-400" />}
-            {success === 'csv' && <Check size={10} className="text-green-400" />}
-          </button>
+          {/* CSV Factory Export — Pro+ only */}
+          {canExportCSV ? (
+            <button
+              onClick={() => handleExport('csv')}
+              disabled={!!exporting}
+              className="flex items-center gap-2 p-2 rounded-lg bg-surface-3 hover:bg-surface-1 border border-white/5 transition-all text-xs group disabled:opacity-50"
+            >
+              <FileSpreadsheet size={14} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+              <span className="flex-1 text-left text-white/70 group-hover:text-white truncate">
+                CSV Fábrica
+              </span>
+              {exporting === 'csv' && <Loader2 size={10} className="animate-spin text-emerald-400" />}
+              {success === 'csv' && <Check size={10} className="text-green-400" />}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-surface-3/30 border border-white/5 text-xs opacity-50 cursor-not-allowed">
+              <Lock size={12} className="text-yellow-400/60 shrink-0" />
+              <span className="text-muted truncate text-[10px]">CSV <Crown size={8} className="inline" /> Pro</span>
+            </div>
+          )}
         </div>
+
+        {/* Free plan export upgrade prompt */}
+        {isFree && (
+          <a href="/register?plan=pro"
+             className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-primary/10 border border-primary/20 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all"
+          >
+            <Crown size={11} /> {t('plan_upgrade_btn') || 'Upgrade para exportar PDF/CSV'}
+          </a>
+        )}
 
         {/* Nesting Optimizer */}
         <button

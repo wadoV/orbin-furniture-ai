@@ -1,4 +1,49 @@
-# Orbin AI — Modular Kitchen & Cabinet System (V3.0.0)
+# Orbin AI — Modular Kitchen & Cabinet System — COMMERCIAL_READY_V4.5
+
+> **Status:** 🟢 COMMERCIAL_READY_V4.5 — SaaS Architecture Live
+
+## 🚀 What's New in v4.5 — Commercial Launch
+
+| Feature | Status |
+|---|---|
+| Landing Page pública (`/`) | ✅ |
+| Auth Pages — Login `/login` + Register `/register` | ✅ |
+| UserContext — Plan state `free / pro / enterprise` | ✅ |
+| React Router v6 — rutas protegidas y públicas | ✅ |
+| Free tier — máx 3 módulos, chat bloqueado, solo 18mm | ✅ |
+| Pro tier — módulos/IA ilimitados, 15/18/25mm, PDF/CSV | ✅ |
+| Enterprise tier — todo Pro + CNC G-code + BOM | ✅ |
+| i18n trilingüe SaaS (ES/PT/EN) — 28 nuevas strings | ✅ |
+| ZERO regression en Viewer3D / closetEngine | ✅ |
+
+### SaaS Plan Matrix
+
+| Feature | Free | Pro (R$99/mês) | Enterprise (R$249/mês) |
+|---|:---:|:---:|:---:|
+| Módulos 3D | Max 3 | ∞ | ∞ + prioridad |
+| Chat IA (Gemini 1.5 Pro) | ❌ | ✅ | ✅ |
+| Espesores MDF | 18mm | 15/18/25mm | 15/18/25mm |
+| Exportar PDF / CSV | ❌ | ✅ | ✅ |
+| Exportar CNC (G-code) | ❌ | ❌ | ✅ |
+| Lista de Herrajes (BOM) | ❌ | ❌ | ✅ |
+
+### New Files (v4.5)
+```
+client/src/
+├── context/UserContext.jsx         # Global SaaS plan state
+├── components/LandingPage.jsx      # Public commercial landing page
+├── components/AuthPages.jsx        # Login + Register with plan injection
+└── main.jsx                        # Updated: React Router + UserProvider
+```
+
+### Protected Files (UNCHANGED — Zero Regression Rule)
+```
+client/src/components/Viewer3D.jsx   # ★ PROTECTED — rendering engine
+server/src/engine/closetEngine.js    # ★ PROTECTED — parametric math
+server/src/engine/validator.js       # ★ PROTECTED — structural validation
+```
+
+---
 
 Orbin is an industrial-grade parametric design engine and AI architect for modular furniture manufacturing. Powered by **Gemini 2.0 Flash** (Google AI Studio) with a 4-tier AI fallback chain, it enforces strict manufacturing precision, automated structural auditing, and high-fidelity 3D visualization.
 

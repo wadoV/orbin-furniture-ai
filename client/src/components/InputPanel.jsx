@@ -1,6 +1,7 @@
 import { useState, useEffect, useId, useCallback, useRef } from 'react'
-import { Sliders, MessageSquare, RotateCcw, Zap, Box, Info, Bot, Layout } from 'lucide-react'
+import { Sliders, MessageSquare, RotateCcw, Zap, Box, Info, Bot, Layout, Lock, Crown } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import { useUser } from '../context/UserContext.jsx'
 import { MATERIALS_DB } from '../data/materials.js'
 
 // ─── FIELD ────────────────────────────────────────────────────────────────────
@@ -251,6 +252,7 @@ const DEFAULTS = {
 
 export default function InputPanel({ onGenerate, loading, currentConfig, onUpdateConfig }) {
   const { t, unit, convert } = usePreferences()
+  const { isFree, allowedThicknesses } = useUser()
   const [mode,   setMode]   = useState('manual')
   const [nlText, setNlText] = useState('')
   const [params, setParams] = useState({ ...DEFAULTS })
@@ -365,34 +367,56 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                   { value: 'aereo',    label: t('aereo') },
                 ]}
               />
-              <SELECT
-                label={t('material_thickness')}
-                name="thickness"
-                value={params.thickness}
-                onChange={setParam}
-                options={[
-                  { value: 15, label: '15mm' },
-                  { value: 18, label: '18mm' },
-                  { value: 25, label: '25mm' },
-                ]}
-              />
+              {/* ── PLAN RESTRICTION: thickness locked on free ─────────── */}
+              {isFree ? (
+                <div>
+                  <label className="label flex justify-between">
+                    {t('material_thickness')}
+                    <span className="text-yellow-400/70 text-[8px] font-black uppercase tracking-tighter flex items-center gap-0.5">
+                      <Lock size={8} /> Free
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <div className="input-field w-full flex items-center justify-between opacity-60 cursor-not-allowed select-none">
+                      <span className="text-sm">18mm (MDF)</span>
+                      <Lock size={12} className="text-yellow-400/60" />
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-yellow-400/60 mt-1 font-bold">
+                    {t('plan_thickness_locked_desc') || 'Upgrade para 15mm y 25mm'}
+                  </p>
+                </div>
+              ) : (
+                <SELECT
+                  label={t('material_thickness')}
+                  name="thickness"
+                  value={params.thickness}
+                  onChange={setParam}
+                  options={[
+                    { value: 15, label: '15mm' },
+                    { value: 18, label: '18mm' },
+                    { value: 25, label: '25mm' },
+                  ]}
+                />
+              )}
             </div>
-            {/* ★ v2.6: Material Selector */}
+            {/* ★ v2.6: Material Selector — free plan locked to MDF 18mm */}
             <SELECT
               label={t('material_select') || 'Material'}
               name="materialId"
-              value={params.materialId}
+              value={isFree ? 'mdf_18' : params.materialId}
               onChange={(name, val) => {
+                if (isFree) return   // locked
                 setParam(name, val)
                 const mat = MATERIALS_DB.find(m => m.id === val)
                 if (mat && mat.thickness !== params.thickness) {
                   setParam('thickness', mat.thickness)
                 }
               }}
-              options={MATERIALS_DB.map(m => ({
-                value: m.id,
-                label: `${m.fallback} — $${m.costPerM2}/m²`
-              }))}
+              options={isFree
+                ? [{ value: 'mdf_18', label: 'MDF 18mm (estándar) — Plan Free' }]
+                : MATERIALS_DB.map(m => ({ value: m.id, label: `${m.fallback} — $${m.costPerM2}/m²` }))
+              }
             />
             {isBase && (
               <div className="animate-in zoom-in-95 duration-200">
