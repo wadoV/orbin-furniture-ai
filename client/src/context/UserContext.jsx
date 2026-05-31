@@ -97,6 +97,7 @@ export function UserProvider({ children }) {
       isLoggedIn: true,
     }
     setUser(newUser)
+    try { localStorage.setItem('orbin-user-session', JSON.stringify(newUser)) } catch {}
     return newUser
   }, [])
 
@@ -109,6 +110,7 @@ export function UserProvider({ children }) {
       isLoggedIn: true,
     }
     setUser(newUser)
+    try { localStorage.setItem('orbin-user-session', JSON.stringify(newUser)) } catch {}
     return newUser
   }, [])
 
