@@ -54,11 +54,22 @@ function toDimMM(raw, hasMMSuffix) {
 // ─── Dimension Extractors ─────────────────────────────────────────────────────
 
 function extractDimensionTriple(text) {
-  const m = text.match(/(\d{3,4})\s*(?:mm)?\s*[x*x]\s*(\d{3,4})\s*(?:mm)?\s*[x*x]\s*(\d{3,4})/i)
-  if (m) return { width: parseInt(m[1]), height: parseInt(m[2]), depth: parseInt(m[3]) }
-  // Also try with the Unicode times sign
-  const m2 = text.match(/(\d{3,4})\s*(?:mm)?\s*[×]\s*(\d{3,4})\s*(?:mm)?\s*[×]\s*(\d{3,4})/i)
-  if (m2) return { width: parseInt(m2[1]), height: parseInt(m2[2]), depth: parseInt(m2[3]) }
+  const regex = /(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*[x*x×]\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*[x*x×]\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?/i
+  const m = text.match(regex)
+  if (m) {
+    const parsePart = (valStr, partUnit) => {
+      const val = parseFloat(valStr.replace(',', '.'))
+      const unit = partUnit || m[6] || m[4] || m[2] || (val < 10 ? 'm' : (val < 300 ? 'cm' : 'mm'))
+      if (unit === 'm') return Math.round(val * 1000)
+      if (unit === 'cm') return Math.round(val * 10)
+      return Math.round(val)
+    }
+    return {
+      width:  parsePart(m[1], m[2]),
+      height: parsePart(m[3], m[4]),
+      depth:  parsePart(m[5], m[6])
+    }
+  }
   return null
 }
 
@@ -109,14 +120,16 @@ function parseNaturalLanguage(input) {
     return { params: { ...DEFAULTS }, confidence: 0, interpreted: 'Entrada vazia — usando padroes.' }
   }
 
-  let text = input.trim()
+  const rawInput = input.trim()
+  const triple = extractDimensionTriple(rawInput)
+
+  let text = rawInput
   text = normalizeMeasurements(text)
 
   const result = { ...DEFAULTS }
   const notes  = []
   let confidence = 0
 
-  const triple = extractDimensionTriple(text)
   if (triple) {
     result.width  = triple.width
     result.height = triple.height

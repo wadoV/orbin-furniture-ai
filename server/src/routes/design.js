@@ -138,4 +138,64 @@ router.get('/defaults', (req, res) => {
   res.json({ success: true, defaults: DEFAULTS })
 })
 
+// ─── GET /api/prices (Supabase integration with 1h caching) ──────────────────
+
+let supabaseClient = null
+
+function getSupabase() {
+  if (supabaseClient) return supabaseClient
+  const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return null
+  try {
+    const { createClient } = require('@supabase/supabase-js')
+    supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    return supabaseClient
+  } catch (err) {
+    console.warn('[design/getPrices] Failed to initialize Supabase client:', err.message)
+    return null
+  }
+}
+
+let priceCache = null
+let cacheExpiresAt = 0
+const CACHE_DURATION = 60 * 60 * 1000 // 1 hour in ms
+
+async function getPrices(req, res) {
+  const now = Date.now()
+  if (priceCache && now < cacheExpiresAt) {
+    return res.json({ success: true, prices: priceCache, source: 'cache' })
+  }
+
+  const sb = getSupabase()
+  if (!sb) {
+    console.warn('[design/getPrices] Supabase is not configured. Returning empty prices fallback.')
+    return res.json({ success: true, prices: [], source: 'fallback_empty' })
+  }
+
+  try {
+    const { data, error } = await sb
+      .from('material_prices')
+      .select('*')
+      .order('material_code', { ascending: true })
+
+    if (error) {
+      throw error
+    }
+
+    priceCache = data || []
+    cacheExpiresAt = now + CACHE_DURATION
+    return res.json({ success: true, prices: priceCache, source: 'supabase' })
+  } catch (err) {
+    console.error('[design/getPrices] Error fetching material prices:', err.message)
+    // Return empty array to trigger client-side fallback silently
+    return res.json({ success: true, prices: [], source: 'fallback_error', error: err.message })
+  }
+}
+
+// Register route on router (accessible via /api/design/prices or /design/prices)
+router.get('/prices', getPrices)
+
+// Expose the handler function so it can be mounted directly at the root (/api/prices) in index.js
+router.getPrices = getPrices
+
 module.exports = router

@@ -1,17 +1,182 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Orbin AI — Design Paramétrico de Móveis</title>
-    <meta name="description" content="Automação de design paramétrico de móveis com IA. Gere listas de corte instantâneas." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪵</text></svg>" />
-    <script type="module" crossorigin src="/assets/index-JkQU1tB4.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DCWkPaTe.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Primary SEO -->
+  <title>Orbin AI — Software de Lista de Corte MDF e Design Parametrico de Moveis</title>
+  <meta name="description" content="Gere listas de corte MDF/MDP automaticas em segundos. Motor parametrico brasileiro: caixa tecnica 13mm, laterais ao chao, normas 2750x1840mm. Chat IA Gemini. Gratis para comecar." />
+  <meta name="keywords" content="lista de corte MDF, software marcenaria, design parametrico moveis, calculadora moveis planejados, lista corte automatica, software lista corte, marceneiro software, armario embutido MDF, corredicas telescopicas 13mm, chapa MDF 18mm, diseño parametrico muebles, lista de corte CNC, orcamento moveis, software carpintaria" />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+  <meta name="author" content="Orbin Technologies" />
+  <meta name="theme-color" content="#F5A623" />
+
+  <!-- Canonical + hreflang -->
+  <link rel="canonical" href="https://orbin.ai/" />
+  <link rel="alternate" hreflang="pt-BR"    href="https://orbin.ai/?lang=PT" />
+  <link rel="alternate" hreflang="es"       href="https://orbin.ai/?lang=ES" />
+  <link rel="alternate" hreflang="en"       href="https://orbin.ai/?lang=EN" />
+  <link rel="alternate" hreflang="x-default" href="https://orbin.ai/" />
+
+  <!-- Open Graph -->
+  <meta property="og:type"               content="website" />
+  <meta property="og:url"                content="https://orbin.ai/" />
+  <meta property="og:title"              content="Orbin AI — Lista de Corte MDF Automatica com IA" />
+  <meta property="og:description"        content="Gere listas de corte e projetos 3D de moveis em segundos. Caixa tecnica 13mm, laterais ao chao, normas MDF/MDP brasileiras. Motor IA Gemini Pro. Gratis para comecar." />
+  <meta property="og:image"              content="https://orbin.ai/og-image.png" />
+  <meta property="og:image:width"        content="1200" />
+  <meta property="og:image:height"       content="630" />
+  <meta property="og:image:alt"          content="Orbin AI — Interface com visor 3D de moveis e lista de corte automatica" />
+  <meta property="og:site_name"          content="Orbin AI" />
+  <meta property="og:locale"             content="pt_BR" />
+  <meta property="og:locale:alternate"   content="es_ES" />
+  <meta property="og:locale:alternate"   content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:site"        content="@OrbinAI" />
+  <meta name="twitter:title"       content="Orbin AI — Lista de Corte MDF + Design 3D" />
+  <meta name="twitter:description" content="Software de marcenaria parametrica com IA. Lista de corte automatica, visor 3D, Gemini Pro. Gratis para comecar." />
+  <meta name="twitter:image"       content="https://orbin.ai/og-image.png" />
+  <meta name="twitter:image:alt"   content="Orbin AI interface com visor 3D de moveis" />
+
+  <!-- Favicons -->
+  <link rel="icon"             type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="icon"             type="image/png" sizes="16x16" href="/favicon-16.png" />
+  <link rel="apple-touch-icon" sizes="180x180"                href="/apple-touch-icon.png" />
+  <link rel="mask-icon"        href="/safari-pinned-tab.svg"  color="#F5A623" />
+  <meta name="msapplication-TileColor" content="#F5A623" />
+
+  <!-- PWA + Sitemap -->
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="sitemap"  type="application/xml" href="/sitemap.xml" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload"    as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+
+  <!-- Schema.org JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://orbin.ai/#app",
+        "name": "Orbin AI",
+        "url": "https://orbin.ai",
+        "logo": "https://orbin.ai/favicon-32.png",
+        "description": "Software de lista de corte MDF automatica e design parametrico de moveis com inteligencia artificial. Gere listas de corte, projetos 3D e orcamentos em segundos.",
+        "applicationCategory": "DesignApplication",
+        "applicationSubCategory": "Furniture Design Software",
+        "operatingSystem": "Web Browser",
+        "browserRequirements": "Requires JavaScript. Requires HTML5.",
+        "inLanguage": ["pt-BR", "es", "en"],
+        "offers": [
+          {
+            "@type": "Offer",
+            "name": "Gratuito",
+            "price": "0",
+            "priceCurrency": "BRL",
+            "description": "Ate 3 modulos, visor 3D interativo, lista de corte basica"
+          },
+          {
+            "@type": "Offer",
+            "name": "Marceneiro Pro",
+            "price": "99",
+            "priceCurrency": "BRL",
+            "billingIncrement": "P1M",
+            "description": "Modulos ilimitados, Chat IA Gemini, exportacao PDF/CSV"
+          },
+          {
+            "@type": "Offer",
+            "name": "Industrial / Empresa",
+            "price": "249",
+            "priceCurrency": "BRL",
+            "billingIncrement": "P1M",
+            "description": "Tudo do Pro + CNC G-code + Lista de Ferragens (BOM)"
+          }
+        ],
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": "4.8",
+          "bestRating": "5",
+          "worstRating": "1",
+          "reviewCount": "1200"
+        },
+        "featureList": [
+          "Lista de corte automatica com precisao de 1mm",
+          "Visor 3D parametrico com Three.js",
+          "Caixa tecnica 13mm para corredicas telescopicas",
+          "Chat com IA Gemini Pro",
+          "Exportacao CNC G-code",
+          "Lista de ferragens (BOM)",
+          "Normas brasileiras MDF/MDP 2750x1840mm",
+          "Suporte a 15mm, 18mm e 25mm",
+          "Colaboracao em tempo real"
+        ]
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://orbin.ai/#org",
+        "name": "Orbin Technologies",
+        "url": "https://orbin.ai",
+        "logo": "https://orbin.ai/favicon-32.png"
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://orbin.ai/#website",
+        "url": "https://orbin.ai",
+        "name": "Orbin AI",
+        "description": "Software de lista de corte MDF e design parametrico de moveis com IA",
+        "publisher": { "@id": "https://orbin.ai/#org" },
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://orbin.ai/?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "O que e uma lista de corte MDF?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Uma lista de corte MDF e um documento tecnico que especifica todas as pecas necessarias para fabricar um movel, com dimensoes exatas (largura x altura x espessura), quantidade e direcao do veio. O Orbin AI gera automaticamente em segundos."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "O que e caixa tecnica 13mm?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Caixa tecnica 13mm e o recuo lateral aplicado em modulos com corredicas telescopicas. O Orbin AI aplica automaticamente os 13mm de cada lado, garantindo que as gavetas funcionem corretamente sem ajustes manuais."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Quais espessuras de MDF o Orbin suporta?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "O Orbin AI suporta chapas MDF e MDP de 15mm, 18mm e 25mm, seguindo as normas brasileiras de chapa 2750x1840mm com kerf de 3.2mm e margem de 50mm."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <script type="module" crossorigin src="/assets/index-lIBuOHWJ.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/react-TLfPbSU6.js">
+  <link rel="modulepreload" crossorigin href="/assets/socket-BcxXcwBL.js">
+  <link rel="stylesheet" crossorigin href="/assets/index-aSCtMOcE.css">
+</head>
+<body>
+  <div id="root"></div>
+</body>
 </html>

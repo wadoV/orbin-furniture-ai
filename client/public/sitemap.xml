@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+
+  <!-- Homepage / Landing -->
+  <url>
+    <loc>https://orbin.ai/</loc>
+    <lastmod>2026-05-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="pt-BR" href="https://orbin.ai/?lang=PT"/>
+    <xhtml:link rel="alternate" hreflang="es"    href="https://orbin.ai/?lang=ES"/>
+    <xhtml:link rel="alternate" hreflang="en"    href="https://orbin.ai/?lang=EN"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://orbin.ai/"/>
+  </url>
+
+  <!-- Blog / SEO long-tail pages -->
+  <url>
+    <loc>https://orbin.ai/blog/como-fazer-lista-de-corte-mdf</loc>
+    <lastmod>2026-05-31</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://orbin.ai/blog/software-marcenaria-lista-corte-automatica</loc>
+    <lastmod>2026-05-31</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://orbin.ai/blog/calculo-armario-embutido-mdf-18mm</loc>
+    <lastmod>2026-05-31</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://orbin.ai/blog/diseño-parametrico-muebles-cocina</loc>
+    <lastmod>2026-05-31</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://orbin.ai/blog/corredicas-telescopicas-caixa-tecnica-13mm</loc>
+    <lastmod>2026-05-31</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://orbin.ai/blog/normas-chapa-mdf-brasil-2750x1840</loc>
+    <lastmod>2026-05-31</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+</urlset>

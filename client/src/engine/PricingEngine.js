@@ -16,6 +16,66 @@
 
 import { MATERIALS_DB, HARDWARE_COSTS, getMaterialById } from '../data/materials.js'
 
+// ─── LIVE PRICES STATE & FETCHING ────────────────────────────────
+let LIVE_PRICES = null
+let LAST_UPDATED = null
+
+const fetchLivePrices = async () => {
+  try {
+    const apiBase = import.meta.env?.VITE_API_URL || ''
+    const response = await fetch(`${apiBase}/api/prices`)
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    const data = await response.json()
+    if (data && data.success && Array.isArray(data.prices) && data.prices.length > 0) {
+      const tempPrices = {}
+      data.prices.forEach(p => {
+        if (p.material_code && p.price_per_m2 != null) {
+          tempPrices[p.material_code] = {
+            price_per_m2: Number(p.price_per_m2),
+            display_name: p.display_name,
+            updated_at: p.updated_at
+          }
+        }
+      })
+      LIVE_PRICES = tempPrices
+
+      const dates = data.prices
+        .map(p => p.updated_at ? new Date(p.updated_at) : null)
+        .filter(d => d && !isNaN(d.getTime()))
+
+      if (dates.length > 0) {
+        const latestDate = new Date(Math.max(...dates))
+        const dd = String(latestDate.getDate()).padStart(2, '0')
+        const mm = String(latestDate.getMonth() + 1).padStart(2, '0')
+        const yyyy = latestDate.getFullYear()
+        LAST_UPDATED = `${dd}/${mm}/${yyyy}`
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('live-prices-loaded'))
+      }
+    }
+  } catch (err) {
+    console.warn('[PricingEngine] Dynamic prices failed to load, falling back silently:', err.message)
+  }
+}
+
+// Start price loading immediately on module import
+fetchLivePrices()
+
+export function getLatestPriceUpdateDate() {
+  return LAST_UPDATED
+}
+
+function getMaterialCostPerM2(material) {
+  if (LIVE_PRICES && LIVE_PRICES[material.id] !== undefined) {
+    return LIVE_PRICES[material.id].price_per_m2
+  }
+  return material.costPerM2
+}
+
 // ─── MATRIZ DE COSTOS DE HERRAJES ────────────────────────────────
 const HARDWARE_MATRIX = {
   hinge:        { unitCost: 3.50,  unit: 'un',  label: 'Bisagras'    },
@@ -34,28 +94,41 @@ const LABOR_PER_M2   = 18.00  // USD mano de obra por m² de panel
 // ─── INFERENCIA DE HERRAJES POR TIPO DE MÓDULO ───────────────────
 // Cada entrada define cuántas puertas/cajones/estantes tiene por defecto
 const MODULE_HARDWARE_PROFILE = {
-  // ─ COCINA ────────────────────────────────────────────
-  'COCINA_BASE_PUERTA':    { doors: 2, drawers: 0, shelves: 1, handles: 2 },
-  'COCINA_BASE_CAJONES':   { doors: 0, drawers: 3, shelves: 0, handles: 3 },
-  'COCINA_AEREO':          { doors: 2, drawers: 0, shelves: 2, handles: 2 },
-  'COCINA_TORRE':          { doors: 2, drawers: 2, shelves: 3, handles: 4 },
-  'COCINA_FREGADERO':      { doors: 2, drawers: 0, shelves: 0, handles: 2 },
+  // ─ COCINA — BASES ────────────────────────────────────
+  'COCINA_BASE_PUERTA':        { doors: 2, drawers: 0, shelves: 1, handles: 2 },
+  'COCINA_BASE_CAJONES':       { doors: 0, drawers: 3, shelves: 0, handles: 3 },
+  'COCINA_FREGADERO':          { doors: 2, drawers: 0, shelves: 0, handles: 2 },
+  'COCINA_TORRE':              { doors: 2, drawers: 2, shelves: 3, handles: 4 },
 
-  // ─ CUARTO / DORMITORIO ───────────────────────────────
-  'CUARTO_ROPERO':         { doors: 2, drawers: 0, shelves: 4, handles: 2 },
-  'CUARTO_CAJONERA':       { doors: 0, drawers: 4, shelves: 0, handles: 4 },
-  'CUARTO_ESTANTE':        { doors: 0, drawers: 0, shelves: 5, handles: 0 },
+  // ─ COCINA — AÉREOS (wall-mounted) ────────────────────
+  'COCINA_AEREO':              { doors: 2, drawers: 0, shelves: 2, handles: 2 },
+  'AEREO_COCINA_PUERTAS':      { doors: 2, drawers: 0, shelves: 1, handles: 2, wallPlugs: 4 },
+  'AEREO_COCINA_ABERTO':       { doors: 0, drawers: 0, shelves: 2, handles: 0, wallPlugs: 4 },
+  'AEREO_COCINA_ESQUINERO':    { doors: 1, drawers: 0, shelves: 2, handles: 1, wallPlugs: 4 },
 
-  // ─ BAÑO ──────────────────────────────────────────────
-  'BAÑO_VANITORY':         { doors: 2, drawers: 1, shelves: 1, handles: 3 },
-  'BAÑO_AEREO':            { doors: 2, drawers: 0, shelves: 1, handles: 2 },
+  // ─ BAÑO — BASES ──────────────────────────────────────
+  'BAÑO_VANITORY':             { doors: 2, drawers: 1, shelves: 1, handles: 3 },
 
-  // ─ SALA / GENÉRICO ───────────────────────────────────
-  'SALA_TV':               { doors: 2, drawers: 2, shelves: 3, handles: 4 },
-  'SALA_APARADOR':         { doors: 2, drawers: 0, shelves: 3, handles: 2 },
+  // ─ BAÑO — AÉREOS ─────────────────────────────────────
+  'BAÑO_AEREO':                { doors: 2, drawers: 0, shelves: 1, handles: 2, wallPlugs: 4 },
+  'AEREO_BANHEIRO_ESPELHO':    { doors: 1, drawers: 0, shelves: 2, handles: 1, wallPlugs: 4 },
+  'AEREO_BANHEIRO_ABERTO':     { doors: 0, drawers: 0, shelves: 3, handles: 0, wallPlugs: 4 },
+
+  // ─ SALA — AÉREOS ─────────────────────────────────────
+  'SALA_TV':                   { doors: 2, drawers: 2, shelves: 3, handles: 4 },
+  'SALA_APARADOR':             { doors: 2, drawers: 0, shelves: 3, handles: 2 },
+  'AEREO_SALA_TV':             { doors: 0, drawers: 0, shelves: 2, handles: 0, wallPlugs: 6 },
+  'AEREO_SALA_PRATELEIRA':     { doors: 0, drawers: 0, shelves: 1, handles: 0, wallPlugs: 4 },
+  'AEREO_SALA_APARADOR_ALTO':  { doors: 2, drawers: 0, shelves: 2, handles: 2, wallPlugs: 4 },
+
+  // ─ CUARTO / DORMITÓRIO ───────────────────────────────
+  'CUARTO_ROPERO':             { doors: 2, drawers: 0, shelves: 4, handles: 2 },
+  'CUARTO_CAJONERA':           { doors: 0, drawers: 4, shelves: 0, handles: 4 },
+  'CUARTO_ESTANTE':            { doors: 0, drawers: 0, shelves: 5, handles: 0 },
+  'AEREO_DORMITORIO_CABECERA': { doors: 0, drawers: 0, shelves: 2, handles: 0, wallPlugs: 4 },
 
   // ─ DEFAULT (módulo desconocido) ───────────────────────
-  'DEFAULT':               { doors: 1, drawers: 0, shelves: 2, handles: 1 },
+  'DEFAULT':                   { doors: 1, drawers: 0, shelves: 2, handles: 1 },
 }
 
 /**
@@ -132,16 +205,17 @@ export function calculateQuote(modules = [], margin = MARGIN_RATE) {
     const cfg        = mod.configuration
     const materialId = cfg.material || cfg.materialId || 'mdf_18'
     const material   = getMaterialById(materialId)
+    const costPerM2  = getMaterialCostPerM2(material)
 
     // 1. m² de paneles estructurales
     const panelM2      = calcPanelAreaM2(cfg)
-    const panelCost    = panelM2 * material.costPerM2
+    const panelCost    = panelM2 * costPerM2
 
     // Acumula por material
     if (!materialMap[materialId]) {
       materialMap[materialId] = {
         name:     material.fallback,
-        costPerM2: material.costPerM2,
+        costPerM2: costPerM2,
         m2:       0,
         cost:     0,
       }

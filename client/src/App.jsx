@@ -1,27 +1,29 @@
 // Orbin AI - Main App
-import { useState, useEffect, Suspense, Component } from 'react'
+import { useState, useEffect, Suspense, Component, lazy, useRef, useCallback } from 'react'
 import Header from './components/Header.jsx'
 import InputPanel from './components/InputPanel.jsx'
 import ResultPanel from './components/ResultPanel.jsx'
 import ChatPanel from './components/ChatPanel.jsx'
 import ProjectsPanel from './components/ProjectsPanel.jsx'
 import CarpentryAdvisor from './components/CarpentryAdvisor.jsx'
-import Viewer3D from './components/Viewer3D.jsx'
+const Viewer3D = lazy(() => import('./components/Viewer3D.jsx'))
 import ExportPanel from './components/ExportPanel.jsx'
 import MemoryPanel from './components/MemoryPanel.jsx'
 import DesignHealthPanel from './components/DesignHealthPanel.jsx'
 import WelcomeScreen from './components/WelcomeScreen.jsx'
-import PricingDisplay from './components/PricingDisplay.jsx'
+import OnboardingFlow from './components/OnboardingFlow.jsx'
+import OnboardingWizard from './components/OnboardingWizard.jsx'
 import MultiplayerLayer from './components/MultiplayerLayer.jsx'
 import ImageToParametricPanel from './components/ImageToParametricPanel.jsx'
 import { api } from './api/client.js'
+import { parseNaturalLanguage, buildOfflineReply } from './engine/offlineParser.js'
 import { initCollaboration, getSocket, disconnectCollaboration } from './engine/collaboration.js'
 import {
   loadMemory, saveMemory, saveVersion, revertToVersion,
   getVersionHistory, logPrompt, logAction, logExport,
   getRecentActions, generateProjectSummary, clearMemory
 } from './engine/projectMemory.js'
-import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users, Camera, Lock, Crown, AlertTriangle } from 'lucide-react'
+import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users, Camera, Lock, Crown, AlertTriangle, Eye, PanelLeft } from 'lucide-react'
 
 import { usePreferences } from './context/PreferencesContext.jsx'
 import { useUser } from './context/UserContext.jsx'
@@ -89,6 +91,10 @@ export default function App() {
   const { t } = usePreferences()
   const { isFree, canAddModule, canUseChat, planConfig } = useUser()
   const [planAlert, setPlanAlert] = useState(null)   // { message, description }
+  const [showExports, setShowExports] = useState(true)
+  // ★ PLANO EJECUTIVO: read-only capture ref — set by Viewer3D, consumed by ExportPanel
+  const captureWireframeRef = useRef(null)
+  const handleCaptureReady  = useCallback(fn => { captureWireframeRef.current = fn }, [])
   const [showWelcome, setShowWelcome] = useState(true)
   const [activeTab, setActiveTab] = useState('params')
   const [loading,   setLoading]   = useState(false)
@@ -98,12 +104,23 @@ export default function App() {
       return saved ? JSON.parse(saved) : []
     } catch { return [] }
   })
+  // ★ FIX: ref siempre actualizado para evitar stale closure en saveHistory/undo
+  const modulesRef = useRef([])
   const [history,   setHistory]   = useState([])
   const [redoStack, setRedoStack] = useState([])
   const [selectedModuleId, setSelectedModuleId] = useState(null)
   const [selectedPieceIds, setSelectedPieceIds] = useState(new Set())
   const [error,     setError]     = useState(null)
   const [show3D,    setShow3D]    = useState(true)
+  // ★ Server health tracking — enables offline fallback in handleSendMessage
+  const [serverOnline, setServerOnline] = useState(true)
+  const [mobileView, setMobileView] = useState('panel')
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    try { return !localStorage.getItem('orbin-onboarding-done') } catch { return false }
+  })
+  const [showOnboardingWizard, setShowOnboardingWizard] = useState(() => {
+    try { return !localStorage.getItem('orbin_onboarded') } catch { return false }
+  })
   const [showUndoToast, setShowUndoToast] = useState(false)
   const [chatMessages, setChatMessages] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
@@ -150,7 +167,24 @@ export default function App() {
     { id: 'export', label: t('tab_export'),    icon: Box },
   ]
 
+  // ★ Server health check — ping every 15s, enable offline fallback if unreachable
   useEffect(() => {
+    let mounted = true
+    const ping = async () => {
+      try {
+        const res = await fetch('/api/health', { method: 'GET', signal: AbortSignal.timeout(3000) })
+        if (mounted) setServerOnline(res.ok)
+      } catch {
+        if (mounted) setServerOnline(false)
+      }
+    }
+    ping()
+    const interval = setInterval(ping, 15000)
+    return () => { mounted = false; clearInterval(interval) }
+  }, [])
+
+  useEffect(() => {
+    modulesRef.current = modules  // ★ FIX: mantener ref sincronizado
     try {
       if (modules.length > 0) {
         localStorage.setItem('orbin-autosave', JSON.stringify(modules))
@@ -164,7 +198,7 @@ export default function App() {
   }, [modules])
 
   const saveHistory = (newModules, label, isRemote = false) => {
-    setHistory(prev => [...prev, modules].slice(-20))
+    setHistory(prev => [...prev, modulesRef.current].slice(-20))  // ★ FIX: usar ref para evitar stale closure
     setRedoStack([])
     setModules(newModules)
 
@@ -354,8 +388,39 @@ export default function App() {
     setLastPrompt(text)
     setChatMessages(prev => [...prev, { role: 'user', content: text }])
     const timers = AI_PHASES.map(p => setTimeout(() => setAiStatus(p.msg), p.delay))
+
+    // ★ OFFLINE FALLBACK: if server is unreachable, use client-side NL parser
+    if (!serverOnline) {
+      timers.forEach(clearTimeout)
+      setAiStatus('⚡ Modo offline...')
+      try {
+        const parsed = parseNaturalLanguage(text)
+        const reply  = buildOfflineReply(parsed)
+        setChatMessages(prev => [...prev, { role: 'assistant', content: reply, source: 'offline' }])
+        setServerOnline(false)
+        // Generate module from parsed params
+        const offlineDesign = {
+          id: 'offline-' + Date.now(),
+          type: parsed.params.moduleType || 'standard',
+          configuration: parsed.params,
+          pieces: [],
+          cutList: [],
+        }
+        handleChatDesign({ design: offlineDesign })
+        try { const mem = loadMemory(); logPrompt(mem, text, reply, 'offline', true); refreshMemory() } catch {}
+      } catch (e) {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: 'Erro no parser offline: ' + e.message, source: 'error' }])
+      } finally {
+        setAiStatus('')
+        setChatLoading(false)
+      }
+      return
+    }
+
+    // ★ ONLINE PATH: call backend with automatic offline fallback on network error
     try {
       const data = await api.chatDesign(text, 'default-session')
+      setServerOnline(true)
       setChatMessages(prev => [...prev, {
         role: 'assistant',
         content: data.reply,
@@ -366,15 +431,30 @@ export default function App() {
         logPrompt(mem, text, data.reply, data.source || 'unknown', !!data.design)
         refreshMemory()
       } catch {}
-      if (data.design) {
-        handleChatDesign({ design: data.design })
-      }
+      if (data.design) handleChatDesign({ design: data.design })
     } catch (err) {
-      setChatMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Error: ' + err.message,
-        source: 'error'
-      }])
+      // Network error → switch to offline mode immediately for next message
+      const isNetworkError = err.message.includes('conectar') || err.message.includes('connect') || err.message.includes('fetch')
+      if (isNetworkError) {
+        setServerOnline(false)
+        const parsed = parseNaturalLanguage(text)
+        const reply  = buildOfflineReply(parsed)
+        setChatMessages(prev => [...prev, { role: 'assistant', content: reply, source: 'offline' }])
+        const offlineDesign = {
+          id: 'offline-' + Date.now(),
+          type: parsed.params.moduleType || 'standard',
+          configuration: parsed.params,
+          pieces: [],
+          cutList: [],
+        }
+        handleChatDesign({ design: offlineDesign })
+      } else {
+        setChatMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'Error: ' + err.message,
+          source: 'error'
+        }])
+      }
     } finally {
       timers.forEach(clearTimeout)
       setAiStatus('')
@@ -454,9 +534,11 @@ export default function App() {
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (isInput) return
-        if (selectedPieceIds.size > 0) {
+        // ★ FIX: si hay un módulo seleccionado, Delete lo borra directamente.
+        // No requiere deseleccionar piezas primero.
+        if (selectedModuleId) {
+          e.preventDefault()
           setSelectedPieceIds(new Set())
-        } else if (selectedModuleId) {
           handleDeleteModule(selectedModuleId)
         }
       }
@@ -512,57 +594,92 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-[#0D0D0D]">
-        {/* ── Dynamic Quoting — overlay esquina superior izquierda ── */}
-        <PricingDisplay modules={modules} currency="USD" />
-        <Header />
-        <main className="max-w-screen-2xl mx-auto px-4 py-6">
-          <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-6">
-            <aside className="xl:sticky xl:top-20 xl:self-start space-y-4 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-1 pb-4 scrollbar-thin scrollbar-thumb-surface-3 scrollbar-track-transparent">
-              <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-white leading-tight">
+        {showOnboardingWizard && (
+          <OnboardingWizard
+            onComplete={(payload, startTab) => {
+              try { localStorage.setItem('orbin_onboarded', '1') } catch {}
+              setShowOnboardingWizard(false)
+              if (startTab) setActiveTab(startTab)
+              handleGenerate(payload)
+            }}
+            onSkip={() => {
+              try { localStorage.setItem('orbin_onboarded', '1') } catch {}
+              setShowOnboardingWizard(false)
+            }}
+          />
+        )}
+        {/* Header containing inline pricing dropdown */}
+        <Header modules={modules} serverOnline={serverOnline} />
+        <main className="max-w-screen-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24 xl:pb-6">
+          {/* Mobile view toggle */}
+          <div className="xl:hidden flex items-center justify-between mb-3">
+            <span className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
+              {mobileView === 'panel' ? <><PanelLeft size={13} className="text-primary" /> Panel</> : <><Eye size={13} className="text-primary" /> Visor 3D</>}
+            </span>
+            <button onClick={() => setMobileView(v => v === 'panel' ? 'viewer' : 'panel')}
+              className="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/25 rounded-xl text-[10px] font-black text-primary uppercase tracking-widest hover:bg-primary/20 transition-all active:scale-95">
+              {mobileView === 'panel' ? <><Eye size={11} /> Ver 3D</> : <><PanelLeft size={11} /> Panel</>}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-4 xl:gap-6">
+            <aside className={`xl:sticky xl:top-20 xl:self-start space-y-4 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-1 pb-4 scrollbar-thin scrollbar-thumb-surface-3 scrollbar-track-transparent ${mobileView === "viewer" ? "hidden xl:block" : "block"}`}>
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <h1 className="text-xl font-black text-white leading-tight">
                   {(t('title') || '').split('—')[0]}<br />
                   <span className="text-primary">{'—'} {(t('title') || '').split('—')[1]}</span>
                 </h1>
+                {/* ── Plan badge ──────────────────────────────────────── */}
+                {isFree && (
+                  <a href="/register?plan=pro"
+                     className="flex items-center gap-1 px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all"
+                  >
+                    <Crown size={9} /> Free
+                  </a>
+                )}
+                {!isFree && (
+                  <span className="flex items-center gap-1 px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-[9px] font-black uppercase tracking-widest">
+                    <Crown size={9} /> {planConfig?.id === 'enterprise' ? 'Enterprise' : 'Pro'}
+                  </span>
+                )}
+              </div>
+
+              {/* Toolbar Row */}
+              <div className="flex items-center justify-between bg-zinc-950/40 p-2 rounded-xl border border-zinc-800/40 gap-2">
+                <button onClick={() => setShowExports(v => !v)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border border-white/5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all"
+                  title="Abrir/Cerrar Listas y Documentos">
+                  {showExports ? 'Ocultar Listas' : 'Ver Listas'}
+                </button>
                 <div className="flex items-center gap-1">
-                  {/* ── Plan badge ──────────────────────────────────────── */}
-                  {isFree && (
-                    <a href="/register?plan=pro"
-                       className="hidden sm:flex items-center gap-1 px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all mr-1"
-                    >
-                      <Crown size={9} /> Free — Upgrade
-                    </a>
-                  )}
-                  {!isFree && (
-                    <span className="hidden sm:flex items-center gap-1 px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-[9px] font-black uppercase tracking-widest mr-1">
-                      <Crown size={9} /> {planConfig?.id === 'enterprise' ? 'Enterprise' : 'Pro'}
-                    </span>
-                  )}
-                  <button onClick={handleShareRoom}
-                    className={`p-2 rounded-xl text-muted transition-all ${roomId ? 'text-primary bg-primary/10 hover:bg-primary/20' : 'hover:text-white hover:bg-surface-3'}`}
-                    title={roomId ? 'Copiar Enlace de Sala' : 'Crear Sala Compartida'}>
-                    <Users size={16} />
-                  </button>
                   <button onClick={undo} disabled={history.length === 0}
-                    className="p-2 rounded-xl text-muted hover:text-white hover:bg-surface-3 disabled:opacity-20 disabled:pointer-events-none transition-all"
-                    title={t('undo') || 'Deshacer'}>
-                    <Undo2 size={16} />
+                    className="flex items-center gap-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border border-white/5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all disabled:opacity-20 disabled:pointer-events-none"
+                    title="Deshacer (Ctrl+Z)">
+                    <Undo2 size={12} /> Deshacer
                   </button>
                   <button onClick={redo} disabled={redoStack.length === 0}
-                    className="p-2 rounded-xl text-muted hover:text-white hover:bg-surface-3 disabled:opacity-20 disabled:pointer-events-none transition-all"
-                    title={t('redo') || 'Rehacer'}>
-                    <Redo2 size={16} />
+                    className="p-2 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border border-white/5 rounded-lg transition-all disabled:opacity-20 disabled:pointer-events-none"
+                    title="Rehacer">
+                    <Redo2 size={14} />
+                  </button>
+                  <button onClick={handleShareRoom}
+                    className={`p-2 rounded-lg border transition-all ${roomId ? 'text-primary bg-primary/10 border-primary/20' : 'text-white/70 hover:text-white bg-white/5 border-white/5'}`}
+                    title={roomId ? 'Copiar Enlace de Sala' : 'Crear Sala Compartida'}>
+                    <Users size={14} />
                   </button>
                 </div>
               </div>
 
-              <div className="flex gap-1 bg-surface-3 p-1 rounded-lg" role="tablist">
-                {TABS.map(({ id, label, icon: Icon }) => (
-                  <button key={id} onClick={() => setActiveTab(id)}
-                    className={'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-all ' +
-                      (activeTab === id ? 'bg-primary text-black shadow-sm' : 'text-muted hover:text-white hover:bg-surface-2')}>
-                    <Icon size={12} /> {label}
-                  </button>
-                ))}
+              <div className="bg-surface-3 p-1 rounded-xl" role="tablist">
+                <div className="grid grid-cols-2 gap-1.5">
+                  {TABS.map(({ id, label, icon: Icon }) => (
+                    <button key={id} onClick={() => setActiveTab(id)}
+                      className={'flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ' +
+                        (activeTab === id ? 'bg-primary text-black shadow-sm' : 'text-muted hover:text-white hover:bg-surface-2') +
+                        (id === 'export' ? ' col-span-2' : '')}>
+                      <Icon size={12} /> {label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div id={'panel-' + activeTab}>
@@ -604,7 +721,12 @@ export default function App() {
                 )}
               </div>
               {currentResult && <CarpentryAdvisor design={currentResult} />}
-              {modules.length > 0 && <ExportPanel modules={modules} />}
+              {modules.length > 0 && showExports && (
+                <ExportPanel
+                  modules={modules}
+                  captureWireframe={() => captureWireframeRef.current?.()}
+                />
+              )}
 
               {modules.length > 0 && <DesignHealthPanel modules={modules} />}
 
@@ -617,9 +739,15 @@ export default function App() {
               />
             </aside>
 
-            <div className="space-y-6">
-              <div className="card p-0 overflow-hidden border-primary/10 shadow-2xl shadow-primary/5 min-h-[600px] relative">
+            <div className={`space-y-4 xl:space-y-6 ${mobileView === 'panel' ? 'hidden xl:block' : 'block'}`}>
+              <div className="card p-0 overflow-hidden border-primary/10 shadow-2xl shadow-primary/5 relative" style={{ minHeight: 'clamp(280px, 50vw, 600px)' }}>
                 {show3D ? (
+                  <Suspense fallback={
+                    <div className="flex items-center justify-center h-full min-h-[280px] gap-3 text-muted">
+                      <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                      <span className="text-[11px] font-bold uppercase tracking-widest">Cargando 3D...</span>
+                    </div>
+                  }>
                   <Viewer3D
                     modules={modules}
                     selectedModuleId={selectedModuleId}
@@ -628,6 +756,7 @@ export default function App() {
                     onSelectPiece={setSelectedPieceIds}
                     onDeleteModule={handleDeleteModule}
                     onUpdateModule={handleUpdateModule}
+                    onCaptureReady={handleCaptureReady}
                     onAddModule={() => {
                       setActiveTab('params')
                       setTimeout(() => {
@@ -636,6 +765,7 @@ export default function App() {
                       }, 80)
                     }}
                   />
+                  </Suspense>
                 ) : (
                   <div className="w-full h-[600px] flex flex-col items-center justify-center gap-4 text-muted bg-surface/50 backdrop-blur-sm border-dashed border-2 border-white/5">
                     <Box size={48} className="opacity-20" />
@@ -645,16 +775,18 @@ export default function App() {
                 )}
               </div>
 
-              <div id="results">
-                <ResultPanel
-                  design={currentResult}
-                  selectedPieceIds={selectedPieceIds}
-                  onSelectPieces={setSelectedPieceIds}
-                  onDeleteModule={handleDeleteModule}
-                  onDeletePiece={handleDeletePiece}
-                  onSave={() => console.log('Saving module', currentResult.id)}
-                />
-              </div>
+              {showExports && (
+                <div id="results">
+                  <ResultPanel
+                    design={currentResult}
+                    selectedPieceIds={selectedPieceIds}
+                    onSelectPieces={setSelectedPieceIds}
+                    onDeleteModule={handleDeleteModule}
+                    onDeletePiece={handleDeletePiece}
+                    onSave={() => console.log('Saving module', currentResult.id)}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </main>
@@ -677,17 +809,8 @@ export default function App() {
           </div>
         )}
 
-        <footer className="max-w-screen-2xl mx-auto px-4 py-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-muted">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center">
-              <span className="text-[10px] font-black text-black">O</span>
-            </div>
-            <span className="text-xs font-bold tracking-widest uppercase">Orbin Furniture AI — v2.7.0</span>
-          </div>
-          <p className="text-[10px] uppercase tracking-widest opacity-50">2026 Orbin Technologies. Design for manufacture.</p>
-        </footer>
+
       </div>
-      {socket && <MultiplayerLayer socket={socket} />}
     </ErrorBoundary>
   )
 }

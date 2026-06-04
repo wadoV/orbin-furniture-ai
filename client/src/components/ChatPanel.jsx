@@ -16,6 +16,7 @@ const MODEL_BADGES = {
   'ollama-chat':              { label: 'Ollama Local',   color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
   'claude':                   { label: 'Claude Premium', color: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
   'regex-fallback':           { label: 'Offline Mode',   color: 'bg-orange-500/15 text-orange-400 border-orange-500/30' },
+  'offline':                  { label: '⚡ Offline',     color: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
   'error':                    { label: 'Error',          color: 'bg-red-500/15 text-red-400 border-red-500/30' },
   'unknown':                  { label: 'AI',             color: 'bg-white/10 text-white/60 border-white/10' },
 }
@@ -139,7 +140,7 @@ export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, 
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-14rem)] bg-surface/40 rounded-3xl border border-white/5 overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-14rem)] bg-zinc-900/60 backdrop-blur-lg border-r border-zinc-800/50 rounded-3xl overflow-hidden">
 
       {/* ── Chat Header ─────────────────────────────────────────────── */}
       <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-surface-3/30">
@@ -148,7 +149,7 @@ export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, 
             <Bot size={20} className="text-primary" />
           </div>
           <div>
-            <h3 className="text-xs font-black text-white uppercase tracking-widest">{t('design_assistant')}</h3>
+            <h3 className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500">{t('design_assistant')}</h3>
             <div className="flex items-center gap-1.5">
               <span className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-primary animate-pulse' : 'bg-success animate-pulse'}`} />
               <span className={`text-[9px] font-black uppercase tracking-widest opacity-80 ${loading ? 'text-primary' : 'text-success'}`}>

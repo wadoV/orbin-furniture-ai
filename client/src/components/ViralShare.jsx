@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Share2, Camera, Check } from 'lucide-react';
+import { trackEvent, EVENTS } from '../lib/analytics.js';
 
 export default function ViralShare({ renderer, scene, camera }) {
   const [isCopied, setIsCopied] = useState(false);
@@ -23,6 +24,7 @@ export default function ViralShare({ renderer, scene, camera }) {
     const deepLink = `${window.location.origin}/shared/${Date.now()}`;
     navigator.clipboard.writeText(deepLink);
     setIsCopied(true);
+    trackEvent(EVENTS.ROOM_SHARED, { deepLink });
     setTimeout(() => setIsCopied(false), 2000);
   };
 
