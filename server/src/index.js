@@ -190,12 +190,30 @@ const io = new Server(server, {
 })
 
 io.on('connection', (socket) => {
-  // Join a collaborative room
+  // Join a collaborative room (hardened: validate room token, cap size, sanitize)
   socket.on('join-room', (roomId, userProfile) => {
+    // ── Room id must be a strong, unguessable capability token ──
+    const ROOM_RE = /^orbin-[A-Za-z0-9]{12,64}$/
+    if (typeof roomId !== 'string' || !ROOM_RE.test(roomId)) {
+      socket.emit('join-error', { reason: 'invalid_room' })
+      return
+    }
+    // ── Cap participants per room to prevent abuse / resource exhaustion ──
+    const MAX_PER_ROOM = 12
+    const current = io.sockets.adapter.rooms.get(roomId)
+    if (current && current.size >= MAX_PER_ROOM) {
+      socket.emit('join-error', { reason: 'room_full' })
+      return
+    }
+    // ── Sanitize user profile ──
+    const name = (userProfile && typeof userProfile.name === 'string')
+      ? (userProfile.name.trim().slice(0, 40) || 'Invitado')
+      : 'Invitado'
+
     socket.join(roomId)
     socket.roomId = roomId
-    socket.userProfile = userProfile || { name: 'Anónimo' }
-    
+    socket.userProfile = { name }
+
     // Broadcast to others in room that a user joined
     socket.to(roomId).emit('user-joined', { id: socket.id, profile: socket.userProfile })
   })

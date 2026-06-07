@@ -106,6 +106,8 @@ export default function App() {
   })
   // ★ FIX: ref siempre actualizado para evitar stale closure en saveHistory/undo
   const modulesRef = useRef([])
+  // ★ FIX UNDO: coalescing de ediciones rápidas (sliders/inputs) en UN solo paso de historial
+  const lastEditRef = useRef({ key: null, time: 0 })
   const [history,   setHistory]   = useState([])
   const [redoStack, setRedoStack] = useState([])
   const [selectedModuleId, setSelectedModuleId] = useState(null)
@@ -141,7 +143,7 @@ export default function App() {
     if (room) {
       let userName = localStorage.getItem('orbin-username')
       if (!userName) {
-        userName = prompt('Estás ingresando a una sala compartida. ¿Cuál es tu nombre?') || 'Invitado'
+        userName = prompt(t('room_enter_name')) || 'Invitado'
         localStorage.setItem('orbin-username', userName)
       }
       const sock = initCollaboration(room, userName)
@@ -198,7 +200,18 @@ export default function App() {
   }, [modules])
 
   const saveHistory = (newModules, label, isRemote = false) => {
-    setHistory(prev => [...prev, modulesRef.current].slice(-20))  // ★ FIX: usar ref para evitar stale closure
+    // ★ FIX UNDO: las ediciones marcadas con '~' (sliders/inputs continuos) se agrupan.
+    //   Si la última edición fue al MISMO destino dentro de 700ms, NO empujamos un nuevo
+    //   snapshot — así un Ctrl+Z deshace toda la ráfaga (ej. teclear "1500"), no carácter a carácter.
+    const now = Date.now()
+    const isCoalescable = typeof label === 'string' && label.startsWith('~')
+    const sameAsLast = isCoalescable
+      && lastEditRef.current.key === label
+      && (now - lastEditRef.current.time) < 700
+    if (!sameAsLast) {
+      setHistory(prev => [...prev, modulesRef.current].slice(-50))  // ★ FIX: ref evita stale closure; cap 50
+    }
+    lastEditRef.current = { key: isCoalescable ? label : null, time: now }
     setRedoStack([])
     setModules(newModules)
 
@@ -310,10 +323,10 @@ export default function App() {
       setActiveTab('params')
       
       if (analysisResult.obstacles && analysisResult.obstacles.length > 0) {
-        setTimeout(() => alert(`AI Notó los siguientes obstáculos:\n\n- ${analysisResult.obstacles.join('\n- ')}`), 500)
+        setTimeout(() => alert(`${t('vision_obstacles_title')}\n\n- ${analysisResult.obstacles.join('\n- ')}`), 500)
       }
     } catch (err) {
-      alert(err.message || 'Error aplicando diseño de IA Vision')
+      alert(err.message || t('vision_apply_error'))
     }
   }
 
@@ -464,7 +477,11 @@ export default function App() {
 
   const handleUpdateModule = (id, newConfig) => {
     if (!id) return
-    saveHistory(modules.map(m => m.id === id ? { ...m, configuration: { ...m.configuration, ...newConfig } } : m))
+    // ★ FIX UNDO: etiqueta coalescable por módulo → ráfaga de cambios = 1 paso de Ctrl+Z
+    saveHistory(
+      modules.map(m => m.id === id ? { ...m, configuration: { ...m.configuration, ...newConfig } } : m),
+      '~edit:' + id
+    )
   }
 
   // ★ Delete a single piece from a module — undoable with Ctrl+Z
@@ -563,9 +580,13 @@ export default function App() {
   const handleShareRoom = () => {
     if (roomId) {
       navigator.clipboard.writeText(window.location.href)
-      alert('Enlace de la sala copiado al portapapeles!')
+      alert(t('room_link_copied'))
     } else {
-      const newRoom = 'orbin-' + Math.random().toString(36).substr(2, 6)
+      // ★ SEG: ID de sala como capability-token inadivinable (~32 hex) en vez de 6 chars
+      const _rand = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID().replace(/-/g, '')
+        : (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).slice(0, 24)
+      const newRoom = 'orbin-' + _rand
       const url = new URL(window.location.href)
       url.searchParams.set('room', newRoom)
       window.location.href = url.toString()

@@ -107,7 +107,7 @@ function MenuItem({ icon: Icon, label, onClick, accent, danger }) {
 
 function UserDropdown({ onClose, onUpgrade, onSettings }) {
   const { user, plan, logout } = useUser()
-  const { lang, setLang } = usePreferences()
+  const { lang, setLang, t } = usePreferences()
   const navigate = useNavigate()
 
   const LABEL = { free: 'Free', pro: 'Pro', enterprise: 'Industrial' }
@@ -175,7 +175,7 @@ function SettingsModal({ onClose }) {
       phone,
       address
     }, saveAsDefault)
-    alert('Configuración de empresa guardada correctamente.')
+    alert(t('company_saved_ok'))
   }
 
   return (
@@ -272,7 +272,7 @@ function SettingsModal({ onClose }) {
               <p className="text-xs text-muted leading-relaxed">
                 Administre sus detalles de facturación, métodos de pago y descargue sus facturas anteriores desde nuestro portal de Stripe seguro.
               </p>
-              <button type="button" onClick={() => alert('Redirigiendo a Stripe Portal (Simulado)...')}
+              <button type="button" onClick={() => alert(t('stripe_redirect_sim'))}
                 className="btn-primary inline-flex items-center gap-2 px-6 py-3 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/10">
                 <Zap size={12} /> Abrir Portal de Facturación
               </button>

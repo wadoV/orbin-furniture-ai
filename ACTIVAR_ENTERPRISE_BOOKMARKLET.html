@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Orbin AI — Activador Enterprise</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#0D0D0D;color:#ddd;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:24px;padding:24px}
+  .card{background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:36px;max-width:480px;width:100%;text-align:center}
+  h2{color:#F5A623;font-size:20px;margin-bottom:8px}
+  p{color:#888;font-size:13px;line-height:1.6;margin-bottom:20px}
+  .bookmarklet{display:inline-block;padding:14px 28px;background:#F5A623;color:#000;font-weight:900;font-size:13px;text-decoration:none;border-radius:14px;cursor:grab;user-select:none;letter-spacing:1px}
+  .bookmarklet:active{cursor:grabbing}
+  .step{background:#111;border:1px solid #222;border-radius:12px;padding:12px 16px;margin-top:12px;text-align:left;font-size:12px;color:#aaa;line-height:1.8}
+  .step b{color:#F5A623}
+  .alt{margin-top:24px;padding:16px;background:#0f1a0f;border:1px solid #10b98130;border-radius:12px}
+  .alt p{color:#34d399;margin:0;font-size:12px}
+  button{margin-top:12px;padding:10px 20px;background:#10b981;color:#000;border:none;border-radius:10px;font-weight:800;font-size:12px;cursor:pointer;width:100%}
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>⚡ Orbin AI — Activador Enterprise</h2>
+  <p>Dos opciones. Elige la más rápida para ti.</p>
+
+  <div class="step">
+    <b>OPCIÓN 1 — Bookmarklet (arrastra a tu barra de favoritos)</b><br>
+    Abre <code>localhost:5173</code> → haz clic en el bookmark → F5
+  </div>
+
+  <br>
+  <a class="bookmarklet" href="javascript:(function(){localStorage.setItem('orbin-user-session',JSON.stringify({id:'DIR-'+Date.now(),name:'Eduardo Ventura',email:'theboy575@gmail.com',plan:'enterprise',company_name:'Marcenaria Orbin Pro',isLoggedIn:true}));localStorage.removeItem('orbin-autosave');alert('Enterprise activado. Recarga la pagina (F5)');location.reload()})();" title="Activar Enterprise Orbin AI">
+    ⚡ Activar Enterprise Orbin AI
+  </a>
+  <p style="font-size:11px;color:#555;margin-top:8px">Arrastra este botón a tu barra de favoritos de Chrome</p>
+
+  <div class="alt">
+    <p><b>OPCIÓN 2 — Botón directo (si localhost:5173 ya está abierto)</b></p>
+    <button onclick="activar()">⚡ Activar Enterprise en esta pestaña</button>
+    <p id="status" style="margin-top:8px;font-size:11px;color:#888"></p>
+  </div>
+</div>
+
+<script>
+function activar() {
+  try {
+    localStorage.setItem('orbin-user-session', JSON.stringify({
+      id: 'DIR-' + Date.now(),
+      name: 'Eduardo Ventura',
+      email: 'theboy575@gmail.com',
+      plan: 'enterprise',
+      company_name: 'Marcenaria Orbin Pro',
+      isLoggedIn: true
+    }));
+    localStorage.removeItem('orbin-autosave');
+    document.getElementById('status').textContent = '✅ Hecho. Ahora abre localhost:5173 y recarga (F5)';
+    document.getElementById('status').style.color = '#4ade80';
+  } catch(e) {
+    document.getElementById('status').textContent = 'Error: ' + e.message;
+    document.getElementById('status').style.color = '#f87171';
+  }
+}
+</script>
+</body>
+</html>

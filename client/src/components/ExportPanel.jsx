@@ -110,240 +110,241 @@ function extractPieces(modules) {
   })
 }
 
-// ── PLANO EJECUTIVO 2D ─────────────────────────────────────────────────────────
+// ── PLANO EJECUTIVO 2D — Alzado frontal vectorial MULTI-MÓDULO ───────────────────
+// v3.0: Dibuja TODOS los módulos del proyecto en alzado a escala, lado a lado,
+//       con cota individual por módulo (ej. 1500, 500), cota TOTAL y cota de altura.
+//       Determinístico (vector puro, sin depender del screenshot 3D).
 async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, companySettings }) {
-  const titles = {
-    PT: 'PLANO EXECUTIVO', ES: 'PLANO EJECUTIVO', EN: 'EXECUTIVE PLAN'
-  }
+  const titles = { PT: 'PLANO EXECUTIVO', ES: 'PLANO EJECUTIVO', EN: 'EXECUTIVE PLAN' }
   const L = ['PT','ES','EN'].includes(lang) ? lang : 'ES'
-  
-  // Clean design margins: 10mm
+
   const MARGIN = 10
   const A4_W = 297
   const A4_H = 210
-  const ROT_W = 50 // Cuadro de rotulación (50mm width)
-  const ROT_X = A4_W - MARGIN - ROT_W // 237mm
-  
+  const ROT_W = 50                     // Cuadro de rotulación (carátula)
+  const ROT_X = A4_W - MARGIN - ROT_W  // 237mm
+
   const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' })
-  const mod = modules[0] || {}
-  const dims = getModuleDims(mod)
+  const list = (modules && modules.length) ? modules : [{}]
   const company = companySettings?.name || user?.company_name || user?.name || 'Orbin AI'
-  const modId = mod.id || mod.name || 'MOD-001'
-  const dimStr = dims.W ? `${dims.W} × ${dims.H} × ${dims.D} mm` : 'N/D'
 
-  // Outer border - clean architectural frame
-  doc.setDrawColor(30, 30, 30)
-  doc.setLineWidth(0.35)
+  // ── 1. Layout real (mm) de todos los módulos lado a lado ────────────────────
+  const items = list.map((m, idx) => {
+    const c = m.configuration || m || {}
+    return {
+      c,
+      w: c.width  || 600,
+      h: c.height || 720,
+      d: c.depth  || 580,
+      baseY: (c.moduleType === 'aereo') ? (c.mountHeight || 1400) : 0,
+      id: m.id || m.name || `MOD-${String(idx+1).padStart(2,'0')}`,
+    }
+  })
+  const totalW = items.reduce((s, i) => s + i.w, 0)
+  const maxTop = Math.max(...items.map(i => i.baseY + i.h))
+  const maxD   = Math.max(...items.map(i => i.d))
+  const dimStr = `${totalW} × ${maxTop} × ${maxD} mm`
+  const compText = items.length === 1
+    ? `${items[0].id} — ${String(list[0].type || items[0].c.moduleType || 'standard').toUpperCase()}`
+    : `${items.length} MÓDULOS`
+
+  // ── 2. Área de dibujo (a la izquierda de la carátula) y escala ──────────────
+  const leftPad = 22, rightPad = 8, topPad = 16, botPad = 30
+  const usableX0 = MARGIN + leftPad
+  const usableX1 = (ROT_X - 6) - rightPad
+  const usableW  = usableX1 - usableX0
+  const usableY0 = MARGIN + topPad
+  const usableY1 = A4_H - MARGIN - botPad
+  const usableH  = usableY1 - usableY0
+
+  const scale = Math.min(usableW / totalW, usableH / maxTop)
+  const drawingW = totalW * scale
+  const drawingH = maxTop * scale
+  const startX = usableX0 + (usableW - drawingW) / 2
+  const floorY = usableY1 - (usableH - drawingH) / 2
+  const PX = x => startX + x * scale
+  const PY = y => floorY - y * scale
+  const scaleDenom = Math.max(1, Math.round(1 / scale))
+  const scaleText = `E 1:${scaleDenom}`
+
+  // ── 3. Marco + carátula ─────────────────────────────────────────────────────
+  doc.setDrawColor(30, 30, 30); doc.setLineWidth(0.35)
   doc.rect(MARGIN, MARGIN, A4_W - 2 * MARGIN, A4_H - 2 * MARGIN)
-
-  // Separator vertical line for Cuadro de Rotulación (Carátula)
   doc.line(ROT_X, MARGIN, ROT_X, A4_H - MARGIN)
 
-  // Rotulación subdivision lines
   doc.setLineWidth(0.176)
-  
-  // heights of each section in the carátula (total 190mm)
   const heights = [20, 25, 25, 25, 25, 25, 45]
   let currentY = MARGIN
-  
-  // Draw inner divisions
   for (let i = 0; i < heights.length - 1; i++) {
     currentY += heights[i]
     doc.line(ROT_X, currentY, ROT_X + ROT_W, currentY)
   }
 
-  // Draw text inside each block
-  doc.setFont('helvetica', 'normal')
-  
-  // Block 1: Header/Title (20mm height)
-  doc.setFontSize(10)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(30, 30, 30)
+  // Block 1: Título
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30)
   doc.text(titles[L], ROT_X + ROT_W / 2, MARGIN + 12, { align: 'center' })
 
-  // Block 2: PROYECTO (25mm height)
+  // Block 2: PROYECTO
   let y = MARGIN + 20
-  doc.setFontSize(6)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(100, 100, 100)
+  doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100)
   doc.text('PROYECTO', ROT_X + 4, y + 6)
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(30, 30, 30)
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30)
   doc.text('Orbin AI Modular System', ROT_X + 4, y + 14)
 
-  // Block 3: EMPRESA (25mm height)
+  // Block 3: EMPRESA
   y += 25
-  doc.setFontSize(6)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(100, 100, 100)
+  doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100)
   doc.text('EMPRESA', ROT_X + 4, y + 5)
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(30, 30, 30)
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30)
   doc.text(doc.splitTextToSize(company.toUpperCase(), ROT_W - 8), ROT_X + 4, y + 11)
-
-  // Show Phone and Address if present
-  doc.setFontSize(5)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(100, 100, 100)
+  doc.setFontSize(5); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100)
   let extraY = y + 16
-  if (companySettings?.phone) {
-    doc.text(`TEL: ${companySettings.phone}`, ROT_X + 4, extraY)
-    extraY += 3.5
-  }
+  if (companySettings?.phone) { doc.text(`TEL: ${companySettings.phone}`, ROT_X + 4, extraY); extraY += 3.5 }
   if (companySettings?.address) {
     doc.text(`DIR: ${doc.splitTextToSize(companySettings.address.toUpperCase(), ROT_W - 8)[0] || companySettings.address}`, ROT_X + 4, extraY)
   }
 
-  // Block 4: COMPONENTE (25mm height)
+  // Block 4: COMPONENTE
   y += 25
-  doc.setFontSize(6)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(100, 100, 100)
+  doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100)
   doc.text('COMPONENTE', ROT_X + 4, y + 6)
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(30, 30, 30)
-  const compText = `${modId} — ${String(mod.type || 'standard').toUpperCase()}`
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30)
   doc.text(doc.splitTextToSize(compText, ROT_W - 8), ROT_X + 4, y + 14)
 
-  // Block 5: DIMENSIONES (25mm height)
+  // Block 5: DIMENSIONES (totales del conjunto)
   y += 25
-  doc.setFontSize(6)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(100, 100, 100)
-  doc.text('DIMENSIONES', ROT_X + 4, y + 6)
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(30, 30, 30)
+  doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100)
+  doc.text('DIMENSIONES (L×A×P)', ROT_X + 4, y + 6)
+  doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30)
   doc.text(dimStr, ROT_X + 4, y + 14)
 
-  // Calculate paper scales
-  const imgW = 180
-  const imgH = 135
-  const aspect = imgW / imgH
-  const modAspect = dims.W / dims.H
-  let modulePaperW, modulePaperH
-  if (modAspect > aspect) {
-    modulePaperW = imgW * 0.85
-    modulePaperH = modulePaperW / modAspect
-  } else {
-    modulePaperH = imgH * 0.85
-    modulePaperW = modulePaperH * modAspect
-  }
-  const scaleFactor = dims.W / modulePaperW
-  const scaleText = `E 1:${Math.round(scaleFactor)}`
-
-  // Block 6: FECHA & ESCALA (25mm height)
+  // Block 6: FECHA & ESCALA
   y += 25
-  doc.setFontSize(6)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(100, 100, 100)
+  doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100)
   doc.text('FECHA', ROT_X + 4, y + 6)
   doc.text('ESCALA', ROT_X + ROT_W / 2 + 4, y + 6)
-  doc.setFontSize(7.5)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(30, 30, 30)
+  doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30)
   doc.text(fmtDate(), ROT_X + 4, y + 14)
   doc.text(scaleText, ROT_X + ROT_W / 2 + 4, y + 14)
-  // vertical separator line for date/scale inside rotulación
   doc.setLineWidth(0.176)
   doc.line(ROT_X + ROT_W / 2, y, ROT_X + ROT_W / 2, y + 25)
 
-  // Block 7: Logo Footer (45mm height)
+  // Block 7: Logo Footer
   y += 25
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(245, 166, 35)
+  doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35)
   doc.text('ORBIN AI', ROT_X + ROT_W / 2, y + 20, { align: 'center' })
-  doc.setFontSize(6)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(120, 120, 120)
+  doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(120, 120, 120)
   doc.text('orbin.ai', ROT_X + ROT_W / 2, y + 26, { align: 'center' })
 
-  // ── DRAWING AREA ────────────────────────────────────────────────────────────
-  // Image layout bounding box
-  const imgX = MARGIN + (ROT_X - MARGIN - imgW) / 2
-  const imgY = MARGIN + (A4_H - 2 * MARGIN - imgH) / 2
+  // ── 4. ALZADO FRONTAL VECTORIAL — todos los módulos ─────────────────────────
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(30, 30, 30)
+  doc.text(`ALZADO FRONTAL — ${items.length} ${items.length === 1 ? 'MÓDULO' : 'MÓDULOS'}`, MARGIN + 4, MARGIN + 8)
 
-  if (typeof captureWireframe === 'function') {
-    const dataURL = captureWireframe()
-    if (dataURL) {
-      const img = new Image(); img.src = dataURL
-      const cvs = document.createElement('canvas'); cvs.width=1600; cvs.height=1200
-      const ctx = cvs.getContext('2d')
-      await new Promise(res => { img.onload=res; img.onerror=res })
-      ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,1600,1200)
-      ctx.drawImage(img,0,0,1600,1200)
-      doc.addImage(cvs.toDataURL('image/jpeg',0.95),'JPEG',imgX,imgY,imgW,imgH)
+  // Línea de piso
+  doc.setDrawColor(120, 120, 120); doc.setLineWidth(0.25)
+  doc.line(startX - 4, floorY, startX + drawingW + 4, floorY)
+
+  let xCur = 0
+  items.forEach((it) => {
+    const { c, w, h, baseY } = it
+    const rx = PX(xCur), ry = PY(baseY + h), rw = w * scale, rh = h * scale
+
+    // Cuerpo (contorno fuerte)
+    doc.setDrawColor(30, 30, 30); doc.setLineWidth(0.45)
+    doc.rect(rx, ry, rw, rh)
+
+    // Detalles internos (líneas finas)
+    doc.setDrawColor(110, 110, 110); doc.setLineWidth(0.15)
+    const T  = c.thickness || 18
+    const BH = (c.baseboard !== false) ? (c.baseboardHeight || 100) : 0
+    let yc = baseY + BH                       // cursor vertical real
+    if (BH > 0) { const by = PY(baseY + BH); doc.line(rx, by, rx + rw, by) }
+
+    // Cajones (desde abajo)
+    const nD = c.numDrawers || 0
+    const dh = nD > 0 ? Math.min(c.drawerHeight || 180, (h - BH) / nD) : 0
+    for (let i = 0; i < nD; i++) {
+      yc += dh
+      if (yc < baseY + h) { doc.line(rx, PY(yc), rx + rw, PY(yc)) }
+      doc.setFillColor(90, 90, 90); doc.circle(rx + rw / 2, PY(yc - dh / 2), 0.5, 'F')
     }
-  } else {
-    doc.setFontSize(10); doc.setTextColor(160,160,160)
-    doc.text('[Vista 3D Alzado]', imgX+imgW/2, imgY+imgH/2, {align:'center'})
+
+    // Puertas (divisiones verticales en la zona restante) + tiradores
+    if (c.hasDoors) {
+      const nDoors = c.numDoors || 2
+      for (let i = 1; i < nDoors; i++) { const dx = rx + (rw / nDoors) * i; doc.line(dx, ry, dx, PY(yc)) }
+      const zoneMidY = PY(yc + (baseY + h - yc) / 2)
+      for (let i = 0; i < nDoors; i++) {
+        const hx = rx + (rw / nDoors) * i + (rw / nDoors) * 0.85
+        doc.setFillColor(90, 90, 90); doc.circle(hx, zoneMidY, 0.6, 'F')
+      }
+    }
+
+    // Estantes (zona superior, solo si no hay puertas que los oculten)
+    const nS = c.numShelves || 0
+    if (nS > 0 && !c.hasDoors) {
+      const zoneB = yc, zoneT = baseY + h - T
+      const sp = (zoneT - zoneB) / (nS + 1)
+      for (let i = 1; i <= nS; i++) { doc.line(rx, PY(zoneB + sp * i), rx + rw, PY(zoneB + sp * i)) }
+    }
+
+    // Divisores verticales
+    const nDiv = c.numDividers || 0
+    if (nDiv > 0) {
+      const sp = rw / (nDiv + 1)
+      for (let i = 1; i <= nDiv; i++) { const dx = rx + sp * i; doc.line(dx, ry, dx, PY(baseY + BH)) }
+    }
+
+    // ── COTA individual de ancho (debajo del piso) ──
+    const cy = floorY + 8
+    doc.setDrawColor(40, 40, 40); doc.setLineWidth(0.2)
+    doc.line(rx, cy, rx + rw, cy)
+    doc.line(rx, floorY + 1.5, rx, cy + 2)
+    doc.line(rx + rw, floorY + 1.5, rx + rw, cy + 2)
+    doc.line(rx - 1.2, cy + 1.2, rx + 1.2, cy - 1.2)
+    doc.line(rx + rw - 1.2, cy + 1.2, rx + rw + 1.2, cy - 1.2)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(20, 20, 20)
+    doc.text(`${w}`, rx + rw / 2, cy - 1.5, { align: 'center' })
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(5); doc.setTextColor(110, 110, 110)
+    doc.text(`${it.id}`, rx + rw / 2, cy + 4, { align: 'center' })
+
+    xCur += w
+  })
+
+  // ── COTA TOTAL (solo si hay más de un módulo) ──
+  if (items.length > 1) {
+    const ty = floorY + 18
+    doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.25)
+    doc.line(startX, ty, startX + drawingW, ty)
+    doc.line(startX, floorY + 9, startX, ty + 2)
+    doc.line(startX + drawingW, floorY + 9, startX + drawingW, ty + 2)
+    doc.line(startX - 1.4, ty + 1.4, startX + 1.4, ty - 1.4)
+    doc.line(startX + drawingW - 1.4, ty + 1.4, startX + drawingW + 1.4, ty - 1.4)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(0, 0, 0)
+    doc.text(`TOTAL ${totalW} mm`, startX + drawingW / 2, ty - 1.8, { align: 'center' })
   }
 
-  // ── LINES OF COTA (DIMENSIONING SYSTEM) ──────────────────────────────────────
-  const centerX = imgX + imgW / 2
-  const centerY = imgY + imgH / 2
-  const xMin = centerX - modulePaperW / 2
-  const xMax = centerX + modulePaperW / 2
-  const yMin = centerY - modulePaperH / 2
-  const yMax = centerY + modulePaperH / 2
+  // ── COTA de altura (izquierda) ──
+  const hcx = startX - 10
+  doc.setDrawColor(40, 40, 40); doc.setLineWidth(0.2)
+  doc.line(hcx, floorY, hcx, floorY - drawingH)
+  doc.line(startX - 1.5, floorY, hcx - 2, floorY)
+  doc.line(startX - 1.5, floorY - drawingH, hcx - 2, floorY - drawingH)
+  doc.line(hcx - 1.2, floorY - 1.2, hcx + 1.2, floorY + 1.2)
+  doc.line(hcx - 1.2, floorY - drawingH - 1.2, hcx + 1.2, floorY - drawingH + 1.2)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(20, 20, 20)
+  doc.text(`${maxTop} mm`, hcx - 2.5, floorY - drawingH / 2, { align: 'center', angle: 90 })
 
-  doc.setDrawColor(40, 40, 40)
-  doc.setLineWidth(0.2) // Thin cota lines
+  // Nota de escala / profundidad
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(90, 90, 90)
+  doc.text(`Escala 1:${scaleDenom}  ·  Prof. máx: ${maxD} mm  ·  Medidas en mm`, MARGIN + 4, A4_H - MARGIN - 3)
 
-  // 1. Horizontal Superior: Width (W)
-  const cotaY = yMin - 10
-  doc.line(xMin, cotaY, xMax, cotaY)
-  // Left extension line
-  doc.line(xMin, yMin - 3, xMin, cotaY - 2)
-  // Right extension line
-  doc.line(xMax, yMin - 3, xMax, cotaY - 2)
-  // 45 degrees oblique ticks
-  doc.line(xMin - 1.5, cotaY - 1.5, xMin + 1.5, cotaY + 1.5)
-  doc.line(xMax - 1.5, cotaY - 1.5, xMax + 1.5, cotaY + 1.5)
-  // Text (W mm)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(6.5)
-  doc.setTextColor(30, 30, 30)
-  doc.text(`${dims.W} mm`, centerX, cotaY - 2.5, { align: 'center' })
-
-  // 2. Vertical Izquierda: Height (H)
-  const cotaX = xMin - 10
-  doc.line(cotaX, yMin, cotaX, yMax)
-  // Top extension line
-  doc.line(xMin - 3, yMin, cotaX - 2, yMin)
-  // Bottom extension line
-  doc.line(xMin - 3, yMax, cotaX - 2, yMax)
-  // 45 degrees oblique ticks
-  doc.line(cotaX - 1.5, yMin - 1.5, cotaX + 1.5, yMin + 1.5)
-  doc.line(cotaX - 1.5, yMax - 1.5, cotaX + 1.5, yMax + 1.5)
-  // Text (H mm)
-  doc.text(`${dims.H} mm`, cotaX - 3, centerY + 1.5, { align: 'right' })
-
-  // 3. Vertical Derecha: Baseboard / Zócalo height (BH)
-  const cfg = mod.configuration || {}
-  const BH = cfg.baseboardHeight || 100
-  const bhPaper = BH * (modulePaperH / (cfg.height || 720))
-  const cotaRightX = xMax + 10
-  doc.line(cotaRightX, yMax - bhPaper, cotaRightX, yMax)
-  // Top extension
-  doc.line(xMax + 3, yMax - bhPaper, cotaRightX + 2, yMax - bhPaper)
-  // Bottom extension
-  doc.line(xMax + 3, yMax, cotaRightX + 2, yMax)
-  // 45 degrees ticks
-  doc.line(cotaRightX - 1.5, yMax - bhPaper - 1.5, cotaRightX + 1.5, yMax - bhPaper + 1.5)
-  doc.line(cotaRightX - 1.5, yMax - 1.5, cotaRightX + 1.5, yMax + 1.5)
-  // Text
-  doc.text(`${BH} mm`, cotaRightX + 3, yMax - bhPaper / 2 + 1.5, { align: 'left' })
-
-  // Save/Download Blob URL
+  // ── Descarga ────────────────────────────────────────────────────────────────
+  const fileId = items.length === 1 ? items[0].id : `proyecto-${items.length}mod`
   const blob = doc.output('blob')
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
-  a.download = `plano-ejecutivo-${modId}-${Date.now()}.pdf`
+  a.download = `plano-ejecutivo-${fileId}-${Date.now()}.pdf`
   a.click()
 }
 
