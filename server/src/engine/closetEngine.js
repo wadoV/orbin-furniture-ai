@@ -84,6 +84,34 @@ function generateCutList(pieces) {
 
 function generateFurniture(params) {
   const cfg = { ...DEFAULTS, ...params }
+
+  // ★ AUTO-FIT de cajones: la pila no puede exceder la altura interna útil (misma fórmula
+  //   que el validador). Primero baja la altura del cajón; si ni al mínimo (80mm) caben,
+  //   reduce la cantidad. Corrige el config que se devuelve y, por ende, la geometría.
+  if ((cfg.numDrawers || 0) > 0) {
+    const CLEAR = 16, MINH = 80
+    const availableHeight = cfg.height
+      - (cfg.baseboard ? (cfg.baseboardHeight || 100) : 0)
+      - (2 * cfg.thickness)
+    if (availableHeight > 0) {
+      // Reservar ~17% para la repisa separadora/estantes (el validador exige < 85%).
+      const budget = availableHeight * 0.83
+      const isH = cfg.drawerLayout === 'horizontal' && cfg.numDrawers > 1
+      const cols = isH ? 2 : 1
+      let rows = Math.ceil(cfg.numDrawers / cols)
+      // 1) reducir altura del cajón para que la pila quepa dentro del presupuesto
+      let maxDH = Math.floor(budget / rows) - CLEAR
+      if ((cfg.drawerHeight || 0) > maxDH) cfg.drawerHeight = Math.max(MINH, maxDH)
+      // 2) si ni al mínimo cabe, reducir la cantidad de cajones
+      const maxRows = Math.floor(budget / (MINH + CLEAR))
+      if (maxRows < rows) {
+        cfg.numDrawers = Math.max(1, maxRows * cols)
+        rows = Math.ceil(cfg.numDrawers / cols)
+        maxDH = Math.floor(budget / rows) - CLEAR
+        cfg.drawerHeight = Math.max(MINH, Math.min(cfg.drawerHeight || MINH, maxDH))
+      }
+    }
+  }
   const { moduleType, width: W, height: H, depth: D, thickness: T, backThickness: BT,
           numShelves, numDrawers, drawerHeight, drawerLayout, baseboard, baseboardHeight,
           hasDoors, numDoors, hasCountertop } = cfg
