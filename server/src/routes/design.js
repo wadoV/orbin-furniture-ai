@@ -6,7 +6,7 @@
 
 const express = require('express')
 const router  = express.Router()
-const { generateProject } = require('../engine/closetEngine')
+const { generateProject, generateProjectAutoSplit } = require('../engine/closetEngine')
 const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
 const { parseNaturalLanguage } = require('../engine/nlParser')
 
@@ -94,16 +94,21 @@ router.post('/generate', async (req, res) => {
       return res.status(400).json({ success: false, error: `Altura do rodapé (${finalParams.baseboardHeight}mm) deve ser menor que a altura total (${finalParams.height}mm).` })
     }
 
-    // Generate design
-    const result = generateProject(finalParams)
+    // Generate design (auto-split si el ancho supera el aprovechable de la chapa)
+    const splitResult = generateProjectAutoSplit(finalParams)
 
-    if (!result.success) {
-      return res.status(500).json(result)
+    if (!splitResult.success) {
+      return res.status(500).json(splitResult.modules[0] || { success: false, error: 'Falha na geração.' })
     }
 
     const response = {
       success: true,
-      design:  result,
+      design:  splitResult.modules[0],   // compat: primeiro módulo
+      modules: splitResult.modules,      // todos os módulos (1 ou N)
+      split:   splitResult.split,
+      splitInfo: splitResult.split
+        ? { count: splitResult.count, totalWidth: splitResult.totalWidth, maxModuleWidth: splitResult.maxModuleWidth }
+        : null,
     }
 
     if (nlResult) {

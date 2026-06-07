@@ -240,13 +240,14 @@ export default function App() {
     setError(null)
     try {
       const data = await api.generateDesign(payload)
-      let design = data?.design || (data?.modules && data.modules[0])
-      if (design && design.pieces) {
-        // ★ FIX: Ensure configuration wrapper exists so Viewer3D uses the parametric builder
-        // (not the legacy buildFromPieces fallback which lacks drawer animation, countertop system, drag & snap)
-        if (!design.configuration) {
+      // ★ AUTO-SPLIT: el server puede devolver varios módulos (mueble más ancho que la chapa)
+      const incoming = (Array.isArray(data?.modules) && data.modules.length)
+        ? data.modules
+        : (data?.design ? [data.design] : [])
+      const ensureCfg = (design) => {
+        if (design && !design.configuration) {
           const md = design.metadata?.dimensions || {}
-          design = {
+          return {
             ...design,
             configuration: {
               moduleType:     design.type || 'standard',
@@ -266,16 +267,26 @@ export default function App() {
             }
           }
         }
-        const newModule = { ...design, id: design.id || ('MOD-' + Date.now()) }
-        saveHistory([...modules, newModule], 'Generated ' + (design.type || 'module'))
-        setSelectedModuleId(newModule.id)
+        return design
+      }
+      const baseTs = Date.now()
+      const newModules = incoming
+        .map(ensureCfg)
+        .filter(d => d && d.pieces)
+        .map((d, idx) => ({ ...d, id: d.id || ('MOD-' + (baseTs + idx)) }))
+      if (newModules.length) {
+        const label = data?.split
+          ? ('Auto-split: ' + newModules.length + ' módulos')
+          : ('Generated ' + (newModules[0].type || 'module'))
+        saveHistory([...modules, ...newModules], label)
+        setSelectedModuleId(newModules[0].id)
         try {
           const mem = loadMemory()
-          logAction(mem, 'generate', {
-            moduleType: design.type || (design.configuration && design.configuration.moduleType),
-            width: design.configuration && design.configuration.width,
-            height: design.configuration && design.configuration.height,
-          })
+          newModules.forEach(m => logAction(mem, 'generate', {
+            moduleType: m.type || (m.configuration && m.configuration.moduleType),
+            width:  m.configuration && m.configuration.width,
+            height: m.configuration && m.configuration.height,
+          }))
           refreshMemory()
         } catch {}
         setTimeout(() => {

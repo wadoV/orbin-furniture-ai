@@ -406,4 +406,52 @@ function generateProject(params) {
   }
 }
 
-module.exports = { generateProject, generateFurniture, generateCutList, estimateNesting, generateHardwareBOM }
+// ─── AUTO-SPLIT ──────────────────────────────────────────────────────────────
+// La pieza horizontal más ancha (techo/piso/fondo/zócalo ≈ ancho del módulo) debe caber
+// en la chapa. Si el ancho total supera el aprovechable, se parte en N módulos iguales
+// fabricables. Distribuye cajones/divisores; estantes y puertas por módulo según su ancho.
+const MAX_MODULE_WIDTH = MATERIAL.PLATE_WIDTH - 2 * MATERIAL.NESTING_MARGIN  // 2800 - 100 = 2700mm
+
+function distributeCount(total, n, i) {
+  const q = Math.floor(total / n), r = total % n
+  return q + (i < r ? 1 : 0)
+}
+
+function generateProjectAutoSplit(params) {
+  const cfg = { ...DEFAULTS, ...params }
+  const totalWidth = Number(cfg.width) || DEFAULTS.width
+
+  if (totalWidth <= MAX_MODULE_WIDTH) {
+    const single = generateProject(cfg)
+    return { success: single.success, split: false, count: 1, totalWidth, maxModuleWidth: MAX_MODULE_WIDTH, modules: [single] }
+  }
+
+  const N = Math.ceil(totalWidth / MAX_MODULE_WIDTH)
+  const baseW = Math.floor(totalWidth / N)
+  const remainder = totalWidth - baseW * N
+
+  const modules = []
+  for (let i = 0; i < N; i++) {
+    const w = baseW + (i === N - 1 ? remainder : 0)
+    const subCfg = {
+      ...cfg,
+      width:       w,
+      numDrawers:  distributeCount(cfg.numDrawers  || 0, N, i),
+      numDividers: distributeCount(cfg.numDividers || 0, N, i),
+      numShelves:  cfg.numShelves || 0,
+      numDoors:    cfg.hasDoors ? (w > 600 ? 2 : 1) : 0,
+    }
+    const proj = generateProject(subCfg)
+    proj.splitIndex = i + 1
+    proj.splitTotal = N
+    proj.splitLabel = `Módulo ${i + 1}/${N}`
+    modules.push(proj)
+  }
+
+  return {
+    success: modules.every(m => m.success),
+    split: true, count: N, totalWidth, maxModuleWidth: MAX_MODULE_WIDTH, modules,
+  }
+}
+
+module.exports = { generateProject, generateProjectAutoSplit, generateFurniture, generateCutList, estimateNesting, generateHardwareBOM }
