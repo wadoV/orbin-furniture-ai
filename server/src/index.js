@@ -163,6 +163,14 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
+// ─── Client Error Reporting ──────────────────────────────────────────────────
+// Receives ErrorBoundary reports from the React client (best-effort, no auth required)
+app.post('/api/errors', (req, res) => {
+  const { message, stack, componentStack, url, ts } = req.body || {}
+  console.error('[ClientError]', JSON.stringify({ message, url, ts, stack: stack?.slice(0, 400), componentStack: componentStack?.slice(0, 200) }))
+  res.json({ received: true })
+})
+
 // ─── 404 & Error Handlers ────────────────────────────────────────────────────
 
 app.use((req, res) => {
@@ -243,11 +251,4 @@ io.on('connection', (socket) => {
   })
 })
 
-// ─── Start ───────────────────────────────────────────────────────────────────
-
-server.listen(PORT, () => {
-  console.log(`\n🪵 Orbin API v2 rodando em http://localhost:${PORT}`)
-  console.log(`   Supabase: ${process.env.SUPABASE_URL         ? '✓ conectado'     : '✗ usando memória'}`)
-  console.log(`   Gemini:   ${process.env.GEMINI_API_KEY        ? '✓ ativo'         : '✗ usando parser regex'}`)
-  console.log(`   Ambiente: ${process.env.NODE_ENV || 'development'}\n`)
-})
+// ─── Start ──────────────�

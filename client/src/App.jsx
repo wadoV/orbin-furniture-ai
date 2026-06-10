@@ -60,6 +60,23 @@ class ErrorBoundary extends Component {
     this.state = { hasError: false, error: null };
   }
   static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) {
+    // Non-blocking error report — fails silently if server is down
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || ''
+      fetch(`${API_BASE}/api/errors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: error?.message || String(error),
+          stack: error?.stack?.slice(0, 800),
+          componentStack: info?.componentStack?.slice(0, 400),
+          url: window.location.href,
+          ts: new Date().toISOString(),
+        }),
+      }).catch(() => {}) // never throw — best-effort only
+    } catch (_) {}
+  }
   render() {
     if (this.state.hasError) {
       return (
@@ -834,21 +851,4 @@ export default function App() {
           <PlanLimitAlert
             message={planAlert.message}
             description={planAlert.description}
-            onClose={() => setPlanAlert(null)}
-          />
-        )}
-
-        {showUndoToast && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface-4 border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50">
-            <span className="text-sm text-white">Module deleted</span>
-            <button onClick={undo} className="text-primary text-sm font-bold uppercase tracking-widest hover:underline flex items-center gap-1.5">
-              <RotateCcw size={14} /> Undo
-            </button>
-          </div>
-        )}
-
-        <FeedbackWidget />
-      </div>
-    </ErrorBoundary>
-  )
-}
+            onClose={() => setPlan
