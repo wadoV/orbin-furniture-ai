@@ -249,4 +249,5 @@ server.listen(PORT, () => {
   console.log(`\n🪵 Orbin API v2 rodando em http://localhost:${PORT}`)
   console.log(`   Supabase: ${process.env.SUPABASE_URL         ? '✓ conectado'     : '✗ usando memória'}`)
   console.log(`   Gemini:   ${process.env.GEMINI_API_KEY        ? '✓ ativo'         : '✗ usando parser regex'}`)
-  console.log(`   Ambiente: ${process.env.NODE_ENV || 'development'}\n`
+  console.log(`   Ambiente: ${process.env.NODE_ENV || 'development'}\n`)
+})
