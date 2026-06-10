@@ -36,6 +36,9 @@ jobs:
       - name: Verify server syntax
         run: cd server && node --check src/index.js
 
+      - name: Run engine unit tests
+        run: cd server && npm test
+
       # Secret Scan
       - name: Run Gitleaks secret scan
         uses: gitleaks/gitleaks-action@v2
