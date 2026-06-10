@@ -17,9 +17,11 @@ import {
 } from 'lucide-react'
 import { exportDesign, nestPieces, downloadBlob } from '../engine/exportAdapters.js'
 import { generateFactoryCutlist } from '../engine/CutlistGenerator.js'
+import { calculateQuote } from '../engine/PricingEngine.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { trackEvent, EVENTS } from '../lib/analytics.js'
+import { UpgradePrompt } from './UpgradePrompt.jsx'
 
 // ── A4 landscape constants ────────────────────────────────────────────────────
 const A4_W = 297, A4_H = 210, MARGIN = 8
@@ -267,6 +269,10 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
       yc += dh
       if (yc < baseY + h) { doc.line(rx, PY(yc), rx + rw, PY(yc)) }
       doc.setFillColor(90, 90, 90); doc.circle(rx + rw / 2, PY(yc - dh / 2), 0.5, 'F')
+      if (rw > 16 && dh * scale > 5) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(4); doc.setTextColor(120, 120, 120)
+        doc.text(`GAVETA ${i + 1}`, rx + rw / 2, PY(yc - dh / 2) - 1.4, { align: 'center' })
+      }
     }
 
     // Puertas (divisiones verticales en la zona restante) + tiradores
@@ -277,6 +283,10 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
       for (let i = 0; i < nDoors; i++) {
         const hx = rx + (rw / nDoors) * i + (rw / nDoors) * 0.85
         doc.setFillColor(90, 90, 90); doc.circle(hx, zoneMidY, 0.6, 'F')
+        if (rw / nDoors > 14) {
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(4); doc.setTextColor(120, 120, 120)
+          doc.text('PUERTA', rx + (rw / nDoors) * (i + 0.5), zoneMidY, { align: 'center' })
+        }
       }
     }
 
@@ -293,6 +303,28 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
     if (nDiv > 0) {
       const sp = rw / (nDiv + 1)
       for (let i = 1; i <= nDiv; i++) { const dx = rx + sp * i; doc.line(dx, ry, dx, PY(baseY + BH)) }
+    }
+
+    // ── Etiquetas de piezas: cómo va y dónde monta cada corte ──
+    if (rw > 16) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(4.2); doc.setTextColor(60, 60, 60)
+      doc.text('CUBIERTA', rx + rw / 2, ry + 2.6, { align: 'center' })   // tampo: apoya SOBRE los laterales
+    }
+    if (rh > 14) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(4); doc.setTextColor(120, 120, 120)
+      doc.text('LATERAL', rx + 2.2, ry + rh / 2, { align: 'center', angle: 90 })   // de piso a cubierta
+    }
+    if (BH > 0 && rw > 16) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(3.8); doc.setTextColor(120, 120, 120)
+      doc.text('ZÓCALO', rx + rw / 2, PY(baseY + BH / 2) + 0.6, { align: 'center' })
+    }
+    if (rw > 18) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(3.8); doc.setTextColor(140, 140, 140)
+      doc.text('BASE', rx + 3.5, PY(baseY + BH) - 1.2, { align: 'left' })   // entre laterales
+    }
+    if (nS > 0 && !c.hasDoors && rw > 18) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(3.8); doc.setTextColor(140, 140, 140)
+      doc.text('ESTANTE', rx + rw - 3.5, PY(baseY + h - T) - 1.2, { align: 'right' })
     }
 
     // ── COTA individual de ancho (debajo del piso) ──
@@ -335,6 +367,14 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(20, 20, 20)
   doc.text(`${maxTop} mm`, hcx - 2.5, floorY - drawingH / 2, { align: 'center', angle: 90 })
 
+  // ── Leyenda de montaje (cómo va cada corte) + nota de escala ──
+  const mont = {
+    ES: 'MONTAJE: Cubierta apoya SOBRE los laterales · Laterales de piso a cubierta · Base, estantes y divisores ENTRE laterales · Fondo (6mm) ranurado atrás · Zócalo retranqueado · Frentes de gaveta/puerta sobrepuestos',
+    PT: 'MONTAGEM: Tampo apoia SOBRE as laterais · Laterais do piso ao tampo · Base, prateleiras e divisórias ENTRE as laterais · Fundo (6mm) encaixado atrás · Rodapé recuado · Frentes de gaveta/porta sobrepostas',
+    EN: 'ASSEMBLY: Top sits ON the sides · Sides run floor-to-top · Base, shelves and dividers BETWEEN sides · Back (6mm) grooved at rear · Toe-kick recessed · Drawer/door fronts overlaid'
+  }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(4.6); doc.setTextColor(90, 90, 90)
+  doc.text(doc.splitTextToSize(mont[L] || mont.ES, ROT_X - MARGIN - 8), MARGIN + 4, A4_H - MARGIN - 7)
   // Nota de escala / profundidad
   doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(90, 90, 90)
   doc.text(`Escala 1:${scaleDenom}  ·  Prof. máx: ${maxD} mm  ·  Medidas en mm`, MARGIN + 4, A4_H - MARGIN - 3)
@@ -462,13 +502,243 @@ function generateEtiquetasPDF({ modules, user, lang, t }) {
   a.click()
 }
 
+// ── PRESUPUESTO FORMAL PARA CLIENTE FINAL ──────────────────────────────────────
+async function generatePresupuestoPDF({ modules, user, lang, t, companySettings }) {
+  const customerPromptStr = t('pdf_customer_prompt') || 'Nombre del Cliente:'
+  const customerName = prompt(customerPromptStr, 'Cliente Final')
+  if (customerName === null) return // Canceled
+
+  const quote = calculateQuote(modules)
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+
+  const COLOR_PRIMARY = [245, 166, 35] // Amber #F5A623
+  const COLOR_DARK = [30, 30, 30]
+  const COLOR_LIGHT = [245, 245, 245]
+
+  const A4_W = 210
+  const A4_H = 297
+  const MARGIN = 15
+  const CONTENT_W = A4_W - (MARGIN * 2)
+
+  let currentY = MARGIN
+  const company = companySettings?.name || user?.company_name || user?.name || 'Orbin AI'
+
+  // Header Title
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(18)
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2])
+  doc.text(company.toUpperCase(), MARGIN, currentY + 6)
+
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(100, 100, 100)
+  doc.text(t('pdf_generated_by') || 'Generado por Orbin AI', A4_W - MARGIN, currentY + 3, { align: 'right' })
+  doc.text(fmtDate(), A4_W - MARGIN, currentY + 8, { align: 'right' })
+
+  currentY += 15
+
+  // Line separator
+  doc.setDrawColor(200, 200, 200)
+  doc.setLineWidth(0.25)
+  doc.line(MARGIN, currentY, A4_W - MARGIN, currentY)
+  currentY += 5
+
+  // Emisor & Cliente Columns
+  doc.setFontSize(6)
+  doc.setTextColor(120, 120, 120)
+  doc.text(lang === 'PT' ? 'EMISSOR / VENDEDOR' : lang === 'EN' ? 'ISSUER / SELLER' : 'EMISOR / VENDEDOR', MARGIN, currentY)
+  doc.text(lang === 'PT' ? 'CLIENTE / COMPRADOR' : lang === 'EN' ? 'CUSTOMER / BUYER' : 'CLIENTE / RECEPTOR', A4_W / 2 + 5, currentY)
+  currentY += 4
+
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(COLOR_DARK[0], COLOR_DARK[1], COLOR_DARK[2])
+  doc.text(company, MARGIN, currentY)
+  doc.text(customerName.toUpperCase(), A4_W / 2 + 5, currentY)
+  currentY += 4.5
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  doc.setTextColor(80, 80, 80)
+  
+  let emitY = currentY
+  if (companySettings?.phone) { doc.text(`Tel: ${companySettings.phone}`, MARGIN, emitY); emitY += 3.5 }
+  if (companySettings?.address) { doc.text(`Dir: ${companySettings.address}`, MARGIN, emitY); emitY += 3.5 }
+  doc.text(`Email: ${user?.email || ''}`, MARGIN, emitY)
+
+  let clientY = currentY
+  doc.text(`${t('pdf_client_label') || 'Cliente'}: ${customerName}`, A4_W / 2 + 5, clientY); clientY += 3.5
+  doc.text(`Ref: ORB-QT-${Date.now().toString().slice(-6)}`, A4_W / 2 + 5, clientY)
+
+  currentY = Math.max(emitY, clientY) + 8
+
+  // Document Title
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(COLOR_DARK[0], COLOR_DARK[1], COLOR_DARK[2])
+  doc.text(t('pdf_client_quote_title') || 'PRESUPUESTO DE MUEBLES MODULARES', MARGIN, currentY)
+  currentY += 6
+
+  // Table header
+  doc.setFillColor(COLOR_DARK[0], COLOR_DARK[1], COLOR_DARK[2])
+  doc.rect(MARGIN, currentY, CONTENT_W, 6, 'F')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7.5)
+  doc.setTextColor(255, 255, 255)
+  doc.text('#', MARGIN + 2, currentY + 4.2)
+  doc.text(t('pdf_desc') || 'Descripción', MARGIN + 10, currentY + 4.2)
+  doc.text(t('pdf_dims') || 'Dimensiones (A×Al×P)', MARGIN + 80, currentY + 4.2)
+  doc.text(t('pdf_material') || 'Material', MARGIN + 130, currentY + 4.2)
+  doc.text(t('pdf_qty') || 'Cant', MARGIN + 175, currentY + 4.2, { align: 'right' })
+
+  currentY += 6
+
+  // Modules list rows
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  doc.setTextColor(30, 30, 30)
+
+  modules.forEach((mod, idx) => {
+    const c = mod.configuration || mod || {}
+    const w = c.width || 600
+    const h = c.height || 2200
+    const d = c.depth || 580
+    const matId = c.materialBody || 'mdf_18'
+    const desc = `${mod.type ? mod.type.toUpperCase() : 'MÓDULO'} (${c.numDrawers || 0} cajones, ${c.numShelves || 0} estantes)`
+
+    if (idx % 2 === 1) {
+      doc.setFillColor(COLOR_LIGHT[0], COLOR_LIGHT[1], COLOR_LIGHT[2])
+      doc.rect(MARGIN, currentY, CONTENT_W, 7, 'F')
+    }
+
+    doc.text(`${idx + 1}`, MARGIN + 2, currentY + 4.8)
+    doc.text(desc.slice(0, 42), MARGIN + 10, currentY + 4.8)
+    doc.text(`${w} × ${h} × ${d} mm`, MARGIN + 80, currentY + 4.8)
+    doc.text(matId.toUpperCase(), MARGIN + 130, currentY + 4.8)
+    doc.text('1', MARGIN + 175, currentY + 4.8, { align: 'right' })
+
+    doc.setDrawColor(220, 220, 220)
+    doc.setLineWidth(0.1)
+    doc.line(MARGIN, currentY + 7, A4_W - MARGIN, currentY + 7)
+
+    currentY += 7
+  })
+
+  currentY += 6
+
+  // Specifications overview
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8)
+  doc.setTextColor(COLOR_DARK[0], COLOR_DARK[1], COLOR_DARK[2])
+  doc.text(lang === 'PT' ? 'ESPECIFICAÇÕES INCLUÍDAS:' : lang === 'EN' ? 'INCLUDED SPECIFICATIONS:' : 'ESPECIFICACIONES INCLUIDAS:', MARGIN, currentY)
+  currentY += 5
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  doc.setTextColor(80, 80, 80)
+
+  const specLines = []
+  if (lang === 'PT') {
+    specLines.push(`• Estrutura principal construída com chapas de alta resistência.`)
+    if (quote.hardware.hinges.qty > 0) specLines.push(`• Inclui ${quote.hardware.hinges.qty} dobradiças metálicas de montagem rápida.`)
+    if (quote.hardware.drawerSlides.qty > 0) specLines.push(`• Inclui ${quote.hardware.drawerSlides.qty} pares de corrediças telescópicas (folga de 13mm aplicada).`)
+    if (quote.hardware.handles.qty > 0) specLines.push(`• Inclui ${quote.hardware.handles.qty} puxadores inclusos no projeto.`)
+    if (quote.hardware.countertop.m2 > 0) specLines.push(`• Inclui tampo superior (área de ${quote.hardware.countertop.m2} m²).`)
+  } else if (lang === 'EN') {
+    specLines.push(`• Main structural body constructed using high-durability panels.`)
+    if (quote.hardware.hinges.qty > 0) specLines.push(`• Includes ${quote.hardware.hinges.qty} quick-mount metal hinges.`)
+    if (quote.hardware.drawerSlides.qty > 0) specLines.push(`• Includes ${quote.hardware.drawerSlides.qty} pairs of telescopic drawer slides (13mm technical clearance applied).`)
+    if (quote.hardware.handles.qty > 0) specLines.push(`• Includes ${quote.hardware.handles.qty} hardware handles.`)
+    if (quote.hardware.countertop.m2 > 0) specLines.push(`• Includes top countertop panel (${quote.hardware.countertop.m2} sq.m).`)
+  } else {
+    specLines.push(`• Estructura principal construida con tableros de alta durabilidad.`)
+    if (quote.hardware.hinges.qty > 0) specLines.push(`• Incluye ${quote.hardware.hinges.qty} bisagras metálicas de montaje rápido.`)
+    if (quote.hardware.drawerSlides.qty > 0) specLines.push(`• Incluye ${quote.hardware.drawerSlides.qty} pares de correderas telescópicas (holgura de 13mm aplicada).`)
+    if (quote.hardware.handles.qty > 0) specLines.push(`• Incluye ${quote.hardware.handles.qty} tiradores metálicos.`)
+    if (quote.hardware.countertop.m2 > 0) specLines.push(`• Incluye encimera/cubierta superior (${quote.hardware.countertop.m2} m²).`)
+  }
+
+  specLines.forEach(line => {
+    doc.text(line, MARGIN, currentY)
+    currentY += 3.8
+  })
+
+  currentY += 6
+
+  // Total price box
+  doc.setDrawColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2])
+  doc.setLineWidth(0.35)
+  doc.setFillColor(254, 252, 243)
+  doc.rect(MARGIN, currentY, CONTENT_W, 11, 'FD')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.5)
+  doc.setTextColor(COLOR_DARK[0], COLOR_DARK[1], COLOR_DARK[2])
+  doc.text(t('pdf_total_estimate') || 'TOTAL PRESUPUESTO', MARGIN + 4, currentY + 7)
+
+  const formattedTotal = new Intl.NumberFormat(lang === 'PT' ? 'pt-BR' : lang === 'EN' ? 'en-US' : 'es-CL', {
+    style: 'currency',
+    currency: lang === 'PT' ? 'BRL' : 'USD',
+    minimumFractionDigits: 0
+  }).format(quote.finalPrice)
+
+  doc.setFontSize(13)
+  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2])
+  doc.text(formattedTotal, A4_W - MARGIN - 4, currentY + 7.5, { align: 'right' })
+
+  currentY += 18
+
+  // Notes
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8)
+  doc.setTextColor(COLOR_DARK[0], COLOR_DARK[1], COLOR_DARK[2])
+  doc.text(t('pdf_notes_title') || 'Notas y Condiciones', MARGIN, currentY)
+  currentY += 4.5
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.5)
+  doc.setTextColor(110, 110, 110)
+  doc.text(t('pdf_note_validity') || 'Validez del presupuesto: 15 días.', MARGIN, currentY); currentY += 3.5
+  doc.text(t('pdf_note_payment') || 'Condiciones de pago: 50% de anticipo y 50% a la entrega.', MARGIN, currentY); currentY += 3.5
+  doc.text(t('pdf_note_assembly') || 'Plazo de entrega e instalación: a convenir.', MARGIN, currentY); currentY += 12
+
+  // Signature Block
+  const sigW = 55
+  doc.setDrawColor(180, 180, 180)
+  doc.setLineWidth(0.2)
+  doc.line(MARGIN, currentY, MARGIN + sigW, currentY)
+  doc.line(A4_W - MARGIN - sigW, currentY, A4_W - MARGIN, currentY)
+
+  currentY += 3.5
+  doc.setFontSize(6)
+  doc.setTextColor(120, 120, 120)
+  doc.text(t('pdf_signature') || 'Firma del Cliente', MARGIN + sigW / 2, currentY, { align: 'center' })
+  doc.text(lang === 'PT' ? 'Assinatura do Emissor' : lang === 'EN' ? 'Issuer Signature' : 'Firma Emisor', A4_W - MARGIN - sigW / 2, currentY, { align: 'center' })
+
+  currentY += 3.5
+  doc.text(t('pdf_date') || 'Fecha', MARGIN + sigW / 2, currentY, { align: 'center' })
+  doc.text(t('pdf_date') || 'Fecha', A4_W - MARGIN - sigW / 2, currentY, { align: 'center' })
+
+  // Trigger download
+  const fileId = modules.length === 1 ? modules[0].id : `proyecto-${modules.length}mod`
+  const blob = doc.output('blob')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `presupuesto-${fileId}-${Date.now()}.pdf`
+  a.click()
+}
+
 // ── Locked button ─────────────────────────────────────────────────────────────
-function LockedBtn({ label, tier = 'Pro', reason }) {
+function LockedBtn({ label, tier = 'Pro', reason, onClick }) {
   const COLOR = tier==='Enterprise'
     ? 'text-blue-400/60 bg-blue-500/10 border-blue-500/20'
     : 'text-yellow-400/60 bg-yellow-500/10 border-yellow-500/20'
   return (
-    <div onClick={() => trackEvent(EVENTS.PLAN_GATE_HIT, { featureBlocked: label, tier })} className="relative w-full text-left p-3.5 rounded-xl border border-white/5 bg-surface-3/30 opacity-60 cursor-pointer hover:opacity-80 transition-opacity select-none">
+    <div onClick={() => {
+      trackEvent(EVENTS.PLAN_GATE_HIT, { featureBlocked: label, tier });
+      if (onClick) onClick();
+    }} className="relative w-full text-left p-3.5 rounded-xl border border-white/5 bg-surface-3/30 opacity-60 cursor-pointer hover:opacity-80 transition-opacity select-none">
       <div className="flex items-start gap-3">
         <div className="p-2.5 rounded-lg bg-white/5 text-muted"><Lock size={18} /></div>
         <div className="flex-1">
@@ -495,6 +765,8 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
   const [nestingResult,  setNestingResult]  = useState(null)
   const [genPlan,        setGenPlan]        = useState(false)
   const [genEtiquetas,   setGenEtiquetas]   = useState(false)
+  const [genPresupuesto, setGenPresupuesto] = useState(false)
+  const [upgradePrompt,  setUpgradePrompt]  = useState(null)
 
   const [showCompanyForm, setShowCompanyForm] = useState(false)
   const [saveAsDefault, setSaveAsDefault] = useState(() => {
@@ -554,6 +826,14 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
     try { await generatePlanoPDF({ modules, captureWireframe, user, lang, t, companySettings }) }
     catch(e) { console.error("PLANO ERROR:", e); setError('PLANO ERROR: ' + e.message) }
     finally { setGenPlan(false) }
+  }
+
+  const handlePresupuesto = async () => {
+    if (genPresupuesto) return
+    setGenPresupuesto(true); setError(null)
+    try { await generatePresupuestoPDF({ modules, user, lang, t, companySettings }) }
+    catch(e) { console.error("PRESUPUESTO ERROR:", e); setError('PRESUPUESTO ERROR: ' + e.message) }
+    finally { setGenPresupuesto(false) }
   }
 
   const handleEtiquetas = () => {
@@ -622,40 +902,40 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
           onClick={() => setShowCompanyForm(v => !v)}
           className="w-full flex items-center justify-between text-left text-[10px] tracking-widest uppercase font-semibold text-zinc-500 hover:text-white transition-colors"
         >
-          <span>📋 Datos de Emisión (Marca Blanca)</span>
+          <span>{t('exp_company_section')}</span>
           <span className="text-zinc-600">{showCompanyForm ? '▲' : '▼'}</span>
         </button>
         {showCompanyForm && (
           <div className="mt-3 space-y-3 p-4 border border-zinc-800/40 rounded-lg bg-zinc-950/20">
             <div className="space-y-1">
-              <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">Nombre de Empresa</label>
+              <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">{t('hdr_company_name')}</label>
               <input
                 type="text"
                 value={companySettings?.name || ''}
                 onChange={e => handleCompanyFieldChange('name', e.target.value)}
                 className="input-field w-full text-xs"
-                placeholder="Ej. Mi Marcenaria Pro"
+                placeholder={t('hdr_company_name_ph')}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">Teléfono</label>
+                <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">{t('hdr_phone')}</label>
                 <input
                   type="text"
                   value={companySettings?.phone || ''}
                   onChange={e => handleCompanyFieldChange('phone', e.target.value)}
                   className="input-field w-full text-xs"
-                  placeholder="Ej. +55 (11) 99999-9999"
+                  placeholder={t('hdr_phone_ph')}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">Dirección</label>
+                <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">{t('hdr_address')}</label>
                 <input
                   type="text"
                   value={companySettings?.address || ''}
                   onChange={e => handleCompanyFieldChange('address', e.target.value)}
                   className="input-field w-full text-xs"
-                  placeholder="Ej. Av. Principal 123"
+                  placeholder={t('hdr_address_ph')}
                 />
               </div>
             </div>
@@ -666,7 +946,7 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
                 onChange={handleCheckboxChange}
                 className="rounded border-zinc-800 bg-zinc-950/40 text-[#F5A623] focus:ring-0"
               />
-              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Establecer como predeterminado</span>
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">{t('hdr_save_default')}</span>
             </label>
           </div>
         )}
@@ -696,7 +976,34 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
               </div>
             </div>
           </button>
-        ) : <LockedBtn label={planoLabel} tier="Pro" reason={t('plan_free_export_banner')} />}
+        ) : <LockedBtn label={planoLabel} tier="Pro" reason={t('plan_free_export_banner')} onClick={() => setUpgradePrompt({ featureName: planoLabel, requiredPlan: 'Pro' })} />}
+      </div>
+
+      {/* ── PDF PRESUPUESTO CLIENTE — Pro+ ─────────────────────────────────── */}
+      <div>
+        {canExportPDF ? (
+          <button onClick={handlePresupuesto} disabled={genPresupuesto}
+            className="relative overflow-hidden group w-full text-left p-4 rounded-xl border border-primary/35 bg-gradient-to-br from-primary/8 via-surface-3 to-surface-2 hover:border-primary/60 hover:shadow-[0_0_20px_rgba(245,166,35,0.1)] transition-all active:scale-[0.99] disabled:opacity-60">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-lg bg-primary/12 text-primary group-hover:scale-110 transition-all shrink-0">
+                {genPresupuesto ? <Loader2 size={20} className="animate-spin"/> : <FileSpreadsheet size={20} className="stroke-[2px]"/>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-black text-sm text-white group-hover:text-primary transition-colors">{t('export_presupuesto')}</span>
+                  {!genPresupuesto && <span className="text-[9px] font-bold text-primary/80 uppercase tracking-widest bg-primary/10 px-1.5 py-0.5 rounded shrink-0">.PDF</span>}
+                  {genPresupuesto && <span className="text-[9px] text-primary/70 uppercase animate-pulse shrink-0">{isES?'Generando...':isPT?'Gerando...':'Generating...'}</span>}
+                </div>
+                <p className="text-[11px] text-white/50 mt-1">{t('export_presupuesto_desc')}</p>
+                <div className="flex gap-2 mt-1.5">
+                  {[(isES?'A4 Retrato':isPT?'A4 Retrato':'A4 Portrait'),(isES?'Valores Finales':isPT?'Valores Finais':'Final Prices'),'Whitelabel'].map(tag=>(
+                    <span key={tag} className="text-[8px] font-bold text-primary/60 uppercase tracking-widest bg-primary/6 border border-primary/15 px-1.5 py-0.5 rounded">{tag}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </button>
+        ) : <LockedBtn label={t('export_presupuesto')} tier="Pro" reason={t('plan_free_export_banner')} onClick={() => setUpgradePrompt({ featureName: t('export_presupuesto'), requiredPlan: 'Pro' })} />}
       </div>
 
       {/* ── 2. CSV LISTA DE CORTE — Pro+ ──────────────────────────────────── */}
@@ -717,7 +1024,7 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
               </div>
             </div>
           </button>
-        ) : <LockedBtn label={csvLabel} tier="Pro" />}
+        ) : <LockedBtn label={csvLabel} tier="Pro" onClick={() => setUpgradePrompt({ featureName: csvLabel, requiredPlan: 'Pro' })} />}
       </div>
 
       <div className="h-px bg-white/5" />
@@ -745,7 +1052,7 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
               </div>
             </div>
           </button>
-        ) : <LockedBtn label={etqLabel} tier="Enterprise" reason={t('plan_pro_export_locked_ent')} />}
+        ) : <LockedBtn label={etqLabel} tier="Enterprise" reason={t('plan_pro_export_locked_ent')} onClick={() => setUpgradePrompt({ featureName: etqLabel, requiredPlan: 'Enterprise' })} />}
       </div>
 
       <div className="h-px bg-white/5" />
@@ -799,10 +1106,13 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
               {success==='cnc'&&<Check size={10} className="text-green-400"/>}
             </button>
           ) : (
-            <div className="flex items-center gap-2 p-2 rounded-lg bg-surface-3/30 border border-white/5 text-xs opacity-50 cursor-not-allowed">
+            <button onClick={() => {
+              trackEvent(EVENTS.PLAN_GATE_HIT, { featureBlocked: 'CNC', tier: 'Enterprise' });
+              setUpgradePrompt({ featureName: t('export_cnc') || 'CNC', requiredPlan: 'Enterprise' });
+            }} className="flex items-center gap-2 p-2 rounded-lg bg-surface-3/30 hover:bg-surface-3/50 border border-white/5 text-xs opacity-60 hover:opacity-90 transition-all cursor-pointer select-none">
               <Lock size={12} className="text-blue-400/60 shrink-0"/>
-              <span className="text-muted truncate text-[10px]">CNC <Crown size={8} className="inline"/> Ent.</span>
-            </div>
+              <span className="text-muted truncate text-[10px]">{t('export_cnc') || 'CNC'} <Crown size={8} className="inline"/> Ent.</span>
+            </button>
           )}
           <button onClick={handleNesting}
             className="flex items-center gap-2 p-2 rounded-lg bg-gradient-to-r from-purple-950/30 to-indigo-950/20 hover:from-purple-950/50 hover:to-indigo-950/40 border border-purple-500/20 hover:border-purple-500/40 transition-all text-xs font-medium text-purple-200 group active:scale-[0.98]">
@@ -821,24 +1131,4 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
               <p className="text-[9px] text-white/40 uppercase font-semibold mt-0.5">{t('sheets_used')}</p>
             </div>
             <div className="bg-surface-2/40 rounded-lg p-2 border border-white/5">
-              <p className={"text-xl font-extrabold tabular-nums "+(parseFloat(nestingResult.utilization)>=70?'text-emerald-400':'text-amber-400')}>
-                {nestingResult.utilization}%
-              </p>
-              <p className="text-[9px] text-white/40 uppercase font-semibold mt-0.5">{t('utilization')}</p>
-            </div>
-          </div>
-          <div className="flex justify-between text-[10px] text-white/40 px-1">
-            <span>{nestingResult.totalPieces} pcs</span>
-            <span>{nestingResult.wastePercent}% {isES?'desperdício':isPT?'desperdício':'waste'}</span>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-          <AlertCircle size={14} className="shrink-0"/><span>{error}</span>
-        </div>
-      )}
-    </div>
-  )
-}
+              <p className={"text-xl font-extrabold tabular-nums "+(par

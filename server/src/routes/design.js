@@ -9,10 +9,11 @@ const router  = express.Router()
 const { generateProject, generateProjectAutoSplit } = require('../engine/closetEngine')
 const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
 const { parseNaturalLanguage } = require('../engine/nlParser')
+const { optionalAuth } = require('../middleware/auth')
 
 // ─── POST /api/design/generate ────────────────────────────────────────────────
 
-router.post('/generate', async (req, res) => {
+router.post('/generate', optionalAuth, async (req, res) => {
   try {
     const { params, naturalLanguage } = req.body
 
@@ -99,6 +100,13 @@ router.post('/generate', async (req, res) => {
 
     if (!splitResult.success) {
       return res.status(500).json(splitResult.modules[0] || { success: false, error: 'Falha na geração.' })
+    }
+
+    if (req.user && req.user.plan === 'free' && splitResult.modules.length > 3) {
+      return res.status(403).json({
+        success: false,
+        error: 'Límite de plan gratuito superado. El plan gratuito está limitado a un máximo de 3 módulos. Por favor, actualiza tu cuenta a un plan Pro o Enterprise.'
+      })
     }
 
     const response = {
@@ -203,4 +211,4 @@ router.get('/prices', getPrices)
 // Expose the handler function so it can be mounted directly at the root (/api/prices) in index.js
 router.getPrices = getPrices
 
-module.exports = router
+module.exports = rou

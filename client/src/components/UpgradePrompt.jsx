@@ -1,15 +1,37 @@
 import React, { useEffect } from 'react';
 import { Lock, ArrowRight, X } from 'lucide-react';
 import { trackEvent, EVENTS } from '../lib/analytics.js';
+import { usePreferences } from '../context/PreferencesContext.jsx';
+import { useUser } from '../context/UserContext.jsx';
+import { api } from '../api/client.js';
 
 export const UpgradePrompt = ({ featureName, requiredPlan = 'Pro', price = 'R$99/mês', onClose }) => {
+  const { t, lang } = usePreferences();
+  const { user } = useUser();
+  
   useEffect(() => {
     trackEvent(EVENTS.PLAN_GATE_VIEWED, { feature: featureName, required_plan: requiredPlan });
   }, [featureName, requiredPlan]);
 
-  const handleUpgradeClick = () => {
+  const handleUpgradeClick = async () => {
     trackEvent(EVENTS.UPGRADE_CTA_CLICKED, { feature: featureName, target_plan: requiredPlan });
-    window.location.href = '/pricing';
+    if (!user || !user.isLoggedIn) {
+      window.location.href = '/login';
+      return;
+    }
+    try {
+      const planId = requiredPlan.toLowerCase();
+      const res = await api.post('/billing/checkout', {
+        planId,
+        provider: lang === 'PT' ? 'mercadopago' : 'stripe',
+        region: lang === 'PT' ? 'BR' : 'US'
+      });
+      if (res.success && res.checkoutUrl) {
+        window.location.href = res.checkoutUrl;
+      }
+    } catch (err) {
+      alert(err.message || 'Error initiating checkout');
+    }
   };
 
   return (
@@ -22,21 +44,8 @@ export const UpgradePrompt = ({ featureName, requiredPlan = 'Pro', price = 'R$99
           <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-5">
             <Lock className="w-6 h-6 text-primary" />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Recurso {requiredPlan}</h2>
+          <h2 className="text-2xl font-bold text-white mb-2">{t('up_feature_title').replace('{p}', requiredPlan)}</h2>
           <p className="text-zinc-300 mb-8 leading-relaxed">
-            O recurso <strong className="text-white">{featureName}</strong> é exclusivo para assinantes do plano {requiredPlan}. Atualize agora para desbloquear esta funcionalidade.
+            {t('up_gate_desc').replace('{f}', featureName).replace('{p}', requiredPlan)}
           </p>
-          <div className="space-y-3">
-            <button onClick={handleUpgradeClick} className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-black font-semibold py-3.5 px-4 rounded-lg transition-all">
-              Upgrade para {requiredPlan} — {price}
-              <ArrowRight className="w-4 h-4" />
-            </button>
-            <a href="/pricing" className="w-full flex items-center justify-center text-zinc-400 hover:text-white font-medium py-3 px-4 rounded-lg transition-colors">
-              Ver todos os planos
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+          <div className=

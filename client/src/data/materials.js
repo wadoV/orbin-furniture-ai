@@ -13,6 +13,23 @@
  * - category: grouping for selector
  */
 
+import { ALL_BOARDS } from './catalogs/index.js'
+
+const CATALOG_MATERIALS = ALL_BOARDS.map(board => ({
+  id: board.id,
+  nameKey: null,
+  fallback: board.displayName,
+  thickness: board.thicknesses[0], // default thickness
+  density: 720,
+  costPerM2: board.costPerM2,
+  color: board.color,
+  textureLabel: board.finish,
+  category: 'catalog',
+  isCatalogBoard: true,
+  thicknesses: board.thicknesses,
+  sheetSize: board.sheetSize,
+}))
+
 export const MATERIALS_DB = [
   {
     id: 'mdf_15',
@@ -102,6 +119,7 @@ export const MATERIALS_DB = [
     textureLabel: 'OSB',
     category: 'osb',
   },
+  ...CATALOG_MATERIALS
 ]
 
 /**
@@ -207,22 +225,4 @@ export function calculateCostEstimation(design, materialId = 'mdf_18') {
       cost: Math.round(wasteCost * 100) / 100,
     },
     hardware: {
-      items: hardware,
-      cost: Math.round(hardwareCost * 100) / 100,
-    },
-    edgeBanding: {
-      totalMeters: Math.round(totalEdgeMeters * 10) / 10,
-      cost: Math.round(edgeBandingCost * 100) / 100,
-    },
-    plates: {
-      count: totalPlates,
-    },
-    weight: {
-      kg: Math.round(weightKg * 10) / 10,
-    },
-    labor: {
-      cost: Math.round(laborEstimate * 100) / 100,
-    },
-    total: Math.round((subtotal + laborEstimate) * 100) / 100,
-  }
-}
+      i

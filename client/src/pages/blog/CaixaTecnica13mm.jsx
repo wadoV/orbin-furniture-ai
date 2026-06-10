@@ -3,6 +3,7 @@
  * Target: "caixa tecnica corredicas telescopicas", "13mm marcenaria", "medida gaveta MDF"
  */
 import { Link } from 'react-router-dom'
+import LanguageSwitcher from '../../components/LanguageSwitcher.jsx'
 
 export default function CaixaTecnica13mm() {
   return (
@@ -10,10 +11,16 @@ export default function CaixaTecnica13mm() {
       <header className="border-b border-white/5 px-6 py-4 flex items-center justify-between max-w-4xl mx-auto">
         <Link to="/" className="flex items-center gap-2">
           <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
-            <span className="text-[11px] font-black text-black">O</span>
+            <svg viewBox="0 0 300 360" className="w-5 h-5" fill="none" aria-hidden="true">
+              <g transform="rotate(35 150 180)">
+                <path fill="none" stroke="#0E0E0E" strokeWidth="7" d="M64,120 C40,180 44,250 92,294 C140,334 206,322 232,268"/>
+                <path fillRule="evenodd" fill="#0E0E0E" d="M150,20 C200,20 240,60 240,112 C240,176 214,242 182,292 C170,316 124,316 112,292 C82,242 58,176 58,112 C58,60 100,20 150,20 Z M145,118 A46,46 0 0 1 191,164 L191,214 A46,46 0 0 1 99,214 L99,164 A46,46 0 0 1 145,118 Z"/>
+              </g>
+            </svg>
           </div>
           <span className="text-sm font-black text-white uppercase tracking-widest">Orbin AI</span>
         </Link>
+        <LanguageSwitcher />
         <Link to="/register" className="text-[10px] font-black text-primary uppercase tracking-widest hover:underline">Comecar Gratis</Link>
       </header>
 

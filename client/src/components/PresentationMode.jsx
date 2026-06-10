@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import * as THREE from 'three';
 import { Play, Pause, Maximize2 } from 'lucide-react';
 import './PresentationMode.css';
 
 export default function PresentationMode({ camera, controls, isEnabled, onToggle }) {
   const [isPlaying, setIsPlaying] = useState(false);
-  const animationRef = useRef(null);
-  const curveRef = useRef(null);
-  const progressRef = useRef(0);
+  const restoreRef = useRef(null);
 
+  // Fullscreen styling toggle
   useEffect(() => {
     if (isEnabled) {
       document.body.classList.add('presentation-active');
@@ -19,39 +17,43 @@ export default function PresentationMode({ camera, controls, isEnabled, onToggle
     return () => document.body.classList.remove('presentation-active');
   }, [isEnabled]);
 
+  // Cinematic turntable driven by OrbitControls.autoRotate so it never fights
+  // the main render loop (which already calls controls.update() every frame).
   useEffect(() => {
     if (!camera || !controls) return;
-    const p0 = new THREE.Vector3(400, 300, 500);
-    const p1 = new THREE.Vector3(-300, 150, 400);
-    const p2 = new THREE.Vector3(-400, 100, -200);
-    const p3 = new THREE.Vector3(200, 200, -400);
-    curveRef.current = new THREE.CubicBezierCurve3(p0, p1, p2, p3);
-  }, [camera, controls]);
 
-  useEffect(() => {
     if (isPlaying && isEnabled) {
-      const animateCamera = () => {
-        if (!curveRef.current || !camera || !controls) return;
-        progressRef.current += 0.001;
-        if (progressRef.current > 1) progressRef.current = 0;
-        const point = curveRef.current.getPointAt(progressRef.current);
-        camera.position.lerp(point, 0.05);
-        
-        const time = Date.now() * 0.0005;
-        const radius = 600;
-        camera.position.x = Math.sin(time) * radius;
-        camera.position.z = Math.cos(time) * radius;
-        camera.position.y = 250 + Math.sin(time * 0.5) * 50;
-
-        controls.update();
-        animationRef.current = requestAnimationFrame(animateCamera);
+      restoreRef.current = {
+        target: controls.target.clone(),
+        autoRotate: controls.autoRotate,
+        autoRotateSpeed: controls.autoRotateSpeed,
+        enablePan: controls.enablePan,
       };
-      animationRef.current = requestAnimationFrame(animateCamera);
-    } else {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      controls.target.set(0, 320, 0);
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 1.6;
+      controls.enablePan = false;
+      controls.update();
+    } else if (restoreRef.current) {
+      const r = restoreRef.current;
+      controls.target.copy(r.target);
+      controls.autoRotate = r.autoRotate;
+      controls.autoRotateSpeed = r.autoRotateSpeed;
+      controls.enablePan = r.enablePan;
+      controls.update();
+      restoreRef.current = null;
     }
+
     return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (restoreRef.current && controls) {
+        const r = restoreRef.current;
+        controls.target.copy(r.target);
+        controls.autoRotate = r.autoRotate;
+        controls.autoRotateSpeed = r.autoRotateSpeed;
+        controls.enablePan = r.enablePan;
+        controls.update();
+        restoreRef.current = null;
+      }
     };
   }, [isPlaying, isEnabled, camera, controls]);
 
@@ -61,7 +63,7 @@ export default function PresentationMode({ camera, controls, isEnabled, onToggle
     <div className="presentation-overlay z-50 absolute inset-0 pointer-events-none overflow-hidden rounded-xl">
       <div className="presentation-header absolute top-8 left-8 pointer-events-auto">
         <h2 className="premium-title text-3xl font-bold tracking-[0.2em] text-white/90 drop-shadow-md">ORBIN SHOWROOM</h2>
-        <span className="premium-subtitle text-xs tracking-widest text-white/60 uppercase mt-2 block">Architectural Proportions & PBR Visualization</span>
+        <span className="premium-subtitle text-xs tracking-widest text-white/60 uppercase mt-2 block">Architectural Proportions &amp; PBR Visualization</span>
       </div>
       <div className="presentation-controls absolute bottom-12 left-1/2 -translate-x-1/2 flex gap-4 backdrop-blur-xl bg-black/40 p-2 rounded-2xl pointer-events-auto border border-white/10 shadow-2xl">
         <button className="flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-all font-medium text-sm tracking-wide" onClick={() => setIsPlaying(!isPlaying)}>

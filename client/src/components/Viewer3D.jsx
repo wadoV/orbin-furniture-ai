@@ -13,7 +13,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
-import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan } from 'lucide-react'
+import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan, RotateCw } from 'lucide-react'
 
 import PresentationMode from './PresentationMode.jsx'
 import AIVisualStylist from './AIVisualStylist.jsx'
@@ -31,6 +31,27 @@ const MATERIAL_COLORS = {
   marble_white:  0xeeeeee,
   granite_black: 0x111111,
   default:       0xC8A96E,
+
+  // Database standard materials
+  mdf_15:             0xC4A882,
+  mdf_18:             0xB89B72,
+  mdf_25:             0xA88E65,
+  plywood_18:         0xD4B896,
+  melamine_white_18:  0xF0EDE8,
+  melamine_wood_18:   0xC9A96E,
+  melamine_wood_15:   0xC9A96E,
+  osb_18:             0xD4C4A0,
+
+  // Arauco Catalog
+  arauco_vesto_roble_proveza: 0xC8A96E,
+  arauco_vesto_grafito:       0x333333,
+  arauco_vesto_blanco_puro:   0xF4F4F4,
+  arauco_vesto_azul_acero:    0x2B4C7E,
+
+  // Duratex Catalog
+  duratex_carvalho_hanover:   0xB89B72,
+  duratex_preto_silk:         0x1A1A1A,
+  duratex_cinza_sagrado:      0x8A8A8A,
 }
 
 const TYPE_COLORS = {
@@ -51,6 +72,48 @@ const SCALE = 0.1
 const SNAP_THRESHOLD = 3  // ★ PROTECTED: snap distance in scene units (~30mm real)
 const SNAP_COLOR = 0x00AAFF  // Blue guide line color
 
+// ─── Rotación de módulos en "L" — desfase de pivote ──────────────────────────
+// Al girar un módulo sobre su eje Y NO queremos que pivote sobre su centro: eso
+// lo haría "barrer" el espacio y atravesar la pared. Queremos que gire alrededor
+// de su esquina trasera-izquierda (la apoyada en el rincón), de modo que un mueble
+// en L se pliegue sobre la esquina y siga pegado a las dos paredes en cada paso.
+//
+// El grupo de piezas tiene su origen local en el centro-X y la cara trasera (z=0),
+// así que la esquina de anclaje en coords locales es A = (-W/2, 0). Para que A
+// conserve su posición mundial tras rotar θ, el contenedor de piezas se traslada
+//   offset = A - R(θ)·A = (I - R(θ))·A
+// con R(θ) sobre Y: x' = x·cosθ + z·sinθ ; z' = -x·sinθ + z·cosθ. Con A=(-W/2,0):
+//   offset.x = -W/2·(1 - cosθ)   ;   offset.z = -W/2·sinθ
+// (W ya viene en unidades de escena, multiplicado por SCALE.)
+function computeLPivotOffset(widthScene, rotationDeg) {
+  const theta = (rotationDeg * Math.PI) / 180
+  const halfW = (widthScene || 0) / 2
+  return {
+    x: -halfW * (1 - Math.cos(theta)),
+    z: -halfW * Math.sin(theta),
+  }
+}
+
+// Aplica la rotación del módulo (cfg.rotationY ∈ {0,90,180,270}) reagrupando todas
+// las piezas en un contenedor interno "pivot". mGroup.position queda intacto, por lo
+// que el drag y el snap siguen operando sobre el origen lógico sin acumular desfase.
+function applyModuleRotation(mGroup, rotationDeg, widthScene) {
+  const rot = (((Number(rotationDeg) || 0) % 360) + 360) % 360
+  if (!rot) return                       // 0° → nada que hacer
+  let W = widthScene
+  if (!W) {                              // respaldo: medir el ancho real del grupo
+    const box = new THREE.Box3().setFromObject(mGroup)
+    if (!box.isEmpty()) W = box.max.x - box.min.x
+  }
+  const pivot = new THREE.Group()
+  pivot.userData._isPivot = true
+  while (mGroup.children.length) pivot.add(mGroup.children[0])
+  const off = computeLPivotOffset(W || 0, rot)
+  pivot.position.set(off.x, 0, off.z)
+  pivot.rotation.y = (rot * Math.PI) / 180
+  mGroup.add(pivot)
+}
+
 export default function Viewer3D({
   modules          = [],
   selectedModuleId,
@@ -59,6 +122,7 @@ export default function Viewer3D({
   onSelectPiece    = () => {},
   onDeleteModule   = () => {},
   onUpdateModule   = () => {},
+  onRotateModule   = () => {},
   onAddModule      = () => {},
   onCaptureReady   = null,   // (fn) => void  — called once renderer is ready; fn() returns PNG dataURL
 }) {
@@ -895,7 +959,8 @@ export default function Viewer3D({
     snapLinesRef.current = []
 
     // ★ PROTECTED: Find rightmost edge of EXISTING modules for new module placement
-    let maxRightEdge = 0
+    let maxRightEdgeBase = 0
+    let maxRightEdgeAereo = 0
     modules.forEach((design) => {
       const cfg = design?.configuration
       if (!cfg) return
@@ -903,7 +968,11 @@ export default function Viewer3D({
       const saved = modulePositionsRef.current[design.id]
       if (saved) {
         const rightEdge = saved.x + W / 2
-        if (rightEdge > maxRightEdge) maxRightEdge = rightEdge
+        if (cfg.moduleType === 'aereo') {
+          if (rightEdge > maxRightEdgeAereo) maxRightEdgeAereo = rightEdge
+        } else {
+          if (rightEdge > maxRightEdgeBase) maxRightEdgeBase = rightEdge
+        }
       }
     })
 
@@ -930,7 +999,7 @@ export default function Viewer3D({
       const D  = (cfg.depth  || 580) * SCALE
       const T  = (cfg.thickness || 18) * SCALE
       const BT = (cfg.backThickness || 6) * SCALE
-      const BH = (cfg.baseboardHeight || 100) * SCALE
+      const BH = (cfg.baseboard !== false && cfg.moduleType !== 'aereo') ? ((cfg.baseboardHeight || 100) * SCALE) : 0
 
       // Helper: create a mesh with edge helper
       const makeMesh = (w, h, d, color, pieceName, type, drawerKey = null) => {
@@ -973,19 +1042,27 @@ export default function Viewer3D({
         mGroup.position.z = saved.z
         mGroup.position.y = saved.y !== undefined ? saved.y : mountY
       } else {
-        const newX = maxRightEdge + W / 2  // ★ FIX: módulos tocan sin gap para unificar encimera
-        mGroup.position.x = newX
-        mGroup.position.y = mountY
-        maxRightEdge = newX + W / 2
-        modulePositionsRef.current[design.id] = { x: newX, z: 0, y: mountY }
+        if (isAereoModule) {
+          const newX = maxRightEdgeAereo + W / 2
+          mGroup.position.x = newX
+          mGroup.position.y = mountY
+          maxRightEdgeAereo = newX + W / 2
+          modulePositionsRef.current[design.id] = { x: newX, z: 0, y: mountY }
+        } else {
+          const newX = maxRightEdgeBase + W / 2
+          mGroup.position.x = newX
+          mGroup.position.y = mountY
+          maxRightEdgeBase = newX + W / 2
+          modulePositionsRef.current[design.id] = { x: newX, z: 0, y: mountY }
+        }
       }
       moduleGroupsRef.current[design.id] = mGroup
       mGroup.userData.moduleId = design.id
       mGroup.userData.moduleWidth = W
       const xOffset = 0  // ★ PROTECTED: Pieces positioned relative to module center
 
-      const bodyColor  = MATERIAL_COLORS[cfg.materialBody]  || TYPE_COLORS.structural
-      const frontColor = MATERIAL_COLORS[cfg.materialFront] || TYPE_COLORS.drawer_front
+      const bodyColor  = MATERIAL_COLORS[cfg.materialId] || MATERIAL_COLORS[cfg.materialBody]  || TYPE_COLORS.structural
+      const frontColor = MATERIAL_COLORS[cfg.materialId] || MATERIAL_COLORS[cfg.materialFront] || TYPE_COLORS.drawer_front
       const ctColor    = MATERIAL_COLORS[cfg.countertopMaterial] || TYPE_COLORS.countertop
 
       const yBase = 0
@@ -1021,7 +1098,7 @@ export default function Viewer3D({
       const zCenter = BT + iD / 2 + 0.1
 
       // === BASEBOARD / FEET ===
-      if (cfg.baseboard !== false) {
+      if (cfg.baseboard !== false && !isAereoModule) {
         const fr = makeMesh(iW, BH, T, bodyColor, 'Zocalo Frontal', 'baseboard')
         fr.position.set(xOffset, BH / 2, D - T / 2 - 5)
         mGroup.add(fr)
@@ -1143,6 +1220,9 @@ export default function Viewer3D({
       meshesRef.current
         .filter(m => m.userData.moduleId === design.id && m.userData.edgeHelper)
         .forEach(m => mGroup.add(m.userData.edgeHelper))
+
+      // ★ ROTACIÓN MUEBLE EN L — gira las piezas 90°·n sobre la esquina anclada
+      applyModuleRotation(mGroup, cfg.rotationY, W)
 
       group.add(mGroup)
     })
@@ -1415,6 +1495,16 @@ export default function Viewer3D({
     <div className="relative w-full h-full group select-none overflow-hidden" style={{ minHeight: 'clamp(260px, 45vw, 600px)' }}>
       <canvas ref={mountRef} className="absolute inset-0 w-full h-full block" style={{ minHeight: 'clamp(260px, 45vw, 600px)' }} />
 
+      {/* Showroom / recorrido cinematografico — montado condicionalmente para refs frescos */}
+      {isPresentationMode && (
+        <PresentationMode
+          camera={camRef.current}
+          controls={controlsRef.current}
+          isEnabled={isPresentationMode}
+          onToggle={() => setIsPresentationMode(false)}
+        />
+      )}
+
       {/* ★ PROTECTED: Drag-to-move indicator */}
       {isDragMoving && (
         <div className="absolute top-4 right-16 bg-[#00AAFF]/20 backdrop-blur-md border border-[#00AAFF]/40 px-3 py-1.5 rounded-full z-30 pointer-events-none">
@@ -1588,6 +1678,19 @@ export default function Viewer3D({
         </button>
         {selectedModuleId && (
           <button
+            onClick={() => onRotateModule(selectedModuleId)}
+            className="group/rot relative p-2.5 rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-black active:scale-90 active:opacity-80 transition-all duration-200 ease-out flex items-center justify-center"
+            title="Rotar 90° (Mueble L)"
+            aria-label="Rotar 90° (Mueble L)"
+          >
+            <RotateCw size={18} />
+            <span className="pointer-events-none absolute bottom-12 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/10 bg-black px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-lg transition-opacity duration-200 group-hover/rot:opacity-100">
+              {lang === 'ES' ? 'Rotar 90° (Mueble L)' : lang === 'PT' ? 'Girar 90° (Móvel L)' : 'Rotate 90° (L-unit)'}
+            </span>
+          </button>
+        )}
+        {selectedModuleId && (
+          <button
             onClick={() => onDeleteModule(selectedModuleId)}
             className="p-2.5 rounded-full hover:bg-danger bg-danger/10 text-danger hover:text-white transition-all flex items-center justify-center"
             title={lang === 'ES' ? 'Eliminar Módulo' : lang === 'PT' ? 'Excluir Módulo' : 'Delete Module'}
@@ -1617,21 +1720,3 @@ export default function Viewer3D({
         Ver en mi espacio
       </button>
 
-      {/* AR Model Viewer Overlay */}
-      {arModelUrl && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm">
-          <button 
-            onClick={() => { setArModelUrl(null); URL.revokeObjectURL(arModelUrl); }}
-            className="absolute top-6 right-6 text-white hover:text-primary z-[60] p-2 bg-surface/40 rounded-full"
-          >
-            Cerrar
-          </button>
-          
-          {/* ★ FIX: No children React inside model-viewer — slots se mueven al shadow DOM
-              y causan removeChild crash. El botón AR se inyecta imperativemente. */}
-
-        </div>
-      )}
-    </div>
-  )
-}

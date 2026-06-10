@@ -24,7 +24,12 @@ function AuthLoading() {
       <div className="flex flex-col items-center gap-4">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center"
              style={{ background: 'linear-gradient(135deg, #F5A623 0%, #C47A0F 100%)' }}>
-          <span className="text-[14px] font-black text-black">O</span>
+          <svg viewBox="0 0 300 360" className="w-6 h-6" fill="none" aria-hidden="true">
+            <g transform="rotate(35 150 180)">
+              <path fill="none" stroke="#0E0E0E" strokeWidth="6" d="M64,120 C40,180 44,250 92,294 C140,334 206,322 232,268"/>
+              <path fillRule="evenodd" fill="#0E0E0E" d="M150,20 C200,20 240,60 240,112 C240,176 214,242 182,292 C170,316 124,316 112,292 C82,242 58,176 58,112 C58,60 100,20 150,20 Z M145,118 A46,46 0 0 1 191,164 L191,214 A46,46 0 0 1 99,214 L99,164 A46,46 0 0 1 145,118 Z"/>
+            </g>
+          </svg>
         </div>
         <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
       </div>

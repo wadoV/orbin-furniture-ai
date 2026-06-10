@@ -7,7 +7,17 @@ import { supabase } from '../lib/supabase.js'
 
 const PROMO_CODES = {
   KIRA2080: { plan: 'enterprise', company_name: 'Marcenaria Orbin Pro', label: 'Enterprise Desbloqueado' },
-  ORBIN_TEST_INDUSTRIAL_2026: { plan: 'enterprise', company_name: 'Marcenaria Orbin Pro', label: 'Enterprise Desbloqueado' }
+  ORBIN_TEST_INDUSTRIAL_2026: { plan: 'enterprise', company_name: 'Marcenaria Orbin Pro', label: 'Enterprise Desbloqueado' },
+  'ORBIN-TWX2-KGXU': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-GT3J-QURV': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-SYP9-TACN': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-TUTW-DN3D': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-NRDZ-BLDS': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-A49L-UPSZ': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-VH6W-6Y58': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-J59N-3FGS': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-B9MR-36AX': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-ZJR5-GBRD': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' }
 }
 const PROMO_KEY   = 'orbin-promo-plan'
 
@@ -51,76 +61,35 @@ function planFromSession(session) {
 }
 
 export function UserProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('orbin-user-session')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (parsed.isLoggedIn) {
-          return { ...parsed, loading: false }
-        }
-      }
-    } catch {}
-    return defaultUser
-  })
+  const [user, setUser] = useState(defaultUser)
 
+  // ★ La sesión de Supabase es la ÚNICA fuente de verdad. No confiamos en un flag de
+  //   localStorage (que podría falsear "logueado"); supabase-js ya persiste y refresca
+  //   el JWT, aquí solo reconciliamos el estado de UI con la sesión real.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('orbin-user-session')
-      if (saved) {
-        localStorage.setItem('orbin-user-session', JSON.stringify(user))
+    const userFromSession = (session) => {
+      const promo = localStorage.getItem(PROMO_KEY)
+      const base  = planFromSession(session)
+      const plan  = (promo && PLANS[promo]) ? promo : base
+      return {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.user_metadata?.name || session.user.email.split('@')[0],
+        company_name: session.user.user_metadata?.company_name || '',
+        plan,
+        isLoggedIn: true,
+        isVerified: true,
+        loading: false,
       }
-    } catch {}
-  }, [user])
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('orbin-user-session')
-      if (saved && JSON.parse(saved).isLoggedIn) {
-        return
-      }
-    } catch {}
+    }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        const promo    = localStorage.getItem(PROMO_KEY)
-        const base     = planFromSession(session)
-        const plan     = (promo && PLANS[promo]) ? promo : base
-        setUser({
-          id: session.user.id,
-          email: session.user.email,
-          name: session.user.user_metadata?.name || session.user.email.split('@')[0],
-          plan,
-          isLoggedIn: true,
-          isVerified: true,
-          loading: false
-        })
-      } else {
-        setUser({ ...defaultUser, loading: false })
-      }
+      setUser(session ? userFromSession(session) : { ...defaultUser, loading: false })
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      try {
-        const saved = localStorage.getItem('orbin-user-session')
-        if (saved && JSON.parse(saved).isLoggedIn) {
-          return
-        }
-      } catch {}
-
       if (session) {
-        const promo = localStorage.getItem(PROMO_KEY)
-        const base  = planFromSession(session)
-        const plan  = (promo && PLANS[promo]) ? promo : base
-        setUser({
-          id: session.user.id,
-          email: session.user.email,
-          name: session.user.user_metadata?.name || session.user.email.split('@')[0],
-          plan,
-          isLoggedIn: true,
-          isVerified: true,
-          loading: false
-        })
+        setUser(userFromSession(session))
       } else {
         localStorage.removeItem(PROMO_KEY)
         setUser({ ...defaultUser, loading: false })
@@ -151,27 +120,37 @@ export function UserProvider({ children }) {
       email, password, options: { data: { name, plan } }
     })
     if (error) throw error
-    const promo = localStorage.getItem(PROMO_KEY)
-    const finalPlan = promo || plan
-    const newUser = {
-      id: data.session?.user.id || Date.now().toString(),
-      email,
-      name,
-      plan: finalPlan,
-      company_name: '',
-      isLoggedIn: true,
-      isVerified: false, // Must verify with OTP
-      loading: false
+    const needsVerification = !data.session   // sin sesión activa => falta verificar OTP
+    if (needsVerification) {
+      try { localStorage.setItem('orbin-pending-email', email) } catch {}
+      // Estado "pendiente": NO logueado hasta verificar el código de 6 dígitos.
+      setUser({ ...defaultUser, email, name, plan, isLoggedIn: false, isVerified: false, loading: false })
     }
-    setUser(newUser)
-    return { session: true, user: newUser }
+    // Si hubiera sesión (confirmación de email desactivada), onAuthStateChange ya loguea.
+    return { needsVerification, session: data.session }
   }, [])
 
   const logout = useCallback(async () => {
     localStorage.removeItem(PROMO_KEY)
-    localStorage.removeItem('orbin-user-session')
+    try { localStorage.removeItem('orbin-pending-email') } catch {}
     await supabase.auth.signOut().catch(() => {})
     setUser({ ...defaultUser, loading: false })
+  }, [])
+
+  const signInWithGoogle = useCallback(async () => {
+    const redirectUrl = import.meta.env.VITE_AUTH_REDIRECT_URL || window.location.origin + '/app'
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectUrl,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent'
+        }
+      }
+    })
+    if (error) throw error
+    return data
   }, [])
 
   const upgradePlan = useCallback((planId) => {
@@ -193,13 +172,41 @@ export function UserProvider({ children }) {
     return { success: true, plan: planId, message: 'Plan ' + PLANS[planId].name.ES + ' activado' }
   }, [])
 
-  const verifyCode = useCallback((code) => {
-    if (code === '123456' || (code && code.length === 6)) {
+  const pendingEmail = () => { try { return localStorage.getItem('orbin-pending-email') } catch { return null } }
+
+  const verifyCode = useCallback(async (code, emailArg) => {
+    const email = emailArg || user?.email || pendingEmail()
+    if (!email) return { success: false, error: 'No hay un correo asociado a la verificación.' }
+    const { data, error } = await supabase.auth.verifyOtp({ email, token: code, type: 'signup' })
+    if (error) return { success: false, error: error.message || 'Código de verificación incorrecto.' }
+    try { localStorage.removeItem('orbin-pending-email') } catch {}
+    // verifyOtp devuelve una sesión activa; reflejamos el login de inmediato
+    // (onAuthStateChange también lo propaga).
+    if (data?.session) {
+      const promo = localStorage.getItem(PROMO_KEY)
+      const plan  = (promo && PLANS[promo]) ? promo : planFromSession(data.session)
+      setUser({
+        id: data.session.user.id,
+        email: data.session.user.email,
+        name: data.session.user.user_metadata?.name || email.split('@')[0],
+        company_name: data.session.user.user_metadata?.company_name || '',
+        plan,
+        isLoggedIn: true, isVerified: true, loading: false,
+      })
+    } else {
       setUser(prev => ({ ...prev, isVerified: true }))
-      return { success: true }
     }
-    return { success: false, error: 'Código de verificación incorrecto. Intente con 123456.' }
-  }, [])
+    return { success: true }
+  }, [user?.email])
+
+  // Reenvía un nuevo código OTP de registro al correo pendiente.
+  const resendCode = useCallback(async (emailArg) => {
+    const email = emailArg || user?.email || pendingEmail()
+    if (!email) return { success: false, error: 'No hay correo para reenviar el código.' }
+    const { error } = await supabase.auth.resend({ type: 'signup', email })
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+  }, [user?.email])
 
   const [companySettings, setCompanySettings] = useState(() => {
     try {
@@ -231,28 +238,4 @@ export function UserProvider({ children }) {
   const isFree            = user.plan === 'free'
   const isPro             = user.plan === 'pro' || user.plan === 'enterprise'
   const isEnterprise      = user.plan === 'enterprise'
-  const canAddModule      = (n) => isFree ? n < planConfig.maxModules : true
-  const canExportPDF      = planConfig.exportPDF
-  const canExportCSV      = planConfig.exportCSV
-  const canExportCNC      = planConfig.exportCNC
-  const canExportBOM      = planConfig.exportBOM
-  const canUseChat        = planConfig.aiChat
-  const allowedThicknesses = planConfig.thicknesses
-
-  return (
-    <UserContext.Provider value={{
-      user, plan: user.plan, planConfig, isFree, isPro, isEnterprise,
-      isLoading: user.loading, login, register, logout, upgradePlan, applyPromoCode,
-      canAddModule, canExportPDF, canExportCSV, canExportCNC, canExportBOM,
-      canUseChat, allowedThicknesses, PLANS, companySettings, updateCompanySettings, verifyCode,
-    }}>
-      {children}
-    </UserContext.Provider>
-  )
-}
-
-export function useUser() {
-  const ctx = useContext(UserContext)
-  if (!ctx) throw new Error('useUser must be used within UserProvider')
-  return ctx
-}
+  const canAddModul

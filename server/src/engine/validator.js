@@ -101,10 +101,20 @@ function validateDesign(design) {
         'excede a altura interna util (' + availableHeight + 'mm).'
       )
     } else if (drawerStack > availableHeight * 0.85) {
-      errors.push(
-        'Pilha de gavetas (' + drawerStack + 'mm) ocupa ' +
-        Math.round(drawerStack/availableHeight*100) + '% da altura interna — sem espaco para estantes ou separador.'
-      )
+      // Una CÓMODA pura (solo gavetas, sin estantes ni puertas) está pensada para
+      // llenar todo el interior: el llenado >85% es correcto, no un defecto.
+      const drawerOnly = (cfg.numShelves || 0) === 0 && !cfg.hasDoors
+      if (drawerOnly) {
+        warnings.push(
+          'Cômoda de gavetas: a pilha ocupa ' +
+          Math.round(drawerStack/availableHeight*100) + '% da altura interna (preenchimento total, sem estantes).'
+        )
+      } else {
+        errors.push(
+          'Pilha de gavetas (' + drawerStack + 'mm) ocupa ' +
+          Math.round(drawerStack/availableHeight*100) + '% da altura interna — sem espaco para estantes ou separador.'
+        )
+      }
     } else if (drawerStack > availableHeight * 0.7) {
       warnings.push('Pilha de gavetas (' + drawerStack + 'mm) ocupa mais de 70% da altura interna.')
     }

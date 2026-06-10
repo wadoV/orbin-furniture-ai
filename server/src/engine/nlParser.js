@@ -130,42 +130,63 @@ function parseNaturalLanguage(input) {
   const notes  = []
   let confidence = 0
 
+  let hadW = false, hadH = false, hadD = false
   if (triple) {
     result.width  = triple.width
     result.height = triple.height
     result.depth  = triple.depth
+    hadW = hadH = hadD = true
     confidence += 40
   } else {
     const w = extractDimensionByKeyword(text, ['larg', 'anch', 'width', 'largura', 'ancho'])
     const h = extractDimensionByKeyword(text, ['alt',  'height', 'altura', 'alto'])
     const d = extractDimensionByKeyword(text, ['prof', 'depth', 'fundo', 'profundidade', 'fondo'])
 
-    if (w) { result.width  = w; confidence += 15 }
-    if (h) { result.height = h; confidence += 15 }
-    if (d) { result.depth  = d; confidence += 15 }
+    if (w) { result.width  = w; hadW = true; confidence += 15 }
+    if (h) { result.height = h; hadH = true; confidence += 15 }
+    if (d) { result.depth  = d; hadD = true; confidence += 15 }
 
     if (!w) {
       const first = text.match(/\b(\d{3,4})\s*mm/)
       if (first) {
-        result.width = parseInt(first[1])
+        result.width = parseInt(first[1]); hadW = true
         confidence += 5
+      } else {
+        // ★ Fallback: número "pelado" de 3–4 dígitos = ancho en mm (ej. "aéreo 600")
+        const bare = text.match(/(?:^|\s)(\d{3,4})(?=\s|$)/)
+        if (bare) { result.width = parseInt(bare[1]); hadW = true; confidence += 5 }
       }
     }
   }
 
-  // --- Type Detection ---
-  // NOTE: runs BEFORE the dimension note so interpreted reflects FINAL dimensions.
-  // BUG FIX: also set moduleType so Viewer3D renders the correct geometry
-  // ('kitchen_low' → 'base', 'kitchen_high' → 'aereo', default → 'standard')
-  if (detectFeature(text, ['cocina baja', 'cozinha baixa', 'modulo bajo', 'mueble bajo', 'bajo de cocina'])) {
-    result.type = 'kitchen_low'; result.moduleType = 'base';
-    result.height = 900; result.depth = 600; result.hasCountertop = true;
-    notes.push('Tipo: Módulo Bajo');
-  } else if (detectFeature(text, ['cocina alta', 'cozinha alta', 'aereo', 'suspendido'])) {
+  // --- Type Detection (ES / PT / EN, acento-insensible) ---
+  // moduleType controla a geometria do Viewer3D: 'base' (piso + bancada),
+  // 'aereo' (suspenso na parede) e 'standard' (clóset/armário). As dimensões
+  // padrão do tipo só se aplicam quando o usuário NÃO as especificou.
+  const deburr = (str) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const typeText = deburr(text)
+  const hasAny = (kws) => kws.some(kw => typeText.includes(kw))
+
+  const AEREO_KW = ['cocina alta', 'cozinha alta', 'modulo alto', 'mueble alto', 'armario alto',
+                    'aereo', 'suspendido', 'suspenso', 'armario superior', 'mueble superior',
+                    'upper cabinet', 'wall cabinet', 'wall unit', 'overhead cabinet']
+  const BASE_KW  = ['cocina baja', 'cozinha baixa', 'modulo bajo', 'mueble bajo', 'bajo de cocina',
+                    'armario base', 'mueble base', 'modulo base', 'gabinete base',
+                    'base cabinet', 'lower cabinet', 'bancada']
+  const ISLAND_KW = ['isla', 'ilha', 'island']
+
+  if (hasAny(AEREO_KW)) {
     result.type = 'kitchen_high'; result.moduleType = 'aereo';
-    result.height = 700; result.depth = 350;
-    notes.push('Tipo: Módulo Alto');
-  } else if (detectFeature(text, ['isla', 'ilha', 'island'])) {
+    if (!hadH) result.height = 700;
+    if (!hadD) result.depth = 350;
+    notes.push('Tipo: Módulo Alto / Aéreo');
+  } else if (hasAny(BASE_KW)) {
+    result.type = 'kitchen_low'; result.moduleType = 'base';
+    if (!hadH) result.height = 900;
+    if (!hadD) result.depth = 600;
+    result.hasCountertop = true;
+    notes.push('Tipo: Módulo Bajo');
+  } else if (hasAny(ISLAND_KW)) {
     result.type = 'kitchen_island'; result.moduleType = 'base';
     notes.push('Tipo: Isla');
   } else {

@@ -193,20 +193,20 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
             <button
               onClick={() => setHiddenPieceIds(new Set())}
               className="flex items-center gap-1 bg-yellow-500/10 text-yellow-400 text-xs px-2 py-0.5 rounded-full font-mono hover:bg-yellow-500/20 transition-all"
-              title="Mostrar todas las piezas ocultas"
+              title={t('cl_show_hidden')}
             >
-              <EyeOff size={10} /> {hiddenPieceIds.size} ocultas — mostrar todas
+              <EyeOff size={10} /> {hiddenPieceIds.size} {t('cl_hidden_suffix')}
             </button>
           )}
         </h3>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-none">
-            <label htmlFor={searchId} className="sr-only">Filtrar tabla</label>
+            <label htmlFor={searchId} className="sr-only">{t('cl_filter_table')}</label>
             <Filter size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
             <input
               id={searchId}
               className="input-field pl-7 py-1.5 text-xs w-full sm:w-40 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
-              placeholder="Filtrar..."
+              placeholder={t('cl_filter_ph')}
               value={filter}
               onChange={e => setFilter(e.target.value)}
             />
@@ -228,24 +228,24 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
 
       <div className="overflow-x-auto rounded-lg border border-border" tabIndex={0} role="region" aria-label="Tabla de lista de corte">
         <table className="w-full text-sm">
-          <caption className="sr-only">Lista de piezas requeridas para ensamblar el mueble</caption>
+          <caption className="sr-only">{t('cl_caption')}</caption>
           <thead className="bg-surface-3 border-b border-border">
             <tr>
               <Th k="id">ID</Th>
               <Th k="name">{t('piece_name')}</Th>
-              <Th k="type">Tipo</Th>
+              <Th k="type">{t('cl_type')}</Th>
               <Th k="cutWidth">{unit === 'm' ? t('w_m') : t('w_mm')}</Th>
               <Th k="cutHeight">{unit === 'm' ? t('h_m') : t('h_mm')}</Th>
-              <Th k="thickness">Esp.(mm)</Th>
-              <Th k="grainDirection">Veio</Th>
-              <th scope="col" className="px-3 py-2.5 text-left text-xs font-semibold text-muted uppercase tracking-wider">Bordos</th>
+              <Th k="thickness">{t('cl_thickness')}</Th>
+              <Th k="grainDirection">{t('cl_grain')}</Th>
+              <th scope="col" className="px-3 py-2.5 text-left text-xs font-semibold text-muted uppercase tracking-wider">{t('cl_edges')}</th>
               <th scope="col" className="px-3 py-2.5 w-8" aria-label="Visibilidad" />
               <th scope="col" className="px-3 py-2.5 w-10" aria-label="Eliminar" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {filtered.length === 0 ? (
-              <tr><td colSpan={10} className="px-3 py-6 text-center text-muted">No se encontraron piezas.</td></tr>
+              <tr><td colSpan={10} className="px-3 py-6 text-center text-muted">{t('cl_empty')}</td></tr>
             ) : filtered.map((p, i) => {
               const selected = isPieceSelected(p)
               const key = pieceKey(p)
@@ -258,7 +258,7 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
                     ? 'bg-primary/15 border-l-2 border-primary shadow-[inset_0_0_8px_rgba(245,166,35,0.08)]'
                     : 'hover:bg-surface-2 border-l-2 border-transparent'
                 }`}
-                title="Click para resaltar pieza en el visor 3D"
+                title={t('cl_row_title')}
               >
                 <td className={`px-3 py-2.5 font-mono text-xs ${selected ? 'text-primary font-bold' : 'text-muted'}`}>{p.id}</td>
                 <td className={`px-3 py-2.5 font-medium ${selected ? 'text-primary' : 'text-white'}`}>{p.name}</td>
@@ -273,7 +273,7 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
                   <button
                     onClick={e => { e.stopPropagation(); toggleHidden(p) }}
                     className="p-1 rounded text-muted hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                    title={isHidden(p) ? 'Mostrar pieza' : 'Ocultar pieza de la lista'}
+                    title={isHidden(p) ? t('cl_show_piece') : t('cl_hide_piece')}
                   >
                     <Eye size={12} />
                   </button>
@@ -284,7 +284,7 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
                     <button
                       onClick={e => { e.stopPropagation(); onDeletePiece(p.id) }}
                       className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted hover:text-red-400 hover:bg-red-400/10 transition-all"
-                      title="Eliminar pieza — Ctrl+Z para deshacer"
+                      title={t('cl_delete_piece')}
                     >
                       <X size={12} />
                     </button>
@@ -303,7 +303,7 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
         <span><span className="text-primary font-mono">T</span>=Topo</span>
         <span><span className="text-primary font-mono">B</span>=Base</span>
         <span><span className="text-primary font-mono">E/D</span>=Esq/Dir</span>
-        <span>Medidas em <span className="text-white font-mono">{unit.toUpperCase()}</span></span>
+        <span>{t('cl_measures_in')} <span className="text-white font-mono">{unit.toUpperCase()}</span></span>
       </div>
     </div>
   )

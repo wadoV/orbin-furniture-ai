@@ -1,9 +1,10 @@
 import { useNavigate, Link } from 'react-router-dom'
 import {
   Zap, Box, Check, X, ArrowRight,
-  FileText, ChevronRight, PlayCircle, Camera, Users
+  FileText, ChevronRight, PlayCircle, Users
 } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import LanguageSwitcher from './LanguageSwitcher.jsx'
 
 // I18N Inline Helper for Landing Page (to avoid polluting global i18n unnecessarily, keeping it contained)
 const t = (key, lang, defaultText = '') => {
@@ -31,14 +32,15 @@ const t = (key, lang, defaultText = '') => {
     prob_3_sol: { PT: 'Mostre o 3D interativo + AR direto no celular do cliente.', ES: 'Muestra el 3D interactivo directo en el celular del cliente.', EN: 'Show interactive 3D directly on the client phone.' },
 
     // Features
-    feat1_title: { PT: 'IA Vision: Da Foto ao Projeto 3D', ES: 'IA Vision: De la Foto al Proyecto 3D', EN: 'AI Vision: From Photo to 3D Project' },
-    feat1_desc: { PT: 'Tire uma foto do ambiente e nossa IA entende as dimensões e gera o armário perfeito. Economize horas de medição e desenho manual.', ES: 'Toma una foto del ambiente y nuestra IA entiende las dimensiones y genera el armario perfecto.', EN: 'Take a photo of the room and our AI understands dimensions to generate the perfect cabinet.' },
+    feat1_title: { PT: 'Design com IA: Do Chat ao Projeto 3D', ES: 'Diseño con IA: Del Chat al Proyecto 3D', EN: 'AI Design: From Chat to 3D Project' },
+    feat1_desc: { PT: 'Converse com a IA para desenhar e modificar móveis em tempo real. Orbin gera instantaneamente o modelo 3D paramétrico, a lista de corte e o custo.', ES: 'Chatea con la IA para diseñar y modificar muebles en tiempo real. Orbin genera al instante el modelo 3D paramétrico, la lista de corte y el costo.', EN: 'Chat with the AI to design and modify furniture in real-time. Orbin instantly generates the parametric 3D model, cut list, and cost.' },
     feat2_title: { PT: 'Lista de Corte CNC automática', ES: 'Lista de Corte y CNC Automática', EN: 'Auto Cut List & CNC' },
     feat2_desc: { PT: 'Geração instantânea de PDF de corte, CSV, G-code e BOM. Precisão industrial impecável na sua fábrica.', ES: 'Generación instantánea de PDF, CSV, G-code y BOM con precisión industrial.', EN: 'Instant generation of PDF, CSV, G-code, and BOM with industrial precision.' },
     feat3_title: { PT: 'Colaboração em tempo real', ES: 'Colaboración en Tiempo Real', EN: 'Real-Time Collaboration' },
     feat3_desc: { PT: 'Compartilhe um link seguro com seu cliente ou equipe. Qualquer alteração de material reflete no custo e 3D instantaneamente.', ES: 'Comparte un link seguro con tu cliente o fábrica. Los cambios reflejan en el costo al instante.', EN: 'Share a secure link with your client or team. Material changes reflect instantly.' },
 
     // Pricing
+    pricing_title: { PT: 'Planos e Preços', ES: 'Planes y Precios', EN: 'Plans & Pricing' },
     plan_subtitle: { PT: 'Comece grátis — upgrade quando precisar', ES: 'Empieza gratis — upgrade cuando lo necesites', EN: 'Start free — upgrade when needed' },
     promo_banner: { PT: 'Use o código KIRA2080 e ganhe o plano Industrial GRÁTIS por 30 dias!', ES: '¡Usa el código KIRA2080 y obtén el plan Industrial GRATIS por 30 días!', EN: 'Use code KIRA2080 and get the Enterprise plan FREE for 30 days!' },
     
@@ -107,8 +109,8 @@ const FAQS = [
     a: { PT: 'Exatamente. O Orbin roda 100% no seu navegador de internet (Chrome, Safari, Edge), seja no computador, macbook ou no tablet.', ES: 'Exactamente. Orbin corre 100% en el navegador web.', EN: 'Exactly. Orbin runs 100% in your web browser.' }
   },
   {
-    q: { PT: 'O AI Vision funciona com qualquer foto?', ES: '¿AI Vision funciona con cualquier foto?', EN: 'Does AI Vision work with any photo?' },
-    a: { PT: 'Nossa inteligência artificial analisa as proporções da foto do ambiente e gera o modelo 3D inicial. Recomendamos fotos bem iluminadas do espaço limpo.', ES: 'Nuestra IA analiza las proporciones de la foto para generar el 3D.', EN: 'Our AI analyzes the proportions of the photo to generate the 3D.' }
+    q: { PT: 'A IA entende português e espanhol?', ES: '¿La IA entiende portugués y español?', EN: 'Does the AI understand natural language?' },
+    a: { PT: 'Sim. Descreva o móvel em português ou espanhol e o Orbin interpreta dimensões, gavetas, portas e divisórias, gerando o 3D paramétrico na hora.', ES: 'Sí. Describe el mueble en español o portugués y Orbin interpreta dimensiones, cajones, puertas y divisiones, generando el 3D paramétrico al instante.', EN: 'Yes. Describe the furniture in Portuguese, Spanish, or English and Orbin parses dimensions, drawers, doors, and dividers to generate the parametric 3D instantly.' }
   },
   {
     q: { PT: 'Posso exportar para CNC?', ES: '¿Puedo exportar para CNC?', EN: 'Can I export to CNC?' },
@@ -150,11 +152,17 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 glass border-b border-white/5 bg-[#0D0D0D]/80 backdrop-blur-md">
         <div onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2 cursor-pointer select-none">
           <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center shadow-[0_0_12px_rgba(245,166,35,0.4)]">
-            <span className="text-[11px] font-black text-black">O</span>
+            <svg viewBox="0 0 300 360" className="w-5 h-5" fill="none" aria-hidden="true">
+              <g transform="rotate(35 150 180)">
+                <path fill="none" stroke="#0E0E0E" strokeWidth="7" d="M64,120 C40,180 44,250 92,294 C140,334 206,322 232,268"/>
+                <path fillRule="evenodd" fill="#0E0E0E" d="M150,20 C200,20 240,60 240,112 C240,176 214,242 182,292 C170,316 124,316 112,292 C82,242 58,176 58,112 C58,60 100,20 150,20 Z M145,118 A46,46 0 0 1 191,164 L191,214 A46,46 0 0 1 99,214 L99,164 A46,46 0 0 1 145,118 Z"/>
+              </g>
+            </svg>
           </div>
           <span className="text-sm font-black text-white uppercase tracking-widest">Orbin AI</span>
         </div>
         <div className="flex items-center gap-4">
+          <LanguageSwitcher />
           <button onClick={() => navigate('/login')} className="text-[11px] font-bold text-muted hover:text-white uppercase tracking-widest transition-colors">
             { L === 'PT' ? 'Entrar' : L === 'EN' ? 'Log In' : 'Iniciar Sesión' }
           </button>
@@ -243,24 +251,24 @@ export default function LandingPage() {
           <div className="flex flex-col lg:flex-row items-center gap-16">
             <div className="flex-1 space-y-6">
               <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest uppercase">
-                <Camera size={14} /> AI Vision
+                <Zap size={14} /> { L === 'PT' ? 'Design com IA' : L === 'EN' ? 'AI Design' : 'Diseño con IA' }
               </div>
               <h2 className="text-3xl md:text-4xl font-black leading-tight">{t('feat1_title', L)}</h2>
               <p className="text-lg text-white/60 leading-relaxed font-medium">
                 {t('feat1_desc', L)}
               </p>
               <button onClick={() => navigate('/register')} className="text-primary font-bold hover:text-white transition-colors flex items-center gap-1 uppercase tracking-widest text-xs">
-                Ver na prática <ChevronRight size={16} />
+                { L === 'PT' ? 'Ver na prática' : L === 'EN' ? 'See in practice' : 'Ver en la práctica' } <ChevronRight size={16} />
               </button>
             </div>
             <div className="flex-1 w-full relative">
-              <div className="aspect-[4/3] bg-surface-2 rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                <div className="absolute inset-0 bg-gradient-to-tr from-zinc-900 to-zinc-800" />
-                <Camera size={48} className="text-white/10 relative z-10" />
-                <div className="absolute bottom-6 left-6 right-6 bg-black/80 backdrop-blur-md p-5 rounded-xl border border-white/5">
-                  <div className="h-3 w-1/3 bg-primary/50 rounded-full mb-3"></div>
-                  <div className="h-3 w-2/3 bg-white/20 rounded-full"></div>
-                </div>
+              <div className="aspect-[4/3] bg-surface-2 rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.5)] group">
+                <img
+                  src="/orbin_chat_3d_render.png"
+                  alt="Diseño con IA Demo"
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  id="landing-feat-parametric-img"
+                />
               </div>
             </div>
           </div>
@@ -279,14 +287,13 @@ export default function LandingPage() {
               </button>
             </div>
             <div className="flex-1 w-full relative">
-              <div className="aspect-[4/3] bg-surface-2 rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                <div className="absolute inset-0 bg-gradient-to-tl from-zinc-900 to-zinc-800" />
-                <FileText size={48} className="text-white/10 relative z-10" />
-                <div className="absolute top-6 left-6 right-6 bg-black/80 backdrop-blur-md p-5 rounded-xl border border-white/5 flex flex-col gap-3">
-                   <div className="h-8 w-full bg-white/5 rounded-lg border border-white/5"></div>
-                   <div className="h-8 w-full bg-white/5 rounded-lg border border-white/5"></div>
-                   <div className="h-8 w-3/4 bg-white/5 rounded-lg border border-white/5"></div>
-                </div>
+              <div className="aspect-[4/3] bg-surface-2 rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.5)] group">
+                <img
+                  src="/orbin_day2_cutlist_mockup.png"
+                  alt="Lista de Corte & CNC Demo"
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  id="landing-feat-cutlist-img"
+                />
               </div>
             </div>
           </div>
@@ -305,15 +312,13 @@ export default function LandingPage() {
               </button>
             </div>
             <div className="flex-1 w-full relative">
-              <div className="aspect-[4/3] bg-surface-2 rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                <div className="absolute inset-0 bg-gradient-to-tr from-zinc-900 to-zinc-800" />
-                <div className="absolute inset-x-12 top-1/2 -translate-y-1/2 flex items-center justify-between">
-                  <div className="w-20 h-20 rounded-full border border-primary/30 bg-primary/10 flex items-center justify-center shadow-[0_0_30px_rgba(245,166,35,0.2)]"><Users size={32} className="text-primary"/></div>
-                  <div className="h-px bg-gradient-to-r from-primary/50 to-white/10 flex-1 mx-6 relative">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-800 px-2 text-[10px] text-white/50 tracking-widest uppercase rounded">Sync</div>
-                  </div>
-                  <div className="w-20 h-20 rounded-full border border-white/10 bg-white/5 flex items-center justify-center"><Box size={32} className="text-white/50"/></div>
-                </div>
+              <div className="aspect-[4/3] bg-surface-2 rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.5)] group">
+                <img
+                  src="/orbin_day3_collab_mockup.png"
+                  alt="Colaboración en Tiempo Real Demo"
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  id="landing-feat-collab-img"
+                />
               </div>
             </div>
           </div>
@@ -325,7 +330,7 @@ export default function LandingPage() {
       <section id="pricing" className="py-24 px-6 bg-black/40 border-y border-white/5">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16 space-y-3">
-            <h2 className="text-4xl font-black">Planos e Preços</h2>
+            <h2 className="text-4xl font-black">{t('pricing_title', L)}</h2>
             <p className="text-white/50 text-lg font-medium">{t('plan_subtitle', L)}</p>
           </div>
 
@@ -432,7 +437,12 @@ export default function LandingPage() {
       <footer className="border-t border-white/5 py-12 px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-muted">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-primary to-[#C47A0F]">
-            <span className="text-[12px] font-black text-black">O</span>
+            <svg viewBox="0 0 300 360" className="w-5 h-5" fill="none" aria-hidden="true">
+              <g transform="rotate(35 150 180)">
+                <path fill="none" stroke="#0E0E0E" strokeWidth="7" d="M64,120 C40,180 44,250 92,294 C140,334 206,322 232,268"/>
+                <path fillRule="evenodd" fill="#0E0E0E" d="M150,20 C200,20 240,60 240,112 C240,176 214,242 182,292 C170,316 124,316 112,292 C82,242 58,176 58,112 C58,60 100,20 150,20 Z M145,118 A46,46 0 0 1 191,164 L191,214 A46,46 0 0 1 99,214 L99,164 A46,46 0 0 1 145,118 Z"/>
+              </g>
+            </svg>
           </div>
           <span className="text-xs font-bold tracking-widest uppercase text-white/80">Orbin Technologies</span>
         </div>
@@ -447,3 +457,4 @@ export default function LandingPage() {
     </div>
   )
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               

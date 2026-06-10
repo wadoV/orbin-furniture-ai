@@ -45,10 +45,10 @@ PORT=3003
 CLIENT_URL=https://orbin-frontend.vercel.app
 
 SUPABASE_URL=https://fqbqdsmwnulvbysqukam.supabase.co
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYnFkc213bnVsdmJ5c3F1a2FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MzkxNDUsImV4cCI6MjA5MzMxNTE0NX0.yU41qJZQZLJ6sa146fhxNN6Z2qhXfwDpbYUQvIYlVlU
+SUPABASE_ANON_KEY=<TU_SUPABASE_ANON_KEY>
 SUPABASE_SERVICE_KEY=[LA CLAVE QUE COPIASTE EN EL PASO 1]
 
-GEMINI_API_KEY=***REDACTED_API_KEY***
+GEMINI_API_KEY=<TU_GEMINI_API_KEY>
 GEMINI_MODEL=gemini-2.0-flash
 
 JWT_SECRET=99fab7976eaa26adfd18a631872893e0c871c28b6b6633d65f8b73a282633ff2da1d912595b7f1c5bd92071598b2b69e28a9c4574000eae73e3f63d3b14666b4
@@ -135,8 +135,39 @@ CLIENT_URL = https://[TU-URL-VERCEL-REAL.vercel.app]
 Orbin/
 ├── railway.json          ← Config de deploy para Railway
 ├── server/Procfile       ← Start command para Railway  
+├── server/Dockerfile     ← Dockerfile de producción para el backend Express
 ├── client/vercel.json    ← SPA rewrites + cache headers
 ├── client/vite.config.js ← Code-splitting (three/react/socket)
 ├── COMMIT_AND_PUSH.bat   ← Script para hacer el commit
 └── PURGE_CLEANUP.bat     ← Script para limpiar archivos basura
 ```
+
+---
+
+## PASO 6 — Configuración de Google OAuth 2.0 en Producción (3 min)
+
+### 6a. Google Cloud Console
+1. Ve a: **https://console.cloud.google.com/**
+2. Selecciona tu proyecto y ve a **APIs & Services** > **Credentials**.
+3. Edita la credencial del cliente de la aplicación web de Google OAuth 2.0.
+4. En **Authorized redirect URIs**, agrega el callback oficial de producción de Supabase:
+   `https://fqbqdsmwnulvbysqukam.supabase.co/auth/v1/callback`
+
+### 6b. Supabase Dashboard
+1. Ve a: **https://supabase.com/dashboard/project/fqbqdsmwnulvbysqukam/auth/url-configuration**
+2. Establece el **Site URL** al dominio de producción del frontend:
+   `https://orbin.app` (o tu dominio de Vercel).
+3. En **Redirect URLs**, agrega la expresión wildcard para permitir el retorno al frontend:
+   `https://orbin.app/**` (o tu subdominio de Vercel).
+
+---
+
+## PASO 7 — Migraciones de Base de Datos en Producción (3 min)
+
+Para aplicar las tablas de perfiles, triggers de registro y telemetría a la base de datos de producción:
+1. En el dashboard de Supabase, ve a **SQL Editor** > **New Query**.
+2. Copia y ejecuta en orden las consultas de los archivos:
+   - [[003_create_profiles.sql](file:///C:/Users/Azomarg/Documents/Claude_projects/Orbin/server/supabase/migrations/003_create_profiles.sql)]
+   - [[004_create_telemetry_logs.sql](file:///C:/Users/Azomarg/Documents/Claude_projects/Orbin/server/supabase/migrations/004_create_telemetry_logs.sql)]
+3. Haz click en **Run**. Verás el mensaje de éxito `status | Tabla profiles... creada correctamente ✓`.
+

@@ -1,0 +1,28 @@
+==============================================================
+  ORBIN  |  MUEBLES  --  IA de diseño paramétrico de muebles
+==============================================================
+
+QUÉ ES:
+  Aplicación web (React/Vite + Node) que genera diseño
+  paramétrico de muebles, lista de corte y visor 3D.
+
+  Es un proyecto DISTINTO e independiente de "Orbin Logs".
+  NO comparten código, puertos ni base de datos.
+
+CÓMO ARRANCAR:
+  >> Doble clic en:  INICIAR_ORBIN_MUEBLES.bat
+  (lanzador maestro, banner VERDE, dice "MUEBLES")
+
+PUERTOS:
+  Backend  API  -> http://localhost:3003
+  Frontend App  -> http://localhost:5173
+
+ESTRUCTURA:
+  client/        Frontend (React + Vite)
+  server/        Backend (Express + Supabase + Gemini/Vertex)
+  Orbin_Brand/   Identidad de marca (logos + manual PDF)
+  Orbin_Logofolio/  Exploración de logos
+
+NO CONFUNDIR CON:
+  Carpeta  ..\Orbin_logs  (stack n8n + WhatsApp, banner AMARILLO).
+==============================================================

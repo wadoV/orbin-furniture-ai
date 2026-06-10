@@ -3,14 +3,29 @@
  * Adds chat and projects endpoints.
  */
 
+import { supabase } from '../lib/supabase.js'
+
 const BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
 async function request(method, path, body) {
+  let token = null
+  try {
+    const session = (await supabase.auth.getSession()).data?.session
+    token = session?.access_token
+  } catch (err) {
+    console.warn('[API Client] Failed to get session token:', err)
+  }
+
+  const headers = { 'Content-Type': 'application/json' }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
   let res
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     })
   } catch {
@@ -48,4 +63,10 @@ export const api = {
   listProjects:   ()         => request('GET',  '/projects'),
   getProject:     (id)       => request('GET',  `/projects/${id}`),
   deleteProject:  (id)       => request('DELETE', `/projects/${id}`),
+
+  // Generic verb helpers — used by feature panels (e.g. Vision AI → /vision/analyze-space)
+  post:           (path, body) => request('POST',   path, body),
+  get:            (path)       => request('GET',    path),
+  put:            (path, body) => request('PUT',    path, body),
+  del:            (path)       => request('DELETE', path),
 }

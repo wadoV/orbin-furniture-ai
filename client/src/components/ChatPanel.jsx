@@ -153,7 +153,7 @@ export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, 
             <div className="flex items-center gap-1.5">
               <span className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-primary animate-pulse' : 'bg-success animate-pulse'}`} />
               <span className={`text-[9px] font-black uppercase tracking-widest opacity-80 ${loading ? 'text-primary' : 'text-success'}`}>
-                {loading ? (aiStatus || 'Processing...') : 'Online & Ready'}
+                {loading ? (aiStatus || t('chat_processing')) : t('chat_online')}
               </span>
             </div>
           </div>
@@ -169,7 +169,7 @@ export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, 
               <Zap size={14} className="group-hover:scale-110 transition-transform" />
             </button>
           )}
-          <div className="p-2 bg-white/5 rounded-lg border border-white/5 text-muted hover:text-primary transition-colors cursor-help" title="Kitchen Expert">
+          <div className="p-2 bg-white/5 rounded-lg border border-white/5 text-muted hover:text-primary transition-colors cursor-help" title={t('chat_kitchen_expert')}>
             <Hammer size={14} />
           </div>
         </div>
@@ -286,12 +286,12 @@ export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, 
         <div className="mt-4 flex items-center justify-center gap-4 opacity-30">
            <div className="flex items-center gap-1.5">
              <Wand2 size={10} className="text-white" />
-             <span className="text-[9px] font-black text-white uppercase tracking-widest">Parametric Logic</span>
+             <span className="text-[9px] font-black text-white uppercase tracking-widest">{t('chat_parametric_logic')}</span>
            </div>
            <div className="w-1 h-1 bg-white/20 rounded-full" />
            <div className="flex items-center gap-1.5">
              <Ruler size={10} className="text-white" />
-             <span className="text-[9px] font-black text-white uppercase tracking-widest">Millimeter Precision</span>
+             <span className="text-[9px] font-black text-white uppercase tracking-widest">{t('chat_mm_precision')}</span>
            </div>
         </div>
       </div>

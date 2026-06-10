@@ -7,14 +7,21 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { Eye, EyeOff, Zap, ArrowRight, Check, Tag, Loader2 } from 'lucide-react'
 import { useUser } from '../context/UserContext.jsx'
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import LanguageSwitcher from './LanguageSwitcher.jsx'
 
 function AuthLayout({ children, title, subtitle }) {
   return (
     <div className="min-h-screen bg-[#0D0D0D] flex flex-col items-center justify-center px-4 py-12">
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary/4 rounded-full blur-[100px] pointer-events-none" />
+      <div className="fixed top-4 right-4 z-20"><LanguageSwitcher /></div>
       <Link to="/" className="flex items-center gap-2 mb-10 group">
         <div className="w-8 h-8 bg-primary rounded-xl flex items-center justify-center shadow-[0_0_16px_rgba(245,166,35,0.4)] group-hover:brightness-110 transition-all">
-          <span className="text-[12px] font-black text-black">O</span>
+          <svg viewBox="0 0 300 360" className="w-5 h-5" fill="none" aria-hidden="true">
+            <g transform="rotate(35 150 180)">
+              <path fill="none" stroke="#0E0E0E" strokeWidth="7" d="M64,120 C40,180 44,250 92,294 C140,334 206,322 232,268"/>
+              <path fillRule="evenodd" fill="#0E0E0E" d="M150,20 C200,20 240,60 240,112 C240,176 214,242 182,292 C170,316 124,316 112,292 C82,242 58,176 58,112 C58,60 100,20 150,20 Z M145,118 A46,46 0 0 1 191,164 L191,214 A46,46 0 0 1 99,214 L99,164 A46,46 0 0 1 145,118 Z"/>
+            </g>
+          </svg>
         </div>
         <span className="text-sm font-black text-white uppercase tracking-widest">Orbin AI</span>
       </Link>
@@ -111,7 +118,7 @@ function PromoCodeField({ onApply }) {
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { login } = useUser()
+  const { login, signInWithGoogle } = useUser()
   const { lang } = usePreferences()
   const L = lang || 'ES'
   const [email, setEmail]       = useState('')
@@ -145,20 +152,77 @@ export function LoginPage() {
     } finally { setLoading(false) }
   }
 
+  const handleGoogleSignIn = async () => {
+    setLoading(true); setError('')
+    try {
+      await signInWithGoogle()
+    } catch (err) {
+      console.error(err)
+      setError(err?.message || 'Error al iniciar sesion con Google')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <AuthLayout title={t('title')} subtitle={t('sub')}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <InputField label={t('email')} type="email"    value={email}    onChange={setEmail}    placeholder="tu@email.com" required disabled={loading} />
-        <InputField label={t('pass')}  type="password" value={password} onChange={setPassword} placeholder="..." required disabled={loading} />
-        {error && <p className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2">{error}</p>}
-        <button type="submit" disabled={loading}
-          className="btn-primary w-full h-12 flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-widest">
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <><Zap size={14} />{t('btn')}</>}
+      <div className="space-y-4">
+        {/* Google OAuth 2.0 SignIn Button */}
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={loading}
+          className="relative w-full h-12 flex items-center justify-center gap-3 bg-[#111111] hover:bg-[#151515] border border-zinc-800 hover:border-blue-500/50 active:border-emerald-500 rounded-xl transition-all shadow-[0_4px_12px_rgba(0,0,0,0.35)] disabled:opacity-50 group overflow-hidden"
+        >
+          {/* Subtle tech electric blue overlay on hover */}
+          <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+          {/* Google Multi-color Icon */}
+          <svg className="w-4 h-4 shrink-0 relative z-10" viewBox="0 0 24 24">
+            <path
+              fill="#4285F4"
+              d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.69c-.29 1.5-1.14 2.77-2.4 3.61v3h3.86c2.26-2.08 3.59-5.15 3.59-8.74z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.1C3.26 21.8 7.37 24 12 24z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.6H1.29C.47 8.23 0 10.06 0 12s.47 3.77 1.29 5.4l3.98-3.11z"
+            />
+            <path
+              fill="#EA4335"
+              d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.37 0 3.26 2.2 1.29 5.4l3.98 3.11c.95-2.85 3.6-4.96 6.73-4.96z"
+            />
+          </svg>
+          <span className="text-[11px] font-black uppercase tracking-widest text-zinc-300 group-hover:text-white relative z-10">
+            {L === 'PT' ? 'Entrar com Google' : L === 'EN' ? 'Sign In with Google' : 'Iniciar sesión con Google'}
+          </span>
         </button>
-        <div className="text-center text-[11px] text-muted">
-          {t('noAcc')} <Link to="/register" className="text-primary hover:underline font-bold">{t('reg')}</Link>
+
+        {/* Separator */}
+        <div className="flex items-center gap-3 my-4">
+          <div className="flex-1 h-px bg-zinc-800/40" />
+          <span className="text-[9px] font-bold text-muted uppercase tracking-widest">
+            {L === 'PT' ? 'ou entrar com e-mail' : L === 'EN' ? 'or sign in with email' : 'o iniciar con correo'}
+          </span>
+          <div className="flex-1 h-px bg-zinc-800/40" />
         </div>
-      </form>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <InputField label={t('email')} type="email"    value={email}    onChange={setEmail}    placeholder="tu@email.com" required disabled={loading} />
+          <InputField label={t('pass')}  type="password" value={password} onChange={setPassword} placeholder="..." required disabled={loading} />
+          {error && <p className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2">{error}</p>}
+          <button type="submit" disabled={loading}
+            className="btn-primary w-full h-12 flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-widest">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <><Zap size={14} />{t('btn')}</>}
+          </button>
+          <div className="text-center text-[11px] text-muted">
+            {t('noAcc')} <Link to="/register" className="text-primary hover:underline font-bold">{t('reg')}</Link>
+          </div>
+        </form>
+      </div>
     </AuthLayout>
   )
 }
@@ -206,9 +270,9 @@ export function RegisterPage() {
     if (password.length < 6) { setError('Contrasena minimo 6 caracteres'); return }
     setLoading(true); setError('')
     try {
-      const { session } = await register(name, email, password, plan)
-      if (session) navigate('/verify')
-      else setConfirmed(true)
+      const { needsVerification } = await register(name, email, password, plan)
+      if (needsVerification) navigate('/verify')   // enviar al ingreso del código OTP
+      else navigate('/app')                        // confirmación desactivada → sesión activa
     } catch (err) {
       const m = err?.message || ''
       if (m.includes('already registered')) setError('Este email ya tiene cuenta. Inicia sesion.')
@@ -278,39 +342,32 @@ export function RegisterPage() {
 
 export function VerifyOTPPage() {
   const navigate = useNavigate()
-  const { user, verifyCode } = useUser()
-  const [code, setCode] = useState(['', '', '', '', '', ''])
+  const { user, verifyCode, resendCode } = useUser()
+  const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resendMsg, setResendMsg] = useState('')
+  const pendingEmail = (() => { try { return localStorage.getItem('orbin-pending-email') || '' } catch { return '' } })()
 
-  const handleChange = (index, value) => {
-    if (isNaN(value)) return
-    const newCode = [...code]
-    newCode[index] = value
-    setCode(newCode)
-
-    if (value !== '' && index < 5) {
-      document.getElementById(`otp-${index + 1}`).focus()
-    }
-  }
-
-  const handleKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && code[index] === '' && index > 0) {
-      document.getElementById(`otp-${index - 1}`).focus()
-    }
+  const handleResend = async () => {
+    setResending(true); setResendMsg(''); setError('')
+    const r = await resendCode()
+    setResending(false)
+    setResendMsg(r.success ? 'Código reenviado. Revisa tu correo.' : (r.error || 'No se pudo reenviar el código.'))
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const otpString = code.join('')
-    if (otpString.length < 6) {
-      setError('Ingrese el código de 6 dígitos')
+    const otpString = code.trim().replace(/\s+/g, '')
+    if (otpString.length < 6 || otpString.length > 8) {
+      setError('Ingrese un código válido de 6 a 8 dígitos')
       return
     }
     setLoading(true)
     setError('')
     try {
-      const r = verifyCode(otpString)
+      const r = await verifyCode(otpString)
       if (r.success) {
         navigate('/app')
       } else {
@@ -324,32 +381,41 @@ export function VerifyOTPPage() {
   }
 
   return (
-    <AuthLayout title="Verificación de Cuenta" subtitle={`Hemos enviado un código OTP de 6 dígitos a su correo ${user?.email || ''}.`}>
+    <AuthLayout title="Verificación de Cuenta" subtitle={`Hemos enviado un código de verificación (OTP) a su correo ${user?.email || pendingEmail || ''}.`}>
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="flex justify-center gap-2">
-          {code.map((num, idx) => (
-            <input
-              key={idx}
-              id={`otp-${idx}`}
-              type="text"
-              maxLength={1}
-              value={num}
-              onChange={e => handleChange(idx, e.target.value)}
-              onKeyDown={e => handleKeyDown(idx, e)}
-              className="w-12 h-12 text-center text-lg font-bold bg-white/5 border border-white/10 rounded-xl focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-white transition-all"
-              disabled={loading}
-            />
-          ))}
+        <div className="flex justify-center">
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={8}
+            placeholder="000000"
+            value={code}
+            onChange={e => {
+              const val = e.target.value.replace(/[^0-9]/g, '');
+              setCode(val);
+            }}
+            className="w-full h-12 text-center text-xl font-mono font-bold tracking-[0.2em] bg-white/5 border border-white/10 rounded-xl focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-white transition-all"
+            disabled={loading}
+            required
+            autoFocus
+          />
         </div>
         {error && <p className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2 text-center">{error}</p>}
         <button type="submit" disabled={loading}
           className="btn-primary w-full h-12 flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-widest">
           {loading ? <Loader2 size={14} className="animate-spin" /> : 'Verificar Código'}
         </button>
+        {resendMsg && <p className="text-[10px] text-center text-emerald-400">{resendMsg}</p>}
         <p className="text-[10px] text-center text-muted">
-          ¿No recibiste el código? <button type="button" onClick={() => alert('Código reenviado (simulado). Use 123456.')} className="text-primary hover:underline">Reenviar</button>
+          ¿No recibiste el código?{' '}
+          <button type="button" onClick={handleResend} disabled={resending}
+            className="text-primary hover:underline disabled:opacity-50">
+            {resending ? 'Reenviando…' : 'Reenviar'}
+          </button>
         </p>
       </form>
     </AuthLayout>
   )
 }
+                                                                                                                                                                                                                                                                                                                                                

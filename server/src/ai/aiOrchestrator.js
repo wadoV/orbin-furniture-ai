@@ -13,6 +13,7 @@ const geminiClient  = require('./geminiClient')
 const ollamaClient  = require('./ollamaClient')
 const { parseNaturalLanguage } = require('../engine/nlParser')
 const { FURNITURE_SYSTEM_PROMPT } = require('./systemPrompts')
+const { AUDIT_SYSTEM_PROMPT } = require('./orbinPrompt')
 
 // ─── Audit Pass (optional second pass to verify structural integrity) ─────────
 
@@ -113,4 +114,21 @@ async function chatDesign(history, userMessage) {
   }
 }
 
-module.exports = { parseDesignIntent, chatDesign }
+// ─── chatAudit ────────────────────────────────────────────────────────────────
+async function chatAudit(history, userMessage) {
+  try {
+    console.log('[Orchestrator] Audit Chat: Generating feedback using AUDIT_SYSTEM_PROMPT…')
+    const formattedContext = history.map(h => `${h.role === 'assistant' ? 'Orbin' : 'Usuario'}: ${h.content}`).join('\n')
+    const userQuery = `${formattedContext}\nUsuario: ${userMessage}\nOrbin:`
+    const rawReply = await vertexClient.callVertex(AUDIT_SYSTEM_PROMPT, userQuery)
+    return { message: rawReply, source: 'vertex-ai-audit' }
+  } catch (err) {
+    console.error('[Orchestrator] Audit Chat error:', err.message)
+    return {
+      message: `[Modo auditoría local] Análisis de eficiencia: Identifiqué fugas potenciales de tiempo y material en la fabricación. (Error de conexión: ${err.message})`,
+      source: 'audit-fallback'
+    }
+  }
+}
+
+module.exports = { parseDesignIntent, chatDesign, chatAudit }

@@ -6,8 +6,17 @@
 
 const express = require('express')
 const router  = express.Router()
-const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
+const { parseDesignIntent, chatDesign, chatAudit } = require('../ai/aiOrchestrator')
 const { generateProject } = require('../engine/closetEngine')
+const { optionalAuth } = require('../middleware/auth')
+const { createClient } = require('@supabase/supabase-js')
+
+// Initialize Supabase admin client
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
+const supabase = (SUPABASE_URL && SUPABASE_SERVICE_KEY)
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+  : null
 
 // ─── Param Normalizer (mirrors design.js logic so chat can safely call engine) ─
 
@@ -127,6 +136,75 @@ router.post('/parse', async (req, res) => {
   } catch (err) {
     console.error('[chat/parse] Error:', err)
     res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// ─── POST /api/chat/audit ─────────────────────────────────────────────────────
+
+router.post('/audit', optionalAuth, async (req, res) => {
+  try {
+    const { message, sessionId, telemetry } = req.body
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ success: false, error: 'Campo "message" obligatorio.' })
+    }
+
+    const userId = req.user?.id || 'dev-local-user'
+    const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val)
+
+    // Save telemetry to database if present and we have a valid uuid user_id
+    if (telemetry && typeof telemetry === 'object') {
+      const { source, metric_name, metric_value } = telemetry
+      if (source && metric_name && metric_value) {
+        if (supabase && isUuid(userId)) {
+          const { error: dbErr } = await supabase
+            .from('telemetry_logs')
+            .insert({
+              user_id: userId,
+              source,
+              metric_name,
+              metric_value
+            })
+          if (dbErr) {
+            console.error('[chat/audit] Failed to save telemetry to DB:', dbErr.message)
+          } else {
+            console.log('[chat/audit] Successfully saved telemetry log to DB')
+          }
+        } else {
+          console.log('[chat/audit] Telemetry received but DB insert bypassed (local dev or invalid UUID)')
+        }
+      }
+    }
+
+    // Format user message to inject telemetry context
+    let finalMessage = message
+    if (telemetry && typeof telemetry === 'object') {
+      const formattedTelemetry = `[TELEMETRÍA EN VIVO - Fuente: ${telemetry.source}, Métrica: ${telemetry.metric_name}] Datos: ${JSON.stringify(telemetry.metric_value)}`
+      finalMessage = `${formattedTelemetry}\n\nUsuario: ${message}`
+    }
+
+    // Retrieve or create session history
+    const history = sessions.get(sessionId) || []
+
+    const result = await chatAudit(history, finalMessage)
+
+    // Update history
+    const newHistory = [
+      ...history,
+      { role: 'user',      content: message },
+      { role: 'assistant', content: result.message },
+    ]
+    // Keep last 20 turns
+    const trimmed = newHistory.slice(-20)
+    if (sessionId) sessions.set(sessionId, trimmed)
+
+    res.json({
+      success: true,
+      reply:   result.message,
+      source:  result.source,
+    })
+  } catch (err) {
+    console.error('[chat/audit] Error:', err)
+    res.status(500).json({ success: false, error: err.message || 'Error en auditoría.' })
   }
 })
 

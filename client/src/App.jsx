@@ -14,7 +14,7 @@ import WelcomeScreen from './components/WelcomeScreen.jsx'
 import OnboardingFlow from './components/OnboardingFlow.jsx'
 import OnboardingWizard from './components/OnboardingWizard.jsx'
 import MultiplayerLayer from './components/MultiplayerLayer.jsx'
-import ImageToParametricPanel from './components/ImageToParametricPanel.jsx'
+import FeedbackWidget from './components/FeedbackWidget.jsx'
 import { api } from './api/client.js'
 import { parseNaturalLanguage, buildOfflineReply } from './engine/offlineParser.js'
 import { initCollaboration, getSocket, disconnectCollaboration } from './engine/collaboration.js'
@@ -23,10 +23,11 @@ import {
   getVersionHistory, logPrompt, logAction, logExport,
   getRecentActions, generateProjectSummary, clearMemory
 } from './engine/projectMemory.js'
-import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users, Camera, Lock, Crown, AlertTriangle, Eye, PanelLeft } from 'lucide-react'
+import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users, Lock, Crown, AlertTriangle, Eye, PanelLeft } from 'lucide-react'
 
 import { usePreferences } from './context/PreferencesContext.jsx'
 import { useUser } from './context/UserContext.jsx'
+import { supabase } from './lib/supabase.js'
 
 // ── Plan Upgrade Banner ────────────────────────────────────────────────────────
 function PlanLimitAlert({ message, description, onClose }) {
@@ -164,7 +165,6 @@ export default function App() {
   const TABS = [
     { id: 'params', label: t('tab_parameters'), icon: Sliders },
     { id: 'chat',   label: t('tab_chat'),    icon: MessageSquare },
-    { id: 'vision', label: 'AI Vision',      icon: Camera },
     { id: 'projects', label: t('tab_projects'),  icon: FolderOpen },
     { id: 'export', label: t('tab_export'),    icon: Box },
   ]
@@ -184,6 +184,31 @@ export default function App() {
     const interval = setInterval(ping, 15000)
     return () => { mounted = false; clearInterval(interval) }
   }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const checkoutStatus = params.get('checkout')
+    if (checkoutStatus) {
+      if (checkoutStatus === 'success') {
+        supabase.auth.refreshSession().then(() => {
+          alert(t('checkout_success_alert'));
+        }).catch(err => {
+          console.error('Error refreshing session:', err);
+          alert(t('checkout_success_alert'));
+        });
+      } else if (checkoutStatus === 'pending') {
+        alert(t('checkout_pending_alert'));
+      } else if (checkoutStatus === 'failure') {
+        alert(t('checkout_failure_alert'));
+      }
+      // Clean up parameters from the URL
+      const newParams = new URLSearchParams(window.location.search);
+      newParams.delete('checkout');
+      const newQuery = newParams.toString();
+      const newUrl = window.location.pathname + (newQuery ? '?' + newQuery : '') + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, [t])
 
   useEffect(() => {
     modulesRef.current = modules  // ★ FIX: mantener ref sincronizado
@@ -302,42 +327,6 @@ export default function App() {
       setError(err.message || 'Error connecting to server.')
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleGenerateFromVision = (analysisResult) => {
-    try {
-      if (!analysisResult.modules || analysisResult.modules.length === 0) {
-        throw new Error('La IA no pudo detectar módulos válidos en la imagen.')
-      }
-
-      // ★ FIX: Wrap in `configuration` object so Viewer3D can build geometry correctly
-      const newModules = analysisResult.modules.map(mod => ({
-        id: crypto.randomUUID(),
-        type: 'base',
-        configuration: {
-          moduleType:   'base',
-          width:        mod.width        || 600,
-          height:       analysisResult.height || 2000,
-          depth:        analysisResult.depth  || 600,
-          thickness:    18,
-          hasCountertop: analysisResult.hasCountertop || false,
-          numShelves:   mod.numShelves   || 0,
-          numDrawers:   mod.numDrawers   || 0,
-          numDividers:  mod.numDividers  || 0,
-          materialBody:  'oak_light',
-          materialFront: 'white',
-        }
-      }))
-      
-      saveHistory(newModules, 'Generado desde IA Vision')
-      setActiveTab('params')
-      
-      if (analysisResult.obstacles && analysisResult.obstacles.length > 0) {
-        setTimeout(() => alert(`${t('vision_obstacles_title')}\n\n- ${analysisResult.obstacles.join('\n- ')}`), 500)
-      }
-    } catch (err) {
-      alert(err.message || t('vision_apply_error'))
     }
   }
 
@@ -492,6 +481,24 @@ export default function App() {
     saveHistory(
       modules.map(m => m.id === id ? { ...m, configuration: { ...m.configuration, ...newConfig } } : m),
       '~edit:' + id
+    )
+  }
+
+  // ★ ROTACIÓN MUEBLE EN L — gira el módulo seleccionado 90° sobre el eje Y.
+  //   Pasos discretos 0 → 90 → 180 → 270 → 0. Cada pulsación es UN paso de Ctrl+Z
+  //   (etiqueta no coalescable). rotationY se persiste en configuration, por lo que
+  //   sobrevive a undo/redo, guardado de proyecto y sincronización Socket.IO.
+  const handleRotateModule = (id) => {
+    if (!id) return
+    const target = modules.find(m => m.id === id)
+    if (!target) return
+    const current = Number(target.configuration?.rotationY) || 0
+    const next = (current + 90) % 360   // 0 / 90 / 180 / 270
+    saveHistory(
+      modules.map(m => m.id === id
+        ? { ...m, configuration: { ...m.configuration, rotationY: next } }
+        : m),
+      'Rotar 90°'
     )
   }
 
@@ -706,8 +713,7 @@ export default function App() {
                   {TABS.map(({ id, label, icon: Icon }) => (
                     <button key={id} onClick={() => setActiveTab(id)}
                       className={'flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ' +
-                        (activeTab === id ? 'bg-primary text-black shadow-sm' : 'text-muted hover:text-white hover:bg-surface-2') +
-                        (id === 'export' ? ' col-span-2' : '')}>
+                        (activeTab === id ? 'bg-primary text-black shadow-sm' : 'text-muted hover:text-white hover:bg-surface-2')}>
                       <Icon size={12} /> {label}
                     </button>
                   ))}
@@ -741,7 +747,6 @@ export default function App() {
                     planLocked={!canUseChat}
                   />
                 )}
-                {activeTab === 'vision' && <ImageToParametricPanel onApplyDesign={handleGenerateFromVision} />}
                 {activeTab === 'projects' && (
                   <ProjectsPanel
                     modules={modules}
@@ -788,6 +793,7 @@ export default function App() {
                     onSelectPiece={setSelectedPieceIds}
                     onDeleteModule={handleDeleteModule}
                     onUpdateModule={handleUpdateModule}
+                    onRotateModule={handleRotateModule}
                     onCaptureReady={handleCaptureReady}
                     onAddModule={() => {
                       setActiveTab('params')
@@ -819,30 +825,3 @@ export default function App() {
                   />
                 </div>
               )}
-            </div>
-          </div>
-        </main>
-
-        {/* ── Plan Limit Alert ──────────────────────────────────────────── */}
-        {planAlert && (
-          <PlanLimitAlert
-            message={planAlert.message}
-            description={planAlert.description}
-            onClose={() => setPlanAlert(null)}
-          />
-        )}
-
-        {showUndoToast && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface-4 border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50">
-            <span className="text-sm text-white">Module deleted</span>
-            <button onClick={undo} className="text-primary text-sm font-bold uppercase tracking-widest hover:underline flex items-center gap-1.5">
-              <RotateCcw size={14} /> Undo
-            </button>
-          </div>
-        )}
-
-
-      </div>
-    </ErrorBoundary>
-  )
-}

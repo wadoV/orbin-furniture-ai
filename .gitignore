@@ -50,6 +50,3 @@ robust-root-*.json
 gcp-*.json
 *.pem
 *.p12
-
-# Confidential promo codes list
-PROMO_CODES_INDUSTRIAL.md

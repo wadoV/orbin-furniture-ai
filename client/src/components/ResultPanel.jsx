@@ -247,7 +247,7 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
                           ? 'bg-primary/20 border-primary/40 shadow-[0_0_12px_rgba(245,166,35,0.15)]'
                           : 'bg-surface-3/30 hover:bg-surface-3'
                       }`}
-                      title="Click para resaltar en 3D"
+                      title={t('cl_row_title')}
                     >
                       <td className="py-3.5 pl-4 rounded-l-2xl">
                         <div className="flex items-center gap-3">
@@ -269,7 +269,7 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
                         <button
                           onClick={e => { e.stopPropagation(); onDeletePiece && onDeletePiece(design.id, p.id) }}
                           className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-muted hover:text-error hover:bg-error/10 transition-all"
-                          title="Eliminar pieza (Ctrl+Z para deshacer)"
+                          title={t('cl_delete_piece')}
                         >
                           <X size={11} />
                         </button>

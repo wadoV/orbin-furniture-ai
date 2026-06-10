@@ -43,11 +43,19 @@ router.post('/save', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Campo "design" com "id" obrigatório.' })
     }
 
+    const modules = design.modules || [design]
+    if (req.user.plan === 'free' && modules.length > 3) {
+      return res.status(403).json({
+        success: false,
+        error: 'Límite de plan gratuito superado. El plan gratuito está limitado a un máximo de 3 módulos. Por favor, actualiza tu cuenta a un plan Pro o Enterprise.'
+      })
+    }
+
     const record = {
       id:         design.id || `PRJ-${Date.now()}`,
       owner_id:   req.user.id,                                             // ← bind to authenticated user
       label:      label || `Proyecto Modular ${new Date().toLocaleDateString()}`,
-      modules:    design.modules || [design],
+      modules,
       created_at: new Date().toISOString(),
     }
 
@@ -151,4 +159,4 @@ router.delete('/:id', async (req, res) => {
   }
 })
 
-module.exports = router
+module.exports = rou

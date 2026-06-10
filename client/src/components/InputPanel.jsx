@@ -361,6 +361,15 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
   // ★ PROTECTED: Edit mode toggle — prevents accidental modification of existing modules
   const [editMode, setEditMode] = useState(false)
 
+  const selectedMaterial = MATERIALS_DB.find(m => m.id === params.materialId) || MATERIALS_DB[1]
+  const thicknessOptions = selectedMaterial.thicknesses
+    ? selectedMaterial.thicknesses.map(t => ({ value: t, label: `${t}mm` }))
+    : [
+        { value: 15, label: '15mm' },
+        { value: 18, label: '18mm' },
+        { value: 25, label: '25mm' },
+      ]
+
   // Sync from parent module selection ONLY when entering edit mode
   useEffect(() => {
     if (editMode && currentConfig) {
@@ -495,11 +504,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                   name="thickness"
                   value={params.thickness}
                   onChange={setParam}
-                  options={[
-                    { value: 15, label: '15mm' },
-                    { value: 18, label: '18mm' },
-                    { value: 25, label: '25mm' },
-                  ]}
+                  options={thicknessOptions}
                 />
               )}
             </div>
@@ -512,8 +517,11 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                 if (isFree) return   // locked
                 setParam(name, val)
                 const mat = MATERIALS_DB.find(m => m.id === val)
-                if (mat && mat.thickness !== params.thickness) {
-                  setParam('thickness', mat.thickness)
+                if (mat) {
+                  const available = mat.thicknesses || [15, 18, 25]
+                  if (!available.includes(params.thickness)) {
+                    setParam('thickness', available[0])
+                  }
                 }
               }}
               options={isFree
@@ -742,13 +750,3 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
           disabled={loading || (mode === 'nl' && !nlText.trim()) || editMode}
           className="btn-primary flex-1 flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.2em] h-14 shadow-2xl shadow-primary/20 hover:shadow-primary/40 transition-all active:scale-[0.98]"
           aria-busy={loading}
-        >
-          {loading
-            ? <><span className="w-5 h-5 border-3 border-black/30 border-t-black rounded-full animate-spin" aria-hidden="true" /> {t('generating')}</>
-            : <><Zap size={18} aria-hidden="true" /> {t('generate_project')}</>
-          }
-        </button>
-      </div>
-    </div>
-  )
-}

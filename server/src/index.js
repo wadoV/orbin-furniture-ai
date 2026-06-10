@@ -42,7 +42,7 @@ const rateLimit      = require('express-rate-limit')
 const designRouter     = require('./routes/design')
 const chatRouter       = require('./routes/chat')
 const projectsRouter   = require('./routes/projects')
-const visionRouter     = require('./routes/vision')
+const billingRouter    = require('./routes/billing')
 // stressTest loaded only in non-production environments
 const stressTestRouter = process.env.NODE_ENV !== 'production' ? require('./routes/stressTest') : null
 
@@ -98,16 +98,13 @@ const corsOptions = {
       return callback(null, true)
     }
     
-    if (/\.vercel\.app$/.test(origin)) {
-      return callback(null, true)
-    }
-    
-    if (/\.railway\.app$/.test(origin)) {
-      return callback(null, true)
-    }
-    
-    if (/\.ngrok(-free)?\.app$/.test(origin) || /\.loca\.lt$/.test(origin)) {
-      return callback(null, true)
+    // ★ Orígenes comodín (previews/túneles) SOLO fuera de producción.
+    //   En prod se permiten únicamente allowedOrigins + CLIENT_URL (dominio fijo).
+    if (process.env.NODE_ENV !== 'production') {
+      if (/\.vercel\.app$/.test(origin) || /\.railway\.app$/.test(origin) ||
+          /\.ngrok(-free)?\.app$/.test(origin) || /\.loca\.lt$/.test(origin)) {
+        return callback(null, true)
+      }
     }
     
     return callback(new Error(`CORS blocked: ${origin} (Orbin Strict Policy)`))
@@ -120,8 +117,11 @@ const corsOptions = {
 app.use(cors(corsOptions))
 app.use(apiLimiter) // Apply global rate limiting to all requests
 
-app.use(express.json({ limit: '5' + 'mb' })) // 5mb maximum for payloads (reduced from 50mb to prevent DoS, yet sufficient for spatial images)
-app.use(express.urlencoded({ extended: true, limit: '5' + 'mb' }))
+app.use(express.json({
+  limit: '2mb',
+  verify: (req, res, buf) => { req.rawBody = buf; }
+})) // 2mb max — JSON design payloads; rate-limited by aiLimiter to mitigate DoS
+app.use(express.urlencoded({ extended: true, limit: '8mb' }))
 
 // Request logger (dev only)
 if (process.env.NODE_ENV !== 'production') {
@@ -141,8 +141,8 @@ app.use('/api/chat',         aiLimiter, chatRouter)
 app.use('/chat',             aiLimiter, chatRouter)
 app.use('/api/projects',     projectsRouter)
 app.use('/projects',         projectsRouter)
-app.use('/api/vision',       aiLimiter, visionRouter)
-app.use('/vision',           aiLimiter, visionRouter)
+app.use('/api/billing',      billingRouter)
+app.use('/billing',          billingRouter)
 // ⚠ Stress-test endpoint: development/QA only — NEVER exposed in production
 if (stressTestRouter) {
   app.use('/api/v1/stress-test', stressTestRouter)
@@ -249,8 +249,4 @@ server.listen(PORT, () => {
   console.log(`\n🪵 Orbin API v2 rodando em http://localhost:${PORT}`)
   console.log(`   Supabase: ${process.env.SUPABASE_URL         ? '✓ conectado'     : '✗ usando memória'}`)
   console.log(`   Gemini:   ${process.env.GEMINI_API_KEY        ? '✓ ativo'         : '✗ usando parser regex'}`)
-  console.log(`   Ambiente: ${process.env.NODE_ENV || 'development'}\n`)
-})
-
-module.exports = app
-// trigger-reload
+  console.log(`   Ambiente: ${process.env.NODE_ENV || 'development'}\n`

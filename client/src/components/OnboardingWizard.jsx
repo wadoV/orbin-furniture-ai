@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, ArrowRight, Check, Sparkles, Sliders, MessageSquare, Camera, X, Box } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Sparkles, Sliders, MessageSquare, X, Box } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { trackEvent, EVENTS } from '../lib/analytics.js'
 
@@ -146,44 +146,38 @@ const STARTING_METHODS = [
     descKey: 'onboard_method_chat_desc',
     icon: <MessageSquare className="w-6 h-6 text-primary" />,
     previewType: 'chat'
-  },
-  {
-    id: 'vision',
-    titleKey: 'onboard_method_vision',
-    descKey: 'onboard_method_vision_desc',
-    icon: <Camera className="w-6 h-6 text-primary" />,
-    previewType: 'vision'
   }
 ]
 
 // ─── Visual Previews for Step 2 ──────────────────────────────────────────────
 function PreviewComponent({ type }) {
+  const { t } = usePreferences()
   if (type === 'input') {
     return (
       <div className="bg-[#141414] border border-white/5 rounded-2xl p-4 w-full h-[150px] flex flex-col justify-between text-[10px] select-none font-mono">
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-zinc-500 font-bold uppercase tracking-wider text-[8px]">
-            <span>Dimensões</span>
-            <span className="text-primary font-black">Manual</span>
+            <span>{t('ow_dimensions')}</span>
+            <span className="text-primary font-black">{t('ow_manual')}</span>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div className="bg-zinc-900 border border-white/5 p-1 rounded-lg text-center">
-              <span className="block text-[8px] text-zinc-600">Largura</span>
+              <span className="block text-[8px] text-zinc-600">{t('ob_row_width')}</span>
               <span className="text-white font-bold">1200 mm</span>
             </div>
             <div className="bg-zinc-900 border border-white/5 p-1 rounded-lg text-center">
-              <span className="block text-[8px] text-zinc-600">Altura</span>
+              <span className="block text-[8px] text-zinc-600">{t('ob_row_height')}</span>
               <span className="text-white font-bold">2200 mm</span>
             </div>
             <div className="bg-zinc-900 border border-white/5 p-1 rounded-lg text-center">
-              <span className="block text-[8px] text-zinc-600">Prof.</span>
+              <span className="block text-[8px] text-zinc-600">{t('ob_row_depth')}</span>
               <span className="text-white font-bold">580 mm</span>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2 pt-2 border-t border-white/5">
           <div className="w-3 h-3 bg-primary rounded-full animate-ping shrink-0" />
-          <span className="text-[9px] text-zinc-400">Precisão de mm em milissegundos</span>
+          <span className="text-[9px] text-zinc-400">{t('ow_precision')}</span>
         </div>
       </div>
     )
@@ -195,36 +189,18 @@ function PreviewComponent({ type }) {
         <div className="space-y-2 max-h-[105px] overflow-hidden">
           <div className="flex justify-end">
             <div className="bg-primary/10 border border-primary/20 text-primary-hover px-2.5 py-1 rounded-2xl rounded-tr-none font-medium max-w-[85%]">
-              Quero um guarda-roupa com 2 gavetas.
+              {t('ow_chat_user')}
             </div>
           </div>
           <div className="flex justify-start">
             <div className="bg-zinc-900 border border-white/5 text-zinc-300 px-2.5 py-1 rounded-2xl rounded-tl-none max-w-[85%] leading-relaxed">
-              Compreendido! Montando projeto com 2 gavetas centrais e divisórias...
+              {t('ow_chat_bot')}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1.5 text-zinc-600 font-bold text-[8px] uppercase tracking-wider">
           <Sparkles size={10} className="text-primary animate-pulse" />
           <span>Orbin AI Orchestrator</span>
-        </div>
-      </div>
-    )
-  }
-
-  if (type === 'vision') {
-    return (
-      <div className="bg-[#141414] border border-white/5 rounded-2xl w-full h-[150px] relative overflow-hidden flex items-center justify-center select-none">
-        {/* Mock background room image representation */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-zinc-900 via-zinc-950 to-zinc-900 opacity-60" />
-        <div className="absolute inset-4 border border-dashed border-primary/30 rounded-xl flex items-center justify-center flex-col">
-          <div className="border border-primary bg-primary/10 px-2 py-1 rounded-md text-[8px] font-mono text-primary font-black uppercase tracking-widest animate-pulse">
-            3D Box Bounding
-          </div>
-          <span className="text-[8px] text-zinc-500 font-mono mt-1">x: 0, y: 1.2m, z: -0.5m</span>
-        </div>
-        <div className="absolute bottom-2 right-2 bg-black/60 border border-white/10 px-2 py-0.5 rounded text-[8px] font-bold text-zinc-400">
-          AI Vision
         </div>
       </div>
     )

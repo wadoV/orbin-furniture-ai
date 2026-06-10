@@ -15,6 +15,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { calculateQuote, getLatestPriceUpdateDate } from '../engine/PricingEngine.js'
 import { ChevronDown, ChevronUp, DollarSign, Package, Wrench, Layers } from 'lucide-react'
 import { trackEvent, EVENTS } from '../lib/analytics.js'
+import { usePreferences } from '../context/PreferencesContext.jsx'
 
 // ─── HOOK: CountUp animado ────────────────────────────────────────
 /**
@@ -118,6 +119,7 @@ function HardwareChip({ icon, label, qty, unit }) {
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────
 export default function PricingDisplay({ modules = [], margin, currency = 'USD' }) {
+  const { t } = usePreferences()
   const [quote,    setQuote]    = useState(() => calculateQuote(modules, margin))
   const [expanded, setExpanded] = useState(false)
   const [flash,    setFlash]    = useState(false)
@@ -208,7 +210,7 @@ export default function PricingDisplay({ modules = [], margin, currency = 'USD' 
 
         {/* Módulos Count Badge */}
         <span className="text-[8px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded font-black uppercase tracking-wider scale-90 shrink-0">
-          {quote.moduleCount} {quote.moduleCount !== 1 ? 'móds' : 'mód'}
+          {quote.moduleCount} {quote.moduleCount !== 1 ? t('pd_mods') : t('pd_mod')}
         </span>
 
         {/* Toggle expand */}
@@ -224,7 +226,7 @@ export default function PricingDisplay({ modules = [], margin, currency = 'USD' 
           <div>
             <div className="flex items-center gap-1.5 text-[10px] text-muted uppercase tracking-widest mb-1">
               <Layers size={10} />
-              Materiales — {quote.totalMaterialM2} m²
+              {t('pd_materials')} — {quote.totalMaterialM2} m²
             </div>
             {quote.materials.map(m => (
               <DetailRow
@@ -241,27 +243,27 @@ export default function PricingDisplay({ modules = [], margin, currency = 'USD' 
           <div>
             <div className="flex items-center gap-1.5 text-[10px] text-muted uppercase tracking-widest mb-1">
               <Wrench size={10} />
-              Herrajes
+              {t('pd_hardware')}
             </div>
             <div className="flex flex-wrap gap-1 mb-1">
               <HardwareChip
-                label="Bisagras"
+                label={t('pd_hinges')}
                 qty={quote.hardware.hinges.qty}
-                unit="un"
+                unit={t('pd_un')}
               />
               <HardwareChip
-                label="Correderas"
+                label={t('pd_slides')}
                 qty={quote.hardware.drawerSlides.qty}
-                unit="par"
+                unit={t('pd_par')}
               />
               <HardwareChip
-                label="Manijas"
+                label={t('pd_handles')}
                 qty={quote.hardware.handles.qty}
-                unit="un"
+                unit={t('pd_un')}
               />
             </div>
             <DetailRow
-              label="Total herrajes"
+              label={t('pd_hardware_total')}
               value={quote.hardware.total}
               currency={currency}
               sub
@@ -270,7 +272,7 @@ export default function PricingDisplay({ modules = [], margin, currency = 'USD' 
 
           {/* Mano de obra */}
           <DetailRow
-            label="Mano de obra"
+            label={t('pd_labor')}
             value={quote.labor}
             currency={currency}
             sub
@@ -278,7 +280,7 @@ export default function PricingDisplay({ modules = [], margin, currency = 'USD' 
 
           {/* Overhead */}
           <DetailRow
-            label="Overhead (12%)"
+            label={t('pd_overhead')}
             value={quote.overhead}
             currency={currency}
             sub
@@ -288,9 +290,9 @@ export default function PricingDisplay({ modules = [], margin, currency = 'USD' 
           <div className="border-t border-white/8" />
 
           {/* Subtotal y margen */}
-          <DetailRow label="Costo base"        value={quote.subtotal}     currency={currency} />
+          <DetailRow label={t('pd_base_cost')}        value={quote.subtotal}     currency={currency} />
           <DetailRow
-            label={`Margen (${Math.round(quote.marginRate * 100)}%)`}
+            label={`${t('pd_margin')} (${Math.round(quote.marginRate * 100)}%)`}
             value={quote.marginAmount}
             currency={currency}
             sub
@@ -300,7 +302,7 @@ export default function PricingDisplay({ modules = [], margin, currency = 'USD' 
           <div
             className="flex justify-between items-center pt-1 border-t border-[#F5A623]/20 mt-1"
           >
-            <span className="text-sm font-bold text-white">PRECIO VENTA</span>
+            <span className="text-sm font-bold text-white">{t('pd_sale_price')}</span>
             <span className="text-base font-mono text-amber-500 font-bold tabular-nums">
               {formatPrice(quote.finalPrice, currency)}
             </span>
@@ -310,14 +312,14 @@ export default function PricingDisplay({ modules = [], margin, currency = 'USD' 
           {quote.hardware.countertop.m2 > 0 && (
             <div className="flex items-center gap-1.5 text-[10px] text-muted mt-1">
               <Package size={10} />
-              Encimera incluida: {quote.hardware.countertop.m2} m²
+              {t('pd_countertop_incl')}: {quote.hardware.countertop.m2} m²
             </div>
           )}
 
           {/* Badge de precios actualizados */}
           {updateDate && (
             <div className="text-[9px] text-zinc-500 text-center pt-2 border-t border-zinc-800/55 mt-2 select-none">
-              Preços atualizados: {updateDate}
+              {t('pd_prices_updated')}: {updateDate}
             </div>
           )}
         </div>

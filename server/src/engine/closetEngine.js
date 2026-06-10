@@ -94,21 +94,33 @@ function generateFurniture(params) {
       - (cfg.baseboard ? (cfg.baseboardHeight || 100) : 0)
       - (2 * cfg.thickness)
     if (availableHeight > 0) {
-      // Reservar ~17% para la repisa separadora/estantes (el validador exige < 85%).
-      const budget = availableHeight * 0.83
       const isH = cfg.drawerLayout === 'horizontal' && cfg.numDrawers > 1
       const cols = isH ? 2 : 1
       let rows = Math.ceil(cfg.numDrawers / cols)
-      // 1) reducir altura del cajón para que la pila quepa dentro del presupuesto
-      let maxDH = Math.floor(budget / rows) - CLEAR
-      if ((cfg.drawerHeight || 0) > maxDH) cfg.drawerHeight = Math.max(MINH, maxDH)
-      // 2) si ni al mínimo cabe, reducir la cantidad de cajones
-      const maxRows = Math.floor(budget / (MINH + CLEAR))
-      if (maxRows < rows) {
-        cfg.numDrawers = Math.max(1, maxRows * cols)
-        rows = Math.ceil(cfg.numDrawers / cols)
-        maxDH = Math.floor(budget / rows) - CLEAR
-        cfg.drawerHeight = Math.max(MINH, Math.min(cfg.drawerHeight || MINH, maxDH))
+      // ¿Cómoda pura? (solo gavetas: sin estantes ni puertas) → las gavetas LLENAN
+      //   el interior, sin dejar hueco abierto arriba. CLEAR (16mm) es la holgura de
+      //   corredera que el validador exige por gaveta (drawerHeight+16)·filas ≤ interna,
+      //   así que repartimos: drawerHeight = floor(interna/filas) − CLEAR ⇒ pila == interna.
+      const drawerOnly = (cfg.numShelves || 0) === 0 && !cfg.hasDoors
+      if (drawerOnly) {
+        let maxRows = Math.max(1, Math.floor(availableHeight / (MINH + CLEAR)))
+        if (maxRows < rows) {                 // ni al mínimo caben todas → reduce cantidad
+          cfg.numDrawers = Math.max(1, maxRows * cols)
+          rows = Math.ceil(cfg.numDrawers / cols)
+        }
+        cfg.drawerHeight = Math.max(MINH, Math.floor(availableHeight / rows) - CLEAR)
+      } else {
+        // Mixto (gavetas abajo + estantes/puertas arriba): reservar ~17% (validador < 85%).
+        const budget = availableHeight * 0.83
+        let maxDH = Math.floor(budget / rows) - CLEAR
+        if ((cfg.drawerHeight || 0) > maxDH) cfg.drawerHeight = Math.max(MINH, maxDH)
+        const maxRows = Math.floor(budget / (MINH + CLEAR))
+        if (maxRows < rows) {
+          cfg.numDrawers = Math.max(1, maxRows * cols)
+          rows = Math.ceil(cfg.numDrawers / cols)
+          maxDH = Math.floor(budget / rows) - CLEAR
+          cfg.drawerHeight = Math.max(MINH, Math.min(cfg.drawerHeight || MINH, maxDH))
+        }
       }
     }
   }

@@ -1,9 +1,15 @@
 /* Presentation Mode overrides */
+main aside {
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 body.presentation-active aside {
+  position: absolute !important;
+  width: 400px;
+  max-width: 100%;
   opacity: 0;
   pointer-events: none;
   transform: translateX(-20px);
-  transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 body.presentation-active main {
