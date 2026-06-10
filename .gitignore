@@ -38,3 +38,18 @@ v1_viewer_utf8.jsx
 # Supabase local
 .supabase/
 supabase-file.zip
+
+# ── Seguridad: credenciales / service accounts (nunca commitear) ──
+*.env
+.env.*
+!.env.example
+*service-account*.json
+*credentials*.json
+*-key.json
+robust-root-*.json
+gcp-*.json
+*.pem
+*.p12
+
+# Confidential promo codes list
+PROMO_CODES_INDUSTRIAL.md
