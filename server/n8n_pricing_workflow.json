@@ -1,0 +1,305 @@
+{
+  "name": "Orbin AI - Weekly Material Prices Update & Alert Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "cronExpression": "0 7 * * 1"
+            }
+          ]
+        },
+        "options": {
+          "timezone": "America/Sao_Paulo"
+        }
+      },
+      "id": "e6a2bb53-62ef-4796-bf7b-e7b8c7ffb0e0",
+      "name": "Schedule Trigger (Mondays 07:00 BRT)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        380,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.example.com.br/mdf-pricing",
+        "options": {}
+      },
+      "id": "da5d16c5-234b-4b13-8fb5-3f81e18c50c0",
+      "name": "Option A: HTTP GET (Public Brazilian Source)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        600,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Precos_Materiais",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "5f69a239-cf4d-44a3-bc2d-b0a1d48c89b0",
+      "name": "Option B: Google Sheets (Manual Maintenance)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.3,
+      "position": [
+        600,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "table": {
+          "__rl": true,
+          "value": "material_prices",
+          "mode": "list",
+          "cachedResultName": "material_prices"
+        },
+        "limit": 100,
+        "options": {}
+      },
+      "id": "c138b577-ff4b-4395-8e3b-9e47796d8e20",
+      "name": "Get Current Prices (Supabase)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        820,
+        500
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIALS_ID",
+          "name": "Supabase Connection"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/*\n  n8n Code Node: Normalization & 15% Price Delta Verification\n  This node merges the fresh source data with current DB data,\n  calculates price fluctuations, and outputs normalizations and alerts.\n*/\n\n// 1. Identify which input branch was used (HTTP vs Google Sheets)\n// Fall back to empty array if not defined\nconst inputData = $input.all();\nconst freshItems = [];\n\nfor (const item of inputData) {\n  // Handle n8n structure mapping\n  const fields = item.json;\n  // Standardize potential inputs from Google Sheet or public API\n  const code = fields.material_code || fields.Codigo || fields.code;\n  const price = parseFloat(fields.price_per_m2 || fields.Preco || fields.price || 0);\n  const name = fields.display_name || fields.Nome || fields.name || code;\n  const unit = fields.unit || fields.Unidade || 'm2';\n  const source = fields.source_url || fields.Fonte || '';\n\n  if (code && !isNaN(price)) {\n    freshItems.push({\n      material_code: code,\n      display_name: name,\n      price_per_m2: price,\n      unit: unit,\n      region: 'BR',\n      updated_at: new Date().toISOString(),\n      source_url: source\n    });\n  }\n}\n\n// 2. Fetch existing DB values from the Supabase branch (Node Index 1)\nlet currentDBItems = [];\ntry {\n  currentDBItems = $items(\"Get Current Prices (Supabase)\").map(i => i.json);\n} catch (e) {\n  // In case Supabase node is empty or hasn't run yet\n  currentDBItems = [];\n}\n\nconst dbMap = {};\ncurrentDBItems.forEach(item => {\n  dbMap[item.material_code] = parseFloat(item.price_per_m2);\n});\n\n// 3. Compute deviations and identify anomalous changes > 15%\nconst alerts = [];\nconst upsertPayload = [];\n\nfreshItems.forEach(item => {\n  upsertPayload.push(item);\n  \n  const oldPrice = dbMap[item.material_code];\n  if (oldPrice !== undefined && oldPrice > 0) {\n    const delta = Math.abs(item.price_per_m2 - oldPrice) / oldPrice;\n    if (delta > 0.15) {\n      alerts.push({\n        material_code: item.material_code,\n        display_name: item.display_name,\n        old_price: oldPrice,\n        new_price: item.price_per_m2,\n        percentage_change: (delta * 100).toFixed(1) + '%',\n        direction: item.price_per_m2 > oldPrice ? 'AUMENTO 📈' : 'REDUÇÃO 📉'\n      });\n    }\n  }\n});\n\n// Return structure optimized for downstream nodes:\n// Output 0 (main): items to upsert to Supabase\n// Output 1 (auxiliary): list of triggered alerts\nreturn [\n  upsertPayload.map(x => ({ json: x })),\n  alerts.map(x => ({ json: x }))\n];"
+      },
+      "id": "e2a22cc3-a8ee-449f-b7a4-e9e1bbcd8b90",
+      "name": "Normalize & Check Deltas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        820,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "table": {
+          "__rl": true,
+          "value": "material_prices",
+          "mode": "list",
+          "cachedResultName": "material_prices"
+        },
+        "fieldsToUpsert": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "material_code": "={{ $json.material_code }}",
+            "display_name": "={{ $json.display_name }}",
+            "price_per_m2": "={{ $json.price_per_m2 }}",
+            "unit": "={{ $json.unit }}",
+            "region": "={{ $json.region }}",
+            "updated_at": "={{ $json.updated_at }}",
+            "source_url": "={{ $json.source_url }}"
+          },
+          "matchingColumns": [
+            "material_code"
+          ]
+        },
+        "options": {}
+      },
+      "id": "e6c0c2bb-654b-4b13-8fb5-3f81e18c50c0",
+      "name": "Upsert to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        180
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIALS_ID",
+          "name": "Supabase Connection"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $node[\"Normalize & Check Deltas\"].input.runIndex === 0 ? $node[\"Normalize & Check Deltas\"].output[\"1\"].length : 0 }}",
+              "operation": "larger"
+            }
+          ]
+        }
+      },
+      "id": "da66b577-ff4b-4395-8e3b-9e47796d8e20",
+      "name": "IF Price Anomalies Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare text alert summary for webhook integration\nconst alerts = $items(\"Normalize & Check Deltas\", 1).map(i => i.json);\n\nlet message = \"⚠️ *ALERTA DE FLUCTUACIÓN DE PRECIOS - ORBIN AI* ⚠️\\n\\n\";\nmessage += `Se detectaron cambios en el precio del material que superan el umbral del 15% respecto a la semana pasada:\\n\\n`;\n\nalerts.forEach(a => {\n  message += `• *${a.display_name}* (${a.material_code}):\\n`;\n  message += `  - Movimiento: ${a.direction}\\n`;\n  message += `  - Precio anterior: USD ${a.old_price.toFixed(2)}\\n`;\n  message += `  - Nuevo precio: USD ${a.new_price.toFixed(2)}\\n`;\n  message += `  - Desviación: ${a.percentage_change}\\n\\n`;\n});\n\nmessage += \"Los nuevos precios ya se han sincronizado con Supabase y están en producción.\";\n\nreturn [{\n  json: {\n    text: message,\n    raw_alerts: alerts\n  }\n}];"
+      },
+      "id": "b3e0c2bb-654b-4b13-8fb5-3f81e18c50c0",
+      "name": "Format Alert Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL_HERE",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "da99b577-ff4b-4395-8e3b-9e47796d8e20",
+      "name": "Send Webhook Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1520,
+        320
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Mondays 07:00 BRT)": {
+      "main": [
+        [
+          {
+            "node": "Option A: HTTP GET (Public Brazilian Source)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Option B: Google Sheets (Manual Maintenance)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Current Prices (Supabase)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Option A: HTTP GET (Public Brazilian Source)": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Check Deltas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Option B: Google Sheets (Manual Maintenance)": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Check Deltas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Check Deltas": {
+      "main": [
+        [
+          {
+            "node": "Upsert to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF Price Anomalies Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Price Anomalies Found?": {
+      "main": [
+        [
+          {
+            "node": "Format Alert Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Alert Message": {
+      "main": [
+        [
+          {
+            "node": "Send Webhook Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f78d384b-01ea-424a-95be-73c3ee12bf40",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

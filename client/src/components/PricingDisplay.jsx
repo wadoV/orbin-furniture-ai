@@ -12,8 +12,9 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { calculateQuote } from '../engine/PricingEngine.js'
+import { calculateQuote, getLatestPriceUpdateDate } from '../engine/PricingEngine.js'
 import { ChevronDown, ChevronUp, DollarSign, Package, Wrench, Layers } from 'lucide-react'
+import { trackEvent, EVENTS } from '../lib/analytics.js'
 
 // ─── HOOK: CountUp animado ────────────────────────────────────────
 /**
@@ -120,7 +121,48 @@ export default function PricingDisplay({ modules = [], margin, currency = 'USD' 
   const [quote,    setQuote]    = useState(() => calculateQuote(modules, margin))
   const [expanded, setExpanded] = useState(false)
   const [flash,    setFlash]    = useState(false)
+  const [updateDate, setUpdateDate] = useState(() => getLatestPriceUpdateDate())
   const prevPriceRef            = useRef(0)
+  const dropdownRef             = useRef(null)
+
+  // Listen for live-prices-loaded event from PricingEngine
+  useEffect(() => {
+    const handlePricesLoaded = () => {
+      setUpdateDate(getLatestPriceUpdateDate())
+      setQuote(calculateQuote(modules, margin))
+    }
+
+    window.addEventListener('live-prices-loaded', handlePricesLoaded)
+
+    // In case prices loaded before mount
+    const currentUpdateDate = getLatestPriceUpdateDate()
+    if (currentUpdateDate && currentUpdateDate !== updateDate) {
+      setUpdateDate(currentUpdateDate)
+      setQuote(calculateQuote(modules, margin))
+    }
+
+    return () => {
+      window.removeEventListener('live-prices-loaded', handlePricesLoaded)
+    }
+  }, [modules, margin, updateDate])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setExpanded(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  // Analytics tracking when expanded
+  useEffect(() => {
+    if (expanded) {
+      trackEvent(EVENTS.PRICING_MODAL_VIEWED, { currency });
+    }
+  }, [expanded, currency])
 
   // Recalcula cotización cuando cambian los módulos
   useEffect(() => {
@@ -142,169 +184,144 @@ export default function PricingDisplay({ modules = [], margin, currency = 'USD' 
   if (!modules || modules.length === 0) return null
 
   return (
-    <div
-      style={{
-        position:   'fixed',
-        top:        '72px',   // debajo del Header
-        left:       '12px',
-        zIndex:     500,
-        minWidth:   '240px',
-        maxWidth:   '300px',
-      }}
-      className="select-none"
-    >
-      {/* ── Tarjeta principal ─────────────────────────────────── */}
-      <div
+    <div className="relative select-none flex items-center" ref={dropdownRef}>
+      {/* Trigger Button inside Header */}
+      <button
+        onClick={() => setExpanded(e => !e)}
         className={`
-          rounded-xl border backdrop-blur-md transition-all duration-300
-          ${flash
-            ? 'border-[#F5A623]/60 shadow-lg shadow-[#F5A623]/10'
-            : 'border-white/10 shadow-lg shadow-black/40'
-          }
+          flex items-center gap-2 px-3 py-1.5 bg-surface-3/60 border rounded-xl hover:bg-surface-3 transition-all cursor-pointer select-none
+          ${flash ? 'border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.3)] bg-amber-500/5' : 'border-white/5 hover:border-primary/30'}
         `}
-        style={{ background: 'rgba(15,15,18,0.88)' }}
       >
-        {/* Header del widget */}
-        <button
-          onClick={() => setExpanded(e => !e)}
-          className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-white/4 rounded-t-xl transition-colors"
-        >
-          {/* Ícono con pulso si flash */}
-          <div className={`
-            w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0
-            ${flash ? 'bg-[#F5A623]/20 animate-pulse' : 'bg-[#F5A623]/10'}
-          `}>
-            <DollarSign size={14} className="text-[#F5A623]" />
-          </div>
+        {/* Ícono */}
+        <div className={`
+          w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0
+          ${flash ? 'bg-amber-500/20 animate-pulse' : 'bg-amber-500/10'}
+        `}>
+          <DollarSign size={12} className="text-amber-500" />
+        </div>
 
-          {/* Precio animado */}
-          <div className="flex-1 min-w-0">
-            <div className="text-[10px] text-muted uppercase tracking-widest leading-none mb-0.5">
-              Cotización · {quote.moduleCount} módulo{quote.moduleCount !== 1 ? 's' : ''}
-            </div>
-            <div
-              className={`
-                text-lg font-bold tabular-nums leading-none transition-colors duration-300
-                ${flash ? 'text-[#F5A623]' : 'text-white'}
-              `}
-            >
-              {formatPrice(animatedPrice, currency)}
-            </div>
-          </div>
+        {/* Precio animado */}
+        <span className="text-xs font-mono text-amber-500 font-bold leading-none tabular-nums">
+          {formatPrice(animatedPrice, currency)}
+        </span>
 
-          {/* Toggle expand */}
-          <div className="text-muted">
-            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </div>
-        </button>
+        {/* Módulos Count Badge */}
+        <span className="text-[8px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded font-black uppercase tracking-wider scale-90 shrink-0">
+          {quote.moduleCount} {quote.moduleCount !== 1 ? 'móds' : 'mód'}
+        </span>
 
-        {/* ── Desglose expandible ───────────────────────────── */}
+        {/* Toggle expand */}
+        <ChevronDown size={12} className={`text-muted transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* ── Desglose expandible en formato Dropdown absoluto ───────────────────────────── */}
+      {expanded && (
         <div
-          className={`
-            overflow-hidden transition-all duration-300 ease-in-out
-            ${expanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}
-          `}
+          className="absolute right-0 top-full mt-2 w-64 bg-zinc-950/95 backdrop-blur-md border border-zinc-800 rounded-xl shadow-2xl p-3 space-y-2 text-white z-[200] animate-in zoom-in-95 duration-200"
         >
-          <div className="px-3 pb-3 space-y-2">
-            {/* Divisor */}
-            <div className="border-t border-white/8" />
-
-            {/* Materiales */}
-            <div>
-              <div className="flex items-center gap-1.5 text-[10px] text-muted uppercase tracking-widest mb-1">
-                <Layers size={10} />
-                Materiales — {quote.totalMaterialM2} m²
-              </div>
-              {quote.materials.map(m => (
-                <DetailRow
-                  key={m.id}
-                  label={`${m.name} (${m.m2}m²)`}
-                  value={m.cost}
-                  currency={currency}
-                  sub
-                />
-              ))}
+          {/* Materiales */}
+          <div>
+            <div className="flex items-center gap-1.5 text-[10px] text-muted uppercase tracking-widest mb-1">
+              <Layers size={10} />
+              Materiales — {quote.totalMaterialM2} m²
             </div>
-
-            {/* Herrajes */}
-            <div>
-              <div className="flex items-center gap-1.5 text-[10px] text-muted uppercase tracking-widest mb-1">
-                <Wrench size={10} />
-                Herrajes
-              </div>
-              <div className="flex flex-wrap gap-1 mb-1">
-                <HardwareChip
-                  label="Bisagras"
-                  qty={quote.hardware.hinges.qty}
-                  unit="un"
-                />
-                <HardwareChip
-                  label="Correderas"
-                  qty={quote.hardware.drawerSlides.qty}
-                  unit="par"
-                />
-                <HardwareChip
-                  label="Manijas"
-                  qty={quote.hardware.handles.qty}
-                  unit="un"
-                />
-              </div>
+            {quote.materials.map(m => (
               <DetailRow
-                label="Total herrajes"
-                value={quote.hardware.total}
+                key={m.id}
+                label={`${m.name} (${m.m2}m²)`}
+                value={m.cost}
                 currency={currency}
                 sub
               />
-            </div>
-
-            {/* Mano de obra */}
-            <DetailRow
-              label="Mano de obra"
-              value={quote.labor}
-              currency={currency}
-              sub
-            />
-
-            {/* Overhead */}
-            <DetailRow
-              label="Overhead (12%)"
-              value={quote.overhead}
-              currency={currency}
-              sub
-            />
-
-            {/* Divisor */}
-            <div className="border-t border-white/8" />
-
-            {/* Subtotal y margen */}
-            <DetailRow label="Costo base"        value={quote.subtotal}     currency={currency} />
-            <DetailRow
-              label={`Margen (${Math.round(quote.marginRate * 100)}%)`}
-              value={quote.marginAmount}
-              currency={currency}
-              sub
-            />
-
-            {/* Total final destacado */}
-            <div
-              className="flex justify-between items-center pt-1 border-t border-[#F5A623]/20 mt-1"
-            >
-              <span className="text-sm font-bold text-white">PRECIO VENTA</span>
-              <span className="text-base font-bold text-[#F5A623] tabular-nums">
-                {formatPrice(quote.finalPrice, currency)}
-              </span>
-            </div>
-
-            {/* Encimera si aplica */}
-            {quote.hardware.countertop.m2 > 0 && (
-              <div className="flex items-center gap-1.5 text-[10px] text-muted mt-1">
-                <Package size={10} />
-                Encimera incluida: {quote.hardware.countertop.m2} m²
-              </div>
-            )}
+            ))}
           </div>
+
+          {/* Herrajes */}
+          <div>
+            <div className="flex items-center gap-1.5 text-[10px] text-muted uppercase tracking-widest mb-1">
+              <Wrench size={10} />
+              Herrajes
+            </div>
+            <div className="flex flex-wrap gap-1 mb-1">
+              <HardwareChip
+                label="Bisagras"
+                qty={quote.hardware.hinges.qty}
+                unit="un"
+              />
+              <HardwareChip
+                label="Correderas"
+                qty={quote.hardware.drawerSlides.qty}
+                unit="par"
+              />
+              <HardwareChip
+                label="Manijas"
+                qty={quote.hardware.handles.qty}
+                unit="un"
+              />
+            </div>
+            <DetailRow
+              label="Total herrajes"
+              value={quote.hardware.total}
+              currency={currency}
+              sub
+            />
+          </div>
+
+          {/* Mano de obra */}
+          <DetailRow
+            label="Mano de obra"
+            value={quote.labor}
+            currency={currency}
+            sub
+          />
+
+          {/* Overhead */}
+          <DetailRow
+            label="Overhead (12%)"
+            value={quote.overhead}
+            currency={currency}
+            sub
+          />
+
+          {/* Divisor */}
+          <div className="border-t border-white/8" />
+
+          {/* Subtotal y margen */}
+          <DetailRow label="Costo base"        value={quote.subtotal}     currency={currency} />
+          <DetailRow
+            label={`Margen (${Math.round(quote.marginRate * 100)}%)`}
+            value={quote.marginAmount}
+            currency={currency}
+            sub
+          />
+
+          {/* Total final destacado */}
+          <div
+            className="flex justify-between items-center pt-1 border-t border-[#F5A623]/20 mt-1"
+          >
+            <span className="text-sm font-bold text-white">PRECIO VENTA</span>
+            <span className="text-base font-mono text-amber-500 font-bold tabular-nums">
+              {formatPrice(quote.finalPrice, currency)}
+            </span>
+          </div>
+
+          {/* Encimera si aplica */}
+          {quote.hardware.countertop.m2 > 0 && (
+            <div className="flex items-center gap-1.5 text-[10px] text-muted mt-1">
+              <Package size={10} />
+              Encimera incluida: {quote.hardware.countertop.m2} m²
+            </div>
+          )}
+
+          {/* Badge de precios actualizados */}
+          {updateDate && (
+            <div className="text-[9px] text-zinc-500 text-center pt-2 border-t border-zinc-800/55 mt-2 select-none">
+              Preços atualizados: {updateDate}
+            </div>
+          )}
         </div>
-      </div>
+      )}
     </div>
   )
 }

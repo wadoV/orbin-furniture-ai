@@ -60,6 +60,7 @@ export default function Viewer3D({
   onDeleteModule   = () => {},
   onUpdateModule   = () => {},
   onAddModule      = () => {},
+  onCaptureReady   = null,   // (fn) => void  — called once renderer is ready; fn() returns PNG dataURL
 }) {
   const { t, lang } = usePreferences()
   const mountRef = useRef(null)
@@ -108,6 +109,7 @@ export default function Viewer3D({
   // ★ PROTECTED: AR State
   const [arModelUrl, setArModelUrl] = useState(null)
   const [isExportingAR, setIsExportingAR] = useState(false)
+  const modelViewerRef = useRef(null)
 
   // ★ PROTECTED: Module positions persist across rebuilds (key: moduleId → {x, z})
   const modulePositionsRef = useRef({})
@@ -196,20 +198,22 @@ export default function Viewer3D({
     if (!mountRef.current) return
     initRef.current = true
 
-    const container = mountRef.current
-    container.innerHTML = ''
+    const canvas = mountRef.current
+    if (!canvas || !canvas.isConnected) return
+    // Cancelar frame anterior si existe
+    if (frameRef.current) { cancelAnimationFrame(frameRef.current); frameRef.current = null }
+    const container = canvas.parentElement || canvas
 
-    // --- Renderer ---
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
+    // --- Renderer — usa el canvas de React directamente para evitar conflictos DOM ---
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setSize(container.clientWidth, container.clientHeight)
+    renderer.setSize(canvas.clientWidth || 800, canvas.clientHeight || 600)
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.1
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.setClearColor(0x0a0a0f, 1)
-    container.appendChild(renderer.domElement)
     rendererRef.current = renderer
 
     // --- Scene ---
@@ -289,7 +293,7 @@ export default function Viewer3D({
     scene.add(groundMesh)
 
     // --- Controls ---
-    const controls = new OrbitControls(cam, renderer.domElement)
+    const controls = new OrbitControls(cam, canvas)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
     controls.rotateSpeed = 0.7
@@ -303,9 +307,10 @@ export default function Viewer3D({
 
     // --- Resize ---
     const onResize = () => {
-      if (!container.parentElement) return
-      const w = container.clientWidth
-      const h = container.clientHeight
+      const c = mountRef.current
+      if (!c) return
+      const w = c.clientWidth || c.parentElement?.clientWidth || 800
+      const h = c.clientHeight || c.parentElement?.clientHeight || 600
       if (w === 0 || h === 0) return
       cam.aspect = w / h
       cam.updateProjectionMatrix()
@@ -315,17 +320,17 @@ export default function Viewer3D({
 
     // --- Mouse tracking ---
     const onMouseMove = (e) => {
-      const rect = renderer.domElement.getBoundingClientRect()
+      const rect = canvas.getBoundingClientRect()
       mouseRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
       mouseRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
     }
-    renderer.domElement.addEventListener('mousemove', onMouseMove)
+    canvas.addEventListener('mousemove', onMouseMove)
 
     // --- Click / Box select / ★ PROTECTED: Drag-to-move ---
     const onMouseDown = (e) => {
       if (stateRef.current.orbitMode) return
       if (e.button !== 0) return
-      const rect = renderer.domElement.getBoundingClientRect()
+      const rect = canvas.getBoundingClientRect()
       const x = e.clientX - rect.left
       const y = e.clientY - rect.top
       dragStartRef.current = { x, y }
@@ -410,7 +415,7 @@ export default function Viewer3D({
           const moduleId = dragMoveRef.current.moduleId
           const mGroup = moduleGroupsRef.current[moduleId]
           if (mGroup) {
-            modulePositionsRef.current[moduleId] = { x: mGroup.position.x, z: mGroup.position.z }
+            modulePositionsRef.current[moduleId] = { x: mGroup.position.x, z: mGroup.position.z, y: mGroup.position.y }
           }
           // Clean snap guides
           snapLinesRef.current.forEach(l => { scene.remove(l); l.geometry?.dispose(); l.material?.dispose() })
@@ -512,7 +517,36 @@ export default function Viewer3D({
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup', onUp)
     }
-    renderer.domElement.addEventListener('mousedown', onMouseDown)
+    canvas.addEventListener('mousedown', onMouseDown)
+
+    // Touch support — mobile orbit + pinch zoom
+    let _tx = 0, _ty = 0, _td = 0
+    const _getTouchDist = (t) => {
+      const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY
+      return Math.sqrt(dx*dx + dy*dy)
+    }
+    const onTouchStart = (e) => {
+      if (e.touches.length === 1) { _tx = e.touches[0].clientX; _ty = e.touches[0].clientY }
+      else if (e.touches.length === 2) { _td = _getTouchDist(e.touches) }
+    }
+    const onTouchMove = (e) => {
+      e.preventDefault()
+      const ctrl = controlsRef.current
+      if (!ctrl) return
+      if (e.touches.length === 1) {
+        const dx = (e.touches[0].clientX - _tx) * 0.01
+        const dy = (e.touches[0].clientY - _ty) * 0.01
+        ctrl.rotateLeft(-dx); ctrl.rotateUp(-dy); ctrl.update()
+        _tx = e.touches[0].clientX; _ty = e.touches[0].clientY
+      } else if (e.touches.length === 2) {
+        const nd = _getTouchDist(e.touches)
+        const delta = (_td - nd) * 0.05
+        ctrl.dollyIn(1 + delta * 0.05); ctrl.update()
+        _td = nd
+      }
+    }
+    canvas.addEventListener('touchstart', onTouchStart, { passive: true })
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false })
 
     // ─── Render Loop ────────────────────────────────────────────────────────
     const animate = () => {
@@ -635,32 +669,122 @@ export default function Viewer3D({
       renderer.render(scene, cam)
     }
     animate()
-    setIsReady(true)
+    if (mountRef.current) setIsReady(true)
 
-    // ★ NO cleanup that destroys the renderer — it persists for the component lifetime.
-    // React StrictMode will call cleanup then re-run, but initRef prevents re-init.
+    // ★ PLANO EJECUTIVO — expose read-only wireframe capture to parent
+    // Reads renderer canvas, does NOT alter React state, modules, or physics.
+    if (typeof onCaptureReady === 'function') {
+      const captureWireframeDataURL = () => {
+        if (!rendererRef.current || !sceneRef.current || !camRef.current) return null
+        const rdr   = rendererRef.current
+        const sc    = sceneRef.current
+        const cam2  = camRef.current
+        const meshes = meshesRef.current
+
+        // ── Save camera state & setup Orthographic Camera ──────────────────
+        const activeModule = modules.find(m => m.id === stateRef.current.selectedModuleId) || modules[0]
+        const cfg = activeModule?.configuration || { width: 600, height: 720 }
+        const w = (cfg.width || 600) * SCALE
+        const h = (cfg.height || 720) * SCALE
+
+        // Center calculation from bounding box
+        const targetGroup = moduleGroupsRef.current[activeModule?.id] || groupRef.current
+        const box = new THREE.Box3().setFromObject(targetGroup)
+        const center = new THREE.Vector3()
+        box.getCenter(center)
+
+        const aspect = rdr.domElement.width / rdr.domElement.height
+        let frustumHeight = h / 0.85
+        let frustumWidth = frustumHeight * aspect
+
+        if (w / frustumWidth > 0.85) {
+          frustumWidth = w / 0.85
+          frustumHeight = frustumWidth / aspect
+        }
+
+        const orthoCam = new THREE.OrthographicCamera(
+          -frustumWidth / 2, frustumWidth / 2,
+          frustumHeight / 2, -frustumHeight / 2,
+          1, 1000
+        )
+        // Set exact frontal orthographic position looking down Z axis
+        orthoCam.position.set(center.x, center.y, center.z + 300)
+        orthoCam.lookAt(center)
+
+        // ── Save current material state ──────────────────────────────────
+        const saved = meshes.map(m => ({
+          color:        m.material.color.getHex(),
+          emissive:     m.material.emissive.getHex(),
+          emissiveInt:  m.material.emissiveIntensity,
+          roughness:    m.material.roughness,
+          metalness:    m.material.metalness,
+          opacity:      m.material.opacity,
+          wireframe:    m.material.wireframe,
+          edgeColor:    m.userData.edgeHelper?.material.color.getHex(),
+          edgeOpacity:  m.userData.edgeHelper?.material.opacity,
+        }))
+        const savedBg = sc.background ? sc.background.getHex() : 0x0f0f0f
+        const savedGridVis = gridRef.current?.visible
+
+        // ── Apply wireframe/SketchUp appearance ──────────────────────────
+        sc.background.set(0xffffff)
+        if (gridRef.current) gridRef.current.visible = false
+        meshes.forEach(m => {
+          m.material.wireframe      = false
+          m.material.color.set(0xfafafa)
+          m.material.emissive.set(0x000000)
+          m.material.emissiveIntensity = 0
+          m.material.roughness      = 1.0
+          m.material.metalness      = 0.0
+          m.material.opacity        = 1.0
+          if (m.userData.edgeHelper) {
+            m.userData.edgeHelper.material.color.set(0x111111)
+            m.userData.edgeHelper.material.opacity = 1.0
+          }
+        })
+
+        // ── One-shot render with Orthographic Camera ──────────────────────
+        rdr.render(sc, orthoCam)
+        const dataURL = rdr.domElement.toDataURL('image/png', 1.0)
+
+        // ── Restore ALL materials exactly ─────────────────────────────────
+        meshes.forEach((m, i) => {
+          const s = saved[i]
+          m.material.color.set(s.color)
+          m.material.emissive.set(s.emissive)
+          m.material.emissiveIntensity = s.emissiveInt
+          m.material.roughness         = s.roughness
+          m.material.metalness         = s.metalness
+          m.material.opacity           = s.opacity
+          m.material.wireframe         = s.wireframe
+          if (m.userData.edgeHelper && s.edgeColor != null) {
+            m.userData.edgeHelper.material.color.set(s.edgeColor)
+            m.userData.edgeHelper.material.opacity = s.edgeOpacity
+          }
+        })
+        sc.background.set(savedBg)
+        if (gridRef.current) gridRef.current.visible = savedGridVis
+
+        return dataURL
+      }
+      onCaptureReady(captureWireframeDataURL)
+    }
+
+    // ★ Cleanup: cancela loop y event listeners al desmontar
+    return () => {
+      initRef.current = false
+      if (frameRef.current) { cancelAnimationFrame(frameRef.current); frameRef.current = null }
+      window.removeEventListener('resize', onResize)
+      canvas.removeEventListener('mousemove', onMouseMove)
+      canvas.removeEventListener('mousedown', onMouseDown)
+      canvas.removeEventListener('touchstart', onTouchStart)
+      canvas.removeEventListener('touchmove', onTouchMove)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ★ PROTECTED: Delete key handler — removes selected module from scene
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        // Ignore if user is typing in an input/textarea
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return
-        const modId = stateRef.current.selectedModuleId
-        if (modId) {
-          e.preventDefault()
-          // Clean position cache for deleted module
-          delete modulePositionsRef.current[modId]
-          delete moduleGroupsRef.current[modId]
-          onDeleteModule(modId)
-        }
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onDeleteModule])
+  // ★ FIX: Delete key handler REMOVED from Viewer3D — App.jsx lo maneja centralmente.
+  // Tener dos handlers causaba doble llamado a onDeleteModule → historial corrupto → error en Ctrl+Z.
 
 
   // ★ Premium: Smooth camera focus on module selection
@@ -840,15 +964,20 @@ export default function Viewer3D({
 
       const mGroup = new THREE.Group()
       // ★ PROTECTED: Position module using saved location or place after rightmost module
+      // ★ AEREO FIX: Wall-mounted modules are elevated by mountHeight (default 1400mm for kitchen, 1600mm for bathroom)
+      const isAereoModule = cfg.moduleType === 'aereo'
+      const mountY = isAereoModule ? ((cfg.mountHeight || 1400) * SCALE) : 0
       const saved = modulePositionsRef.current[design.id]
       if (saved) {
         mGroup.position.x = saved.x
         mGroup.position.z = saved.z
+        mGroup.position.y = saved.y !== undefined ? saved.y : mountY
       } else {
-        const newX = maxRightEdge + W / 2 + (maxRightEdge > 0 ? 5 : 0)
+        const newX = maxRightEdge + W / 2  // ★ FIX: módulos tocan sin gap para unificar encimera
         mGroup.position.x = newX
+        mGroup.position.y = mountY
         maxRightEdge = newX + W / 2
-        modulePositionsRef.current[design.id] = { x: newX, z: 0 }
+        modulePositionsRef.current[design.id] = { x: newX, z: 0, y: mountY }
       }
       moduleGroupsRef.current[design.id] = mGroup
       mGroup.userData.moduleId = design.id
@@ -910,8 +1039,9 @@ export default function Viewer3D({
 
       // === DRAWERS ===
       const nD = cfg.numDrawers || 0
-      const dH = (cfg.drawerHeight || 180) * SCALE
       const isHorizontal = cfg.drawerLayout === 'horizontal'
+      const maxDH = (H - BH - 2 * T) / (isHorizontal ? Math.ceil(nD / 2) : nD)
+      const dH = Math.min((cfg.drawerHeight || 180) * SCALE, maxDH)
       let curY = yBase + BH + T
 
       if (nD > 0) {
@@ -1022,11 +1152,13 @@ export default function Viewer3D({
     // a single merged countertop slab spanning the full width of each chain.
     // This eliminates the seam / gap between side-by-side module countertops.
     {
-      const ctModules = modules.filter(m =>
-        m?.configuration?.hasCountertop &&
-        !hiddenModules.has(m.id) &&
-        moduleGroupsRef.current[m.id]
-      )
+      // ★ FIX: auto-include base/kitchen modules even if hasCountertop not explicitly set
+      const BASE_TYPES = new Set(['base', 'kitchen_base', 'base_cocina', 'cocina_base', 'base_kitchen'])
+      const ctModules = modules.filter(m => {
+        const cfg = m?.configuration
+        const isBase = BASE_TYPES.has(cfg?.moduleType) || BASE_TYPES.has(m?.type)
+        return (cfg?.hasCountertop || isBase) && !hiddenModules.has(m.id) && moduleGroupsRef.current[m.id]
+      })
 
       if (ctModules.length > 0) {
         // ★ Compute bounding boxes directly from config + mGroup.position
@@ -1078,7 +1210,7 @@ export default function Viewer3D({
           const cfg0     = chain[0].module.configuration
           const ctColor  = MATERIAL_COLORS[cfg0.countertopMaterial] || TYPE_COLORS.countertop
 
-          const ctW = (xMax - xMin) + 4   // 20 mm side overhang on each end
+          const ctW = (xMax - xMin)
           const ctD = (frontZ - backZ) + 2 // 10 mm overhang front + back
           const ctH = 3                    // 30 mm slab thickness
 
@@ -1266,9 +1398,22 @@ export default function Viewer3D({
     )
   }, [])
 
+  // ★ FIX: Inyectar botón AR de forma imperativa para evitar conflicto
+  //   React slot → shadow DOM → removeChild crash
+  useEffect(() => {
+    const mv = modelViewerRef.current
+    if (!mv || !arModelUrl) return
+    const btn = document.createElement('button')
+    btn.setAttribute('slot', 'ar-button')
+    btn.style.cssText = 'position:absolute;bottom:40px;left:50%;transform:translateX(-50%);background:white;color:black;padding:12px 24px;border-radius:9999px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);border:none;cursor:pointer;z-index:60'
+    btn.textContent = '📍 Iniciar Realidad Aumentada'
+    mv.appendChild(btn)
+    return () => { try { mv.removeChild(btn) } catch {} }
+  }, [arModelUrl])
+
   return (
-    <div className="relative w-full h-full group select-none overflow-hidden" style={{ minHeight: '600px' }}>
-      <div ref={mountRef} className="w-full h-full" style={{ minHeight: '600px' }} />
+    <div className="relative w-full h-full group select-none overflow-hidden" style={{ minHeight: 'clamp(260px, 45vw, 600px)' }}>
+      <canvas ref={mountRef} className="absolute inset-0 w-full h-full block" style={{ minHeight: 'clamp(260px, 45vw, 600px)' }} />
 
       {/* ★ PROTECTED: Drag-to-move indicator */}
       {isDragMoving && (
@@ -1482,113 +1627,9 @@ export default function Viewer3D({
             Cerrar
           </button>
           
-          <model-viewer
-            src={arModelUrl}
-            ar="true"
-            ar-modes="webxr scene-viewer quick-look"
-            camera-controls="true"
-            auto-rotate="true"
-            shadow-intensity="1"
-            environment-image="neutral"
-            style={{ width: '100%', height: '100%' }}
-          >
-            <button slot="ar-button" className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white text-black px-6 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 z-[60]">
-              <Scan size={18} />
-              Iniciar Realidad Aumentada
-            </button>
-          </model-viewer>
-        </div>
-      )}
+          {/* ★ FIX: No children React inside model-viewer — slots se mueven al shadow DOM
+              y causan removeChild crash. El botón AR se inyecta imperativemente. */}
 
-      {/* Presentation Mode */}
-      <PresentationMode 
-        camera={camRef.current}
-        controls={controlsRef.current}
-        isEnabled={isPresentationMode}
-        onToggle={() => setIsPresentationMode(false)}
-      />
-
-      {/* AI Visual Stylist */}
-      {!isPresentationMode && (
-        <AIVisualStylist 
-          currentDesign={modules.find(m => m.id === selectedModuleId)}
-          onApplyStyle={(style) => {
-            if (selectedModuleId) {
-              onUpdateModule(selectedModuleId, { materialBody: 'custom', materialFront: 'custom' }) // Simplification for demo
-            }
-          }}
-        />
-      )}
-
-      {/* Viral Share */}
-      {!isPresentationMode && (
-        <ViralShare 
-          renderer={rendererRef.current}
-          scene={sceneRef.current}
-          camera={camRef.current}
-        />
-      )}
-
-      {/* ★ PROTECTED: Layers panel toggle (top-left) */}
-      <button
-        onClick={() => setShowLayers(l => !l)}
-        className={`absolute top-4 left-4 p-2.5 rounded-xl backdrop-blur-md transition-all border shadow-lg z-20 ${
-          showLayers ? 'bg-primary text-black border-primary' : 'bg-surface/40 hover:bg-primary text-white hover:text-black border-white/5'
-        }`}
-        title="Layers"
-      >
-        <Layers size={16} />
-      </button>
-
-      {/* ★ PROTECTED: CAD-style Layers Panel (bottom horizontal bar) */}
-      {showLayers && modules.length > 0 && (
-        <div className="absolute bottom-20 left-4 right-4 bg-surface/90 backdrop-blur-xl border border-white/10 rounded-2xl p-3 z-20 animate-in slide-in-from-bottom-2 duration-300">
-          <div className="flex items-center gap-2 mb-2">
-            <Layers size={12} className="text-primary" />
-            <span className="text-[9px] font-black text-primary uppercase tracking-widest">{t('layers') || 'Capas'}</span>
-          </div>
-          <div className="flex gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-surface-3 pb-1">
-            {modules.map((mod, idx) => {
-              const isHidden = hiddenModules.has(mod.id)
-              const isSelected = selectedModuleId === mod.id
-              return (
-                <div
-                  key={mod.id}
-                  className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-all ${
-                    isSelected
-                      ? 'bg-primary/10 border-primary/50 shadow-[0_0_8px_rgba(245,166,35,0.2)]'
-                      : 'bg-surface-3/50 border-white/5 hover:border-white/20'
-                  } ${isHidden ? 'opacity-40' : ''}`}
-                  onClick={() => onSelectModule(mod.id)}
-                >
-                  {/* Visibility toggle */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setHiddenModules(prev => {
-                        const next = new Set(prev)
-                        next.has(mod.id) ? next.delete(mod.id) : next.add(mod.id)
-                        return next
-                      })
-                    }}
-                    className={`w-4 h-4 rounded-sm border flex items-center justify-center transition-all ${
-                      isHidden ? 'border-white/20 bg-transparent' : 'border-primary bg-primary'
-                    }`}
-                  >
-                    {!isHidden && <span className="text-[8px] text-black font-black">✓</span>}
-                  </button>
-                  <div>
-                    <p className="text-[10px] font-bold text-white leading-none">
-                      {mod.configuration?.moduleType || 'Módulo'} #{idx + 1}
-                    </p>
-                    <p className="text-[8px] text-muted mt-0.5">
-                      {mod.configuration?.width || '?'}×{mod.configuration?.height || '?'}×{mod.configuration?.depth || '?'} mm
-                    </p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
         </div>
       )}
     </div>

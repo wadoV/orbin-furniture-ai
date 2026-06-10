@@ -1,0 +1,38 @@
+#!/bin/sh
+
+# Patterns to block:
+# 1. Google API keys: starts with AIza and has at least 10 more alphanumeric/dash/underscore chars
+# 2. JWT tokens: starts with eyJ and has at least one dot in alphanumeric/dash/underscore chars
+# 3. Stripe secret keys: sk_live_... or sk_test_... or sk_... followed by at least 20 chars
+
+staged_diff=$(git diff --cached --unified=0)
+
+errors=0
+
+# 1. Google API key pattern
+if echo "$staged_diff" | grep -E "^\+[^+].*\bAIza[0-9A-Za-z_-]{10,}" >/dev/null; then
+  echo "ERROR: Staged changes contain a Google API key pattern (AIza...)."
+  errors=$((errors + 1))
+fi
+
+# 2. JWT token pattern
+if echo "$staged_diff" | grep -E "^\+[^+].*\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}" >/dev/null; then
+  echo "ERROR: Staged changes contain a JWT token pattern (eyJ...)."
+  errors=$((errors + 1))
+fi
+
+# 3. Stripe secret key pattern
+if echo "$staged_diff" | grep -E "^\+[^+].*\bsk_(live|test)_[0-9a-zA-Z]{20,}" >/dev/null || echo "$staged_diff" | grep -E "^\+[^+].*\bsk_[a-zA-Z0-9]{20,}" >/dev/null; then
+  echo "ERROR: Staged changes contain a Stripe secret key pattern (sk_...)."
+  errors=$((errors + 1))
+fi
+
+if [ $errors -ne 0 ]; then
+  echo ""
+  echo "❌ COMMIT BLOCKED: Secrets detected in staged changes."
+  echo "Please remove secrets from your code before committing."
+  echo "If you need a local environment configuration, use a gitignored .env file."
+  exit 1
+fi
+
+exit 0

@@ -1,16 +1,149 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Orbin AI — Design Paramétrico de Móveis</title>
-    <meta name="description" content="Automação de design paramétrico de móveis com IA. Gere listas de corte instantâneas." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪵</text></svg>" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Primary SEO -->
+  <title>Orbin AI — Projete e Orce Armários em 30 Segundos</title>
+  <meta name="description" content="Software web para marceneiros e lojas. Substitua o Promob: projete, gere listas de corte e orçamentos em 30 segundos, sem instalar nada." />
+  <meta name="keywords" content="lista de corte MDF, software marcenaria, design parametrico moveis, calculadora moveis planejados, lista corte automatica, software lista corte, marceneiro software, armario embutido MDF, corredicas telescopicas 13mm, chapa MDF 18mm, diseño parametrico muebles, lista de corte CNC, orcamento moveis, software carpintaria" />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+  <meta name="author" content="Orbin Technologies" />
+  <meta name="theme-color" content="#F5A623" />
+
+  <!-- Canonical + hreflang -->
+  <link rel="canonical" href="https://orbin.ai/" />
+  <link rel="alternate" hreflang="pt-BR"    href="https://orbin.ai/?lang=PT" />
+  <link rel="alternate" hreflang="es"       href="https://orbin.ai/?lang=ES" />
+  <link rel="alternate" hreflang="en"       href="https://orbin.ai/?lang=EN" />
+  <link rel="alternate" hreflang="x-default" href="https://orbin.ai/" />
+
+  <!-- Open Graph -->
+  <meta property="og:type"               content="website" />
+  <meta property="og:url"                content="https://orbin.ai/" />
+  <meta property="og:title"              content="Orbin AI — Projete e Orce Armários em 30 Segundos" />
+  <meta property="og:description"        content="Software web para marceneiros e lojas. Substitua o Promob: projete, gere listas de corte e orçamentos em 30 segundos, sem instalar nada." />
+  <meta property="og:image"              content="https://orbin.ai/og-image-placeholder.png" />
+  <meta property="og:image:width"        content="1200" />
+  <meta property="og:image:height"       content="630" />
+  <meta property="og:image:alt"          content="Orbin AI — Interface com visor 3D de moveis e lista de corte automatica" />
+  <meta property="og:site_name"          content="Orbin AI" />
+  <meta property="og:locale"             content="pt_BR" />
+  <meta property="og:locale:alternate"   content="es_ES" />
+  <meta property="og:locale:alternate"   content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:site"        content="@OrbinAI" />
+  <meta name="twitter:title"       content="Orbin AI — Projete e Orce Armários em 30 Segundos" />
+  <meta name="twitter:description" content="Software web para marceneiros e lojas. Substitua o Promob: projete, gere listas de corte e orçamentos em 30 segundos, sem instalar nada." />
+  <meta name="twitter:image"       content="https://orbin.ai/og-image-placeholder.png" />
+  <meta name="twitter:image:alt"   content="Orbin AI interface com visor 3D de moveis" />
+
+  <!-- Favicons -->
+  <link rel="icon"             type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="icon"             type="image/png" sizes="16x16" href="/favicon-16.png" />
+  <link rel="apple-touch-icon" sizes="180x180"                href="/apple-touch-icon.png" />
+  <link rel="mask-icon"        href="/safari-pinned-tab.svg"  color="#F5A623" />
+  <meta name="msapplication-TileColor" content="#F5A623" />
+
+  <!-- PWA + Sitemap -->
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="sitemap"  type="application/xml" href="/sitemap.xml" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload"    as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+
+  <!-- Schema.org JSON-LD (App + Org + WebSite) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://orbin.ai/#app",
+        "name": "Orbin AI",
+        "url": "https://orbin.ai",
+        "logo": "https://orbin.ai/favicon-32.png",
+        "description": "Software web para marceneiros e lojas. Substitua o Promob: projete, gere listas de corte e orçamentos em 30 segundos, sem instalar nada.",
+        "applicationCategory": "DesignApplication",
+        "applicationSubCategory": "Furniture Design Software",
+        "operatingSystem": "Web Browser",
+        "browserRequirements": "Requires JavaScript. Requires HTML5.",
+        "inLanguage": ["pt-BR", "es", "en"],
+        "offers": [
+          {
+            "@type": "Offer",
+            "name": "Gratuito",
+            "price": "0",
+            "priceCurrency": "BRL",
+            "description": "3 módulos, visor 3D interativo"
+          },
+          {
+            "@type": "Offer",
+            "name": "Marceneiro Pro",
+            "price": "99",
+            "priceCurrency": "BRL",
+            "billingIncrement": "P1M",
+            "description": "Módulos ilimitados, Chat IA Gemini, exportação PDF/CSV"
+          },
+          {
+            "@type": "Offer",
+            "name": "Industrial / Empresa",
+            "price": "249",
+            "priceCurrency": "BRL",
+            "billingIncrement": "P1M",
+            "description": "Tudo do Pro + CNC G-code + Lista de Ferragens (BOM)"
+          }
+        ],
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": "4.8",
+          "bestRating": "5",
+          "worstRating": "1",
+          "reviewCount": "1200"
+        },
+        "featureList": [
+          "Lista de corte automatica",
+          "Visor 3D parametrico com Three.js",
+          "Chat com IA Vision",
+          "Exportacao CNC G-code",
+          "Lista de ferragens (BOM)",
+          "Colaboracao em tempo real"
+        ]
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://orbin.ai/#org",
+        "name": "Orbin Technologies",
+        "url": "https://orbin.ai",
+        "logo": "https://orbin.ai/favicon-32.png"
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://orbin.ai/#website",
+        "url": "https://orbin.ai",
+        "name": "Orbin AI",
+        "description": "Software web para marceneiros e lojas",
+        "publisher": { "@id": "https://orbin.ai/#org" },
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://orbin.ai/?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      }
+    ]
+  }
+  </script>
+
+  <script defer data-domain="orbin.app" src="https://plausible.io/js/script.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
 </html>

@@ -10,7 +10,7 @@ async function callGemini(systemPrompt, userMessage) {
   if (!apiKey) throw new Error('GEMINI_API_KEY is missing')
 
   // Using standard fetch for Node 18+
-  const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
   
   const body = {
@@ -45,7 +45,10 @@ async function callGeminiVision(systemPrompt, userPrompt, base64Image, mimeType)
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY is missing')
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`
+  // ★ FIX: gemini-1.5-pro foi descontinuado (404 v1beta). Usa o modelo do .env
+  //   (GEMINI_MODEL) com fallback para um modelo de visão atual e suportado.
+  const visionModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${visionModel}:generateContent?key=${apiKey}`
   
   const body = {
     systemInstruction: { parts: [{ text: systemPrompt }] },

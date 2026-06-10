@@ -3,6 +3,7 @@ import { Sliders, MessageSquare, RotateCcw, Zap, Box, Info, Bot, Layout, Lock, C
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { MATERIALS_DB } from '../data/materials.js'
+import { trackEvent, EVENTS } from '../lib/analytics.js'
 
 // ─── FIELD ────────────────────────────────────────────────────────────────────
 // Flexible numeric input: allows clearing and re-typing without state locking.
@@ -132,7 +133,7 @@ const DrawerLayoutButtons = ({ value, onChange, t }) => {
   ]
   return (
     <div>
-      <p className="label mb-2">{t('drawer_layout')}</p>
+      <p className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-2">{t('drawer_layout')}</p>
       <div className="flex gap-2">
         {options.map(opt => (
           <button
@@ -161,7 +162,7 @@ const DRAWER_PRESETS = [
 
 const DrawerPresets = ({ onChange, t }) => (
   <div>
-    <p className="label mb-2">{t('drawer_presets') || 'Presets de Gavetas'}</p>
+    <p className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-2">{t('drawer_presets') || 'Presets de Gavetas'}</p>
     <div className="grid grid-cols-4 gap-1.5">
       {DRAWER_PRESETS.map(preset => (
         <button
@@ -184,35 +185,134 @@ const DrawerPresets = ({ onChange, t }) => (
 const FURNITURE_PRESETS = [
   {
     id: 'kitchen_cabinet',
-    icon: '🍳',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 mx-auto">
+        <rect x="3" y="6" width="18" height="15" rx="1" />
+        <line x1="3" y1="9" x2="21" y2="9" />
+        <line x1="12" y1="9" x2="12" y2="21" />
+        <line x1="9" y1="12" x2="9" y2="15" />
+        <line x1="15" y1="12" x2="15" y2="15" />
+      </svg>
+    ),
     params: { moduleType: 'base', materialId: 'mdf_18', width: 600, height: 720, depth: 580, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true }
   },
   {
     id: 'wardrobe',
-    icon: '👔',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 mx-auto">
+        <rect x="4" y="2" width="16" height="20" rx="1" />
+        <line x1="12" y1="2" x2="12" y2="15" strokeWidth={1.5} />
+        <line x1="4" y1="15" x2="20" y2="15" strokeWidth={1.5} />
+        <line x1="10" y1="7" x2="10" y2="10" strokeWidth={1.5} />
+        <line x1="14" y1="7" x2="14" y2="10" strokeWidth={1.5} />
+        <line x1="10" y1="18" x2="14" y2="18" strokeWidth={1.5} />
+      </svg>
+    ),
     params: { moduleType: 'standard', materialId: 'mdf_18', width: 900, height: 2100, depth: 600, thickness: 18, backThickness: 6, numShelves: 3, numDrawers: 2, numDividers: 1, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: false, drawerLayout: 'vertical', drawerHeight: 180 }
   },
   {
     id: 'bathroom_cabinet',
-    icon: '🚿',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 mx-auto">
+        <rect x="4" y="9" width="16" height="12" rx="1" />
+        <path d="M12 6V3M12 3H14M10 4.5H14" />
+        <path d="M6 9C6 7 18 7 18 9" />
+        <line x1="12" y1="9" x2="12" y2="21" />
+        <circle cx="9.5" cy="13.5" r="0.75" fill="currentColor" />
+        <circle cx="14.5" cy="13.5" r="0.75" fill="currentColor" />
+      </svg>
+    ),
     params: { moduleType: 'base', materialId: 'mdf_15', width: 500, height: 600, depth: 400, thickness: 15, backThickness: 6, numShelves: 1, numDrawers: 1, numDividers: 0, hasDoors: true, numDoors: 1, doorType: 'hinged', baseboard: true, baseboardHeight: 80, hasCountertop: true, drawerHeight: 150 }
   },
   {
     id: 'office_desk',
-    icon: '💻',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 mx-auto">
+        <rect x="2" y="7" width="20" height="2" rx="0.5" />
+        <line x1="4" y1="9" x2="4" y2="20" />
+        <line x1="20" y1="9" x2="20" y2="20" />
+        <rect x="13" y="9" width="7" height="11" />
+        <line x1="13" y1="14" x2="20" y2="14" />
+        <line x1="15.5" y1="11.5" x2="17.5" y2="11.5" />
+        <line x1="15.5" y1="16.5" x2="17.5" y2="16.5" />
+      </svg>
+    ),
     params: { moduleType: 'standard', materialId: 'mdf_25', width: 1200, height: 750, depth: 600, thickness: 25, backThickness: 6, numShelves: 0, numDrawers: 3, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, drawerLayout: 'right', drawerHeight: 150 }
   },
   {
     id: 'floating_shelf',
-    icon: '📚',
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 800, height: 350, depth: 300, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false }
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 mx-auto">
+        <line x1="2" y1="15" x2="22" y2="15" strokeWidth={2} />
+        <path d="M6 15v3M18 15v3" />
+        <rect x="5" y="7" width="3" height="8" rx="0.5" />
+        <rect x="9" y="5" width="3" height="10" rx="0.5" />
+        <path d="M13 15l3-9 2.5 1-3 8z" />
+      </svg>
+    ),
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 800, height: 350, depth: 300, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1600 }
+  },
+  // ★ AEREO PRESETS — Módulos aéreos para cocina, baño y sala
+  {
+    id: 'aereo_cocina_puertas',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 mx-auto">
+        <rect x="3" y="5" width="18" height="11" rx="1" />
+        <line x1="12" y1="5" x2="12" y2="16" />
+        <circle cx="10.5" cy="10.5" r="0.7" fill="currentColor" />
+        <circle cx="13.5" cy="10.5" r="0.7" fill="currentColor" />
+        <line x1="7" y1="16" x2="7" y2="19" strokeDasharray="2 1" />
+        <line x1="17" y1="16" x2="17" y2="19" strokeDasharray="2 1" />
+      </svg>
+    ),
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 600, height: 400, depth: 320, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1450 }
+  },
+  {
+    id: 'aereo_cocina_aberto',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 mx-auto">
+        <rect x="3" y="5" width="18" height="11" rx="1" />
+        <line x1="3" y1="11" x2="21" y2="11" strokeDasharray="3 2" />
+        <line x1="3" y1="8" x2="21" y2="8" strokeDasharray="3 2" />
+        <line x1="7" y1="16" x2="7" y2="19" strokeDasharray="2 1" />
+        <line x1="17" y1="16" x2="17" y2="19" strokeDasharray="2 1" />
+      </svg>
+    ),
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 900, height: 350, depth: 300, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1500 }
+  },
+  {
+    id: 'aereo_banheiro_espelho',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 mx-auto">
+        <rect x="4" y="3" width="16" height="15" rx="1" />
+        <rect x="6" y="5" width="12" height="8" rx="0.5" fill="currentColor" fillOpacity="0.15" />
+        <line x1="4" y1="18" x2="20" y2="18" />
+        <line x1="9" y1="18" x2="9" y2="21" />
+        <line x1="15" y1="18" x2="15" y2="21" />
+      </svg>
+    ),
+    params: { moduleType: 'aereo', materialId: 'mdf_15', width: 600, height: 700, depth: 150, thickness: 15, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 1, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1000 }
+  },
+  {
+    id: 'aereo_sala_tv',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 mx-auto">
+        <rect x="2" y="5" width="20" height="12" rx="1" />
+        <line x1="2" y1="10" x2="22" y2="10" />
+        <line x1="9" y1="5" x2="9" y2="17" />
+        <line x1="15" y1="5" x2="15" y2="17" />
+        <circle cx="5.5" cy="7.5" r="0.7" fill="currentColor" />
+        <circle cx="18.5" cy="14" r="0.7" fill="currentColor" />
+      </svg>
+    ),
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1600, height: 450, depth: 350, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 2, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1200 }
   },
 ]
 
 const FurniturePresets = ({ onApply, t }) => (
   <div>
-    <p className="label mb-2 flex items-center gap-2">
-      <Layout size={12} className="text-primary/60" />
+    <p className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-2 flex items-center gap-2">
+      <Layout size={12} className="text-zinc-500" />
       {t('furniture_presets') || 'Quick-Start Presets'}
     </p>
     <div className="grid grid-cols-5 gap-1.5">
@@ -223,8 +323,10 @@ const FurniturePresets = ({ onApply, t }) => (
           className="py-2.5 px-1 rounded-xl text-center border bg-surface-3 text-muted border-white/5 hover:border-primary/30 hover:text-white hover:bg-surface-4 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary group"
           title={t(`preset_${preset.id}`) || preset.id}
         >
-          <span className="text-lg block group-hover:scale-110 transition-transform">{preset.icon}</span>
-          <span className="text-[7px] font-black uppercase tracking-wider block mt-1 leading-tight">
+          <span className="block group-hover:scale-110 transition-transform mb-1 text-muted group-hover:text-primary transition-colors">
+            {preset.icon}
+          </span>
+          <span className="text-[7px] font-black uppercase tracking-wider block mt-1 leading-tight text-muted group-hover:text-white transition-colors">
             {t(`preset_${preset.id}`) || preset.id.replace(/_/g, ' ')}
           </span>
         </button>
@@ -285,6 +387,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
   const reset = () => { setParams({ ...DEFAULTS }); setNlText('') }
 
   const handleSubmit = () => {
+    trackEvent(EVENTS.DESIGN_GENERATED, { mode, isFree })
     if (mode === 'nl') {
       if (!nlText.trim()) return
       onGenerate({ naturalLanguage: nlText })
@@ -307,7 +410,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
   const isBase  = params.moduleType === 'base'
 
   return (
-    <div className="card space-y-6">
+    <div className="bg-zinc-900/60 backdrop-blur-lg border-r border-zinc-800/50 rounded-2xl p-5 space-y-6">
       {/* Greeting */}
       <div className="flex items-center gap-4 p-4 bg-primary/5 rounded-2xl border border-primary/10">
         <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-lg shadow-primary/20">
@@ -352,7 +455,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
 
           {/* ── Typology & Material ────────────────────────────────────────── */}
           <fieldset className="space-y-4">
-            <legend className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-4 flex items-center gap-2">
+            <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4 flex items-center gap-2">
                <Box size={12} /> {t('module_type')} & {t('material_thickness')}
             </legend>
             <div className="grid grid-cols-2 gap-4">
@@ -431,11 +534,32 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                 )}
               </div>
             )}
+            {/* ★ AEREO: Mount height control — shown only for wall-mounted modules */}
+            {isAereo && (
+              <div className="animate-in zoom-in-95 duration-200 space-y-2">
+                <FIELD
+                  label={t('mount_height') || 'Altura de instalação (piso → base do módulo)'}
+                  name="mountHeight"
+                  value={convert(params.mountHeight || 1400)}
+                  onChange={setDimParam}
+                  min={convert(400)}
+                  max={convert(2400)}
+                  step={unit === 'cm' ? 0.1 : 1}
+                  suffix={unit}
+                />
+                <div className="p-3 bg-sky-500/5 rounded-xl border border-sky-500/20 flex gap-3">
+                  <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-sky-300/80 font-medium leading-relaxed">
+                    {t('aereo_mount_tip') || 'Recomendado: 1400–1500mm p/ cozinha · 1000mm p/ banheiro · 1200mm p/ sala'}
+                  </p>
+                </div>
+              </div>
+            )}
           </fieldset>
 
           {/* ── Dimensions ────────────────────────────────────────────────── */}
           <fieldset className="space-y-4">
-            <legend className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-4">{t('external_dimensions')}</legend>
+            <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4">{t('external_dimensions')}</legend>
             <div className="grid grid-cols-3 gap-3">
               <FIELD label={t('width')}  name="width"  value={convert(params.width)}  onChange={setDimParam} min={convert(300)} max={convert(3000)} step={unit === 'cm' ? 0.1 : 1} suffix={unit} />
               <FIELD label={t('height')} name="height" value={convert(params.height)} onChange={setDimParam} min={convert(300)} max={convert(2800)} step={unit === 'cm' ? 0.1 : 1} suffix={unit} />
@@ -450,7 +574,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
 
           {/* ── Interior & Dividers ───────────────────────────────────────── */}
           <fieldset className="space-y-4">
-            <legend className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-4">{t('interior')}</legend>
+            <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4">{t('interior')}</legend>
             <div className="grid grid-cols-2 gap-4">
               <FIELD label={t('fixed_shelves')} name="numShelves"  value={params.numShelves}  onChange={setParam} type="number" min={0} max={10} />
               <FIELD label={t('num_dividers')}  name="numDividers" value={params.numDividers} onChange={setParam} type="number" min={0} max={10} />
@@ -485,8 +609,8 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
 
                 <div className="space-y-4 pt-4 border-t border-white/5">
                   <div className="flex items-center justify-between group/row">
-                    <label className="text-[10px] font-black text-muted uppercase tracking-wider group-hover/row:text-primary transition-colors flex items-center gap-2">
-                      <Bot size={12} className="text-primary/60" />
+                    <label className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 flex items-center gap-2">
+                      <Bot size={12} className="text-zinc-500" />
                       {t('divide_drawers')}
                     </label>
                     <button
@@ -526,7 +650,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
 
           {/* ── Doors & Baseboard ─────────────────────────────────────────── */}
           <fieldset className="space-y-4">
-            <legend className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-4">{t('doors_and_baseboard')}</legend>
+            <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4">{t('doors_and_baseboard')}</legend>
             <TOGGLE label={t('with_doors')} name="hasDoors" value={params.hasDoors} onChange={setParam} />
             {params.hasDoors && (
               <div className="space-y-4 animate-in zoom-in-95 duration-200">

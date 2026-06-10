@@ -18,13 +18,22 @@ export function PreferencesProvider({ children }) {
   useEffect(() => { localStorage.setItem('orbin_lang', lang); }, [lang]);
   useEffect(() => { localStorage.setItem('orbin_unit', unit); }, [unit]);
 
+  // ★ Convierte una clave faltante (snake_case / camelCase) en texto legible,
+  //   para que NUNCA se muestre una clave cruda con guiones bajos en la UI.
+  const humanize = (key) => String(key)
+    .replace(/_/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase());
+
   const t = useMemo(() => {
     return (key) => {
       try {
-        return translations[lang]?.[key] || key;
+        const hit = translations[lang]?.[key] || translations.PT?.[key];
+        return (hit != null && hit !== '') ? hit : humanize(key);
       } catch (e) {
         console.warn('Translation error:', e);
-        return key;
+        return humanize(key);
       }
     };
   }, [lang]);

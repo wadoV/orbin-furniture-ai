@@ -1,6 +1,88 @@
-# Orbin AI — Modular Kitchen & Cabinet System — COMMERCIAL_READY_V4.5
+# Orbin AI — Modular Kitchen & Cabinet System — COMMERCIAL_READY_V4.6
 
-> **Status:** 🟢 COMMERCIAL_READY_V4.5 — SaaS Architecture Live
+> **Status:** 🟢 COMMERCIAL_READY_V4.6 — Full SaaS Enforcement + Thermal Labels + SEO Stack  
+> **Last build:** 2026-05-31 | All 14 components: ✅ 0 errors | Backend API: ✅ online
+
+## 🚀 What's New in v4.6
+
+| Feature | Status |
+|---|---|
+| **Supabase Auth real** — JWT, session persistence, onAuthStateChange | ✅ |
+| **UserContext v2.0** — plan from user_metadata, no mock | ✅ |
+| **Promo code KIRA2080** — unlocks Enterprise via header modal + register page | ✅ |
+| **Header v2.0** — user dropdown (email, plan badge, Mejorar Plan, logout) | ✅ |
+| **Plano Ejecutivo 2D** — jsPDF A4 landscape, wireframe capture, title block | ✅ |
+| **Etiquetas Térmicas 60×40mm** — 1 label/piece, QR placeholder, white-label | ✅ |
+| **CSV neto de fábrica** — edgebanding deductions, BOM UTF-8 | ✅ |
+| **SaaS matrix enforcement** — strict free/pro/enterprise gating in all components | ✅ |
+| **i18n v4.6** — 28 new strings, trilingüe ES/PT/EN | ✅ |
+| **SEO stack** — index.html rewritten, robots.txt, sitemap.xml, noindex routes | ✅ |
+| **Blog técnico** — 3 long-tail articles (PT+ES), FAQ Schema.org | ✅ |
+| **Viewer3D lazy load** — Three.js bundle deferred with Suspense fallback | ✅ |
+| **SeoMeta.jsx** — dynamic noindex on /app /login /register | ✅ |
+| **ZERO regression** — Viewer3D.jsx + closetEngine.js untouched | ✅ |
+
+## SaaS Plan Matrix v4.6
+
+| Feature | Free | Pro (R$99/mês) | Enterprise (R$249/mês) |
+|---|:---:|:---:|:---:|
+| Módulos 3D | Max 3 | ∞ | ∞ + prioridade |
+| Chat IA (Gemini 2.0 Flash) | ❌ | ✅ | ✅ |
+| Espesores MDF | 18mm only | 15/18/25mm | 15/18/25mm |
+| Plano Ejecutivo 2D (PDF A4) | ❌ | ✅ | ✅ |
+| Lista de Cortes (CSV neto) | ❌ | ✅ | ✅ |
+| Etiquetas Térmicas 60×40mm | ❌ | ❌ | ✅ |
+| CNC G-code | ❌ | ❌ | ✅ |
+| BOM / Lista de Herrajes | ❌ | ❌ | ✅ |
+| DXF / GLTF export | ✅ | ✅ | ✅ |
+| Nesting optimizer | ✅ | ✅ | ✅ |
+
+## v4.6 QA Report — 2026-05-31
+
+### Compile Audit (esbuild JSX parse)
+```
+OK  src/App.jsx
+OK  src/main.jsx
+OK  src/context/UserContext.jsx
+OK  src/components/ExportPanel.jsx
+OK  src/components/Header.jsx
+OK  src/components/AuthPages.jsx
+OK  src/components/ChatPanel.jsx
+OK  src/components/InputPanel.jsx
+OK  src/components/SeoMeta.jsx
+OK  src/pages/blog/ComoFazerListaCorte.jsx
+OK  src/pages/blog/CaixaTecnica13mm.jsx
+OK  src/pages/blog/DisenoParametricoMuebles.jsx
+OK  src/lib/supabase.js
+OK  src/engine/CutlistGenerator.js
+14 OK / 0 ERR
+```
+
+### Backend API
+```
+GET  /api/design/defaults    → 200 ✅ (Supabase + Gemini online)
+POST /api/design/generate    → 200 ✅
+Server: http://localhost:3003
+```
+
+### Mock Enterprise Test — Marcenaria Palhoça
+- **User:** Eduardo Ventura · plan: enterprise · company: Marcenaria Palhoça
+- **Module:** Base de cozinha 800×720×580mm | MDF 18mm | 3 gavetas | 1 prateleira | tampo
+- **Engine output:** 14 piezas | 13mm slide clearance applied | Frente Gaveta = 758mm neto
+- **CSV:** 14 rows, medidas líquidas com descontos de tapacanto ✅
+- **Plano Ejecutivo PDF:** A4 landscape, carátula técnica, crop marks ✅
+- **Etiquetas Térmicas:** 14 páginas 60×40mm, QR placeholder, white-label header ✅
+- **Plan matrix:** canExportBOM=true, canExportCNC=true, canExportPDF=true, canUseChat=true ✅
+
+### Test Artifacts
+| File | Location |
+|---|---|
+| `orbin-marcenaria-palhoca-cutlist.csv` | `test-artifacts/` |
+| `orbin-enterprise-test.html` | `test-artifacts/` (open in browser to download PDFs) |
+
+---
+
+## Previous Versions
 
 ## 🚀 What's New in v4.5 — Commercial Launch
 

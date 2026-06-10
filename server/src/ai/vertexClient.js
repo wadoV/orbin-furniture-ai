@@ -11,7 +11,7 @@ const { FURNITURE_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT } = require('./systemPrompts
 require('dotenv').config()
 
 const apiKey = process.env.GEMINI_API_KEY
-const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash'  // ★ FIX: 1.5-flash retirado
 
 // ─── Guard: warn early if no key configured ───────────────────────────────────
 if (!apiKey || apiKey === 'your_gemini_api_key_here') {

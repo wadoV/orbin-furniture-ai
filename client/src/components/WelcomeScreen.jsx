@@ -1,81 +1,85 @@
 import { useState, useEffect } from 'react'
-import { Box } from 'lucide-react'
+import { Zap, Layers, Ruler } from 'lucide-react'
 
 export default function WelcomeScreen({ onStart }) {
   const [animate, setAnimate] = useState(false)
 
   useEffect(() => {
-    setAnimate(true)
+    const t = setTimeout(() => setAnimate(true), 80)
+    return () => clearTimeout(t)
   }, [])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0D0D0D] via-[#1A1A1A] to-[#0D0D0D] flex flex-col items-center justify-center p-6">
-      {/* Animated Background Grid */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: 'linear-gradient(to right, #FFD700 1px, transparent 1px), linear-gradient(to bottom, #FFD700 1px, transparent 1px)',
-            backgroundSize: '50px 50px',
-            animation: animate ? 'slideGrid 20s linear infinite' : 'none'
-          }} />
-      </div>
+    <div className="min-h-screen bg-[#0D0D0D] flex flex-col items-center justify-center p-6 overflow-hidden relative">
+      {/* Grid animado — usa clase CSS, no hardcode de color */}
+      <div className="absolute inset-0 bg-grid pointer-events-none"
+           style={{ animation: animate ? 'slideGrid 28s linear infinite' : 'none', opacity: 0.5 }} />
+      {/* Glow radial */}
+      <div className="absolute inset-0 bg-hero-glow pointer-events-none" />
+      {/* Líneas decorativas */}
+      <div className="absolute top-1/3 left-0 right-0 glow-line opacity-25" />
+      <div className="absolute bottom-1/3 left-0 right-0 glow-line opacity-15" />
 
-      {/* Content */}
-      <div className="relative z-10 max-w-2xl text-center space-y-8">
-        {/* Logo */}
-        <div className={`transform transition-all duration-700 ${animate ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`}>
-          <div className="w-24 h-24 bg-gradient-to-br from-primary to-primary/60 rounded-2xl flex items-center justify-center shadow-2xl shadow-primary/40 mx-auto">
-            <span className="text-white font-black text-5xl italic">O</span>
+      <div className="relative z-10 max-w-lg w-full text-center space-y-10">
+        {/* Logo mark */}
+        <div className={`transition-all duration-700 ${animate ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`}>
+          <div className="w-20 h-20 mx-auto rounded-3xl shadow-glow-lg flex items-center justify-center mb-4"
+               style={{ background: 'linear-gradient(135deg, #F5A623 0%, #C47A0F 100%)' }}>
+            <svg viewBox="0 0 40 40" className="w-10 h-10" fill="none">
+              <rect x="4" y="6" width="32" height="28" rx="3" stroke="black" strokeWidth="2.5"/>
+              <line x1="4" y1="18" x2="36" y2="18" stroke="black" strokeWidth="2"/>
+              <rect x="8" y="22" width="10" height="8" rx="1.5" fill="black" opacity="0.55"/>
+              <rect x="22" y="22" width="10" height="8" rx="1.5" fill="black" opacity="0.55"/>
+            </svg>
           </div>
+          <div className="flex items-baseline justify-center gap-1.5">
+            <span className="text-3xl font-black text-white tracking-tight">Orbin</span>
+            <span className="text-3xl font-black text-primary tracking-tight">AI</span>
+          </div>
+          <p className="text-[10px] font-bold text-muted uppercase tracking-[0.3em] mt-1">Parametric Furniture Engine</p>
         </div>
 
-        {/* Greeting Message */}
-        <div className={`space-y-4 transform transition-all duration-900 delay-200 ${animate ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`}>
-          <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight leading-tight">
-            Hola, soy <span className="text-primary">Orbin</span>
-          </h1>
-          <div className="h-1 w-24 bg-gradient-to-r from-primary to-primary/40 mx-auto rounded-full" />
-          <p className="text-xl md:text-2xl text-white/80 font-bold tracking-wide">
-            Control total asumido.
+        {/* Mensaje */}
+        <div className={`space-y-3 transition-all duration-700 delay-150 ${animate ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'}`}>
+          <div className="glow-line opacity-50 mb-6" />
+          <p className="text-2xl md:text-3xl font-black text-white leading-snug">
+            ¿Qué vamos a{' '}
+            <span className="text-gradient">fabricar</span> hoy?
           </p>
-          <p className="text-lg text-primary font-black uppercase tracking-widest">
-            Sistema operativo
+          <p className="text-sm text-white/45 font-medium">
+            Motor paramétrico brasileiro · Precisão 1mm · CNC-ready
           </p>
         </div>
 
-        {/* Question */}
-        <div className={`transform transition-all duration-900 delay-500 ${animate ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`}>
-          <p className="text-2xl md:text-3xl font-bold text-white/90 mb-8">
-            ¿Qué vamos a <span className="text-primary">fabricar</span> hoy?
-          </p>
+        {/* Feature chips */}
+        <div className={`flex flex-wrap justify-center gap-2 transition-all duration-700 delay-300 ${animate ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'}`}>
+          {[
+            { icon: Ruler,  text: 'Lista de Corte' },
+            { icon: Layers, text: 'Visor 3D' },
+            { icon: Zap,    text: 'IA Paramétrica' },
+          ].map(({ icon: Icon, text }) => (
+            <div key={text} className="chip">
+              <Icon size={9} />
+              {text}
+            </div>
+          ))}
+        </div>
 
+        {/* CTA */}
+        <div className={`transition-all duration-700 delay-[450ms] ${animate ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'}`}>
           <button
             onClick={onStart}
-            className="inline-flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-black font-black uppercase tracking-widest rounded-xl transition-all duration-300 shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 group"
+            className="btn-primary px-10 py-4 text-sm font-black uppercase tracking-widest rounded-2xl inline-flex items-center gap-3 group"
           >
-            <Box size={20} className="group-hover:rotate-12 transition-transform" />
-            <span>Comenzar Diseño</span>
+            <Zap size={18} className="group-hover:scale-110 transition-transform" />
+            Comenzar Diseño
           </button>
         </div>
 
-        {/* Version Info */}
-        <div className="pt-8 border-t border-white/5">
-          <p className="text-xs text-muted uppercase tracking-[0.2em] font-bold">
-            Orbin Furniture AI v2.2.0
-          </p>
-        </div>
+        <p className={`text-[9px] text-muted uppercase tracking-[0.25em] font-bold transition-all duration-700 delay-[600ms] ${animate ? 'opacity-100' : 'opacity-0'}`}>
+          Orbin AI v2.2 · © 2026 Orbin Technologies
+        </p>
       </div>
-
-      <style jsx>{`
-        @keyframes slideGrid {
-          0% {
-            background-position: 0 0;
-          }
-          100% {
-            background-position: 50px 50px;
-          }
-        }
-      `}</style>
     </div>
   )
 }
