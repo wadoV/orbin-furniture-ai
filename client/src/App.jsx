@@ -825,3 +825,30 @@ export default function App() {
                   />
                 </div>
               )}
+            </div>
+          </div>
+        </main>
+
+        {/* ── Plan Limit Alert ──────────────────────────────────────────── */}
+        {planAlert && (
+          <PlanLimitAlert
+            message={planAlert.message}
+            description={planAlert.description}
+            onClose={() => setPlanAlert(null)}
+          />
+        )}
+
+        {showUndoToast && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface-4 border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50">
+            <span className="text-sm text-white">Module deleted</span>
+            <button onClick={undo} className="text-primary text-sm font-bold uppercase tracking-widest hover:underline flex items-center gap-1.5">
+              <RotateCcw size={14} /> Undo
+            </button>
+          </div>
+        )}
+
+        <FeedbackWidget />
+      </div>
+    </ErrorBoundary>
+  )
+}

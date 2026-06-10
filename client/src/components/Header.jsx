@@ -421,4 +421,16 @@ export default function Header({ modules, serverOnline = true }) {
 
             {location.pathname === '/app' && (
               <button onClick={handleHeaderLogout}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-950/40 backdrop-blur-md border border-red-900/30 hover:border-red-500 hover:bg-red-5
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-950/40 backdrop-blur-md border border-red-900/30 hover:border-red-500 hover:bg-red-500/10 text-[10px] font-black uppercase tracking-widest text-red-400 hover:text-white hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all duration-300 active:scale-95"
+                title="Cerrar Sesión / Sair">
+                <LogOut size={11} /> {t('HDR_LOGOUT_SHORT')}
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+      {upgradeOpen && <UpgradeModal onClose={() => setUpgradeOpen(false)} />}
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+    </>
+  )
+}

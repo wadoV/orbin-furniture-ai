@@ -225,4 +225,22 @@ export function calculateCostEstimation(design, materialId = 'mdf_18') {
       cost: Math.round(wasteCost * 100) / 100,
     },
     hardware: {
-      i
+      items: hardware,
+      cost: Math.round(hardwareCost * 100) / 100,
+    },
+    edgeBanding: {
+      totalMeters: Math.round(totalEdgeMeters * 10) / 10,
+      cost: Math.round(edgeBandingCost * 100) / 100,
+    },
+    plates: {
+      count: totalPlates,
+    },
+    weight: {
+      kg: Math.round(weightKg * 10) / 10,
+    },
+    labor: {
+      cost: Math.round(laborEstimate * 100) / 100,
+    },
+    total: Math.round((subtotal + laborEstimate) * 100) / 100,
+  }
+}

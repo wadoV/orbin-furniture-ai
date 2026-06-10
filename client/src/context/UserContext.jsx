@@ -238,4 +238,28 @@ export function UserProvider({ children }) {
   const isFree            = user.plan === 'free'
   const isPro             = user.plan === 'pro' || user.plan === 'enterprise'
   const isEnterprise      = user.plan === 'enterprise'
-  const canAddModul
+  const canAddModule      = (n) => isFree ? n < planConfig.maxModules : true
+  const canExportPDF      = planConfig.exportPDF
+  const canExportCSV      = planConfig.exportCSV
+  const canExportCNC      = planConfig.exportCNC
+  const canExportBOM      = planConfig.exportBOM
+  const canUseChat        = planConfig.aiChat
+  const allowedThicknesses = planConfig.thicknesses
+
+  return (
+    <UserContext.Provider value={{
+      user, plan: user.plan, planConfig, isFree, isPro, isEnterprise,
+      isLoading: user.loading, login, signInWithGoogle, register, logout, upgradePlan, applyPromoCode,
+      canAddModule, canExportPDF, canExportCSV, canExportCNC, canExportBOM,
+      canUseChat, allowedThicknesses, PLANS, companySettings, updateCompanySettings, verifyCode, resendCode,
+    }}>
+      {children}
+    </UserContext.Provider>
+  )
+}
+
+export function useUser() {
+  const ctx = useContext(UserContext)
+  if (!ctx) throw new Error('useUser must be used within UserProvider')
+  return ctx
+}

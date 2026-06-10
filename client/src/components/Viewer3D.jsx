@@ -1720,3 +1720,17 @@ export default function Viewer3D({
         Ver en mi espacio
       </button>
 
+      {/* AR Model Viewer Overlay */}
+      {arModelUrl && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm">
+          <button 
+            onClick={() => { setArModelUrl(null); URL.revokeObjectURL(arModelUrl); }}
+            className="absolute top-6 right-6 text-white hover:text-primary z-[60] p-2 bg-surface/40 rounded-full"
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -1131,4 +1131,24 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
               <p className="text-[9px] text-white/40 uppercase font-semibold mt-0.5">{t('sheets_used')}</p>
             </div>
             <div className="bg-surface-2/40 rounded-lg p-2 border border-white/5">
-              <p className={"text-xl font-extrabold tabular-nums "+(par
+              <p className={"text-xl font-extrabold tabular-nums "+(parseFloat(nestingResult.utilization)>=70?'text-emerald-400':'text-amber-400')}>
+                {nestingResult.utilization}%
+              </p>
+              <p className="text-[9px] text-white/40 uppercase font-semibold mt-0.5">{t('utilization')}</p>
+            </div>
+          </div>
+          <div className="flex justify-between text-[10px] text-white/40 px-1">
+            <span>{nestingResult.totalPieces} pcs</span>
+            <span>{nestingResult.wastePercent}% {isES?'desperdício':isPT?'desperdício':'waste'}</span>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+          <AlertCircle size={14} className="shrink-0"/><span>{error}</span>
+        </div>
+      )}
+    </div>
+  )
+}
