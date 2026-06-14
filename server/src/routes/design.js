@@ -211,4 +211,4 @@ router.get('/prices', getPrices)
 // Expose the handler function so it can be mounted directly at the root (/api/prices) in index.js
 router.getPrices = getPrices
 
-module.exports = rou
+module.exports = router

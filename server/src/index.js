@@ -251,4 +251,11 @@ io.on('connection', (socket) => {
   })
 })
 
-// ─── Start ──────────────�
+// ─── Start ───────────────────────────────────────────────────────────────────
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`[Orbin] Server running on port ${PORT} (${process.env.NODE_ENV || 'development'})`)
+  console.log(`   Supabase: ${process.env.SUPABASE_URL ? '✓' : '✗'}  Gemini: ${process.env.GEMINI_API_KEY ? '✓' : '✗'}`)
+})
+
+module.exports = app
