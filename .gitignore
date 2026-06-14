@@ -38,3 +38,28 @@ v1_viewer_utf8.jsx
 # Supabase local
 .supabase/
 supabase-file.zip
+
+# ── Seguridad: credenciales / service accounts (nunca commitear) ──
+*.env
+.env.*
+!.env.example
+*service-account*.json
+*credentials*.json
+*-key.json
+robust-root-*.json
+gcp-*.json
+*.pem
+*.p12
+
+# Confidential promo codes list
+PROMO_CODES_INDUSTRIAL.md
+
+# ── Seguridad añadida (14/06/2026): nunca commitear ──
+recovery-codes-*.txt
+*recovery-codes*
+*.secret
+scratch_secret_test.txt
+
+# Basura de build de Vite (timestamps temporales)
+*.timestamp-*.mjs
+client/src/components/combined.txt

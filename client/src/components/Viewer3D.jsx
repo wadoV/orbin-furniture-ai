@@ -31,6 +31,48 @@ const MATERIAL_COLORS = {
   marble_white:  0xeeeeee,
   granite_black: 0x111111,
   default:       0xC8A96E,
+
+  // Database standard materials
+  mdf_15:             0xC4A882,
+  mdf_18:             0xB89B72,
+  mdf_25:             0xA88E65,
+  plywood_18:         0xD4B896,
+  melamine_white_18:  0xF0EDE8,
+  melamine_wood_18:   0xC9A96E,
+  melamine_wood_15:   0xC9A96E,
+  osb_18:             0xD4C4A0,
+
+  // Arauco Catalog — Vesto line (Brazil/Chile)
+  arauco_vesto_roble_proveza:  0xC8A96E,
+  arauco_vesto_nogal_europeo:  0x6B4C2A,
+  arauco_vesto_pino_natural:   0xE0C898,
+  arauco_vesto_eucalipto:      0xB5A07A,
+  arauco_vesto_cerejeira:      0xB05A2E,
+  arauco_vesto_blanco_puro:    0xF4F4F4,
+  arauco_vesto_blanco_nube:    0xECEAE4,
+  arauco_vesto_grafito:        0x333333,
+  arauco_vesto_negro_onix:     0x111111,
+  arauco_vesto_azul_acero:     0x2B4C7E,
+  arauco_vesto_verde_salvia:   0x7D9B76,
+  arauco_vesto_arena:          0xD4C4A0,
+  arauco_vesto_concreto:       0x9E9E9E,
+  arauco_vesto_marmol_blanco:  0xEEE8E0,
+
+  // Duratex Catalog — Brazil
+  duratex_carvalho_hanover:    0xB89B72,
+  duratex_carvalho_barcelona:  0x9A7B52,
+  duratex_freijo_naturale:     0x7B5C38,
+  duratex_jatoba:              0x8B3A1A,
+  duratex_pinus_natural:       0xDEC99A,
+  duratex_branco_neve:         0xF5F5F5,
+  duratex_branco_polar:        0xFAFAFA,
+  duratex_preto_silk:          0x1A1A1A,
+  duratex_cinza_sagrado:       0x8A8A8A,
+  duratex_cinza_luna:          0xC4C4C4,
+  duratex_verde_botanico:      0x5A7A5A,
+  duratex_terracota:           0xB5602A,
+  duratex_cimento_queimado:    0x7A7A7A,
+  duratex_noce_elegance:       0x5C3D1E,
 }
 
 const TYPE_COLORS = {
@@ -984,8 +1026,8 @@ export default function Viewer3D({
       mGroup.userData.moduleWidth = W
       const xOffset = 0  // ★ PROTECTED: Pieces positioned relative to module center
 
-      const bodyColor  = MATERIAL_COLORS[cfg.materialBody]  || TYPE_COLORS.structural
-      const frontColor = MATERIAL_COLORS[cfg.materialFront] || TYPE_COLORS.drawer_front
+      const bodyColor  = MATERIAL_COLORS[cfg.materialId] || MATERIAL_COLORS[cfg.materialBody]  || TYPE_COLORS.structural
+      const frontColor = MATERIAL_COLORS[cfg.materialId] || MATERIAL_COLORS[cfg.materialFront] || TYPE_COLORS.drawer_front
       const ctColor    = MATERIAL_COLORS[cfg.countertopMaterial] || TYPE_COLORS.countertop
 
       const yBase = 0

@@ -43,6 +43,7 @@ const designRouter     = require('./routes/design')
 const chatRouter       = require('./routes/chat')
 const projectsRouter   = require('./routes/projects')
 const visionRouter     = require('./routes/vision')
+const billingRouter    = require('./routes/billing')
 // stressTest loaded only in non-production environments
 const stressTestRouter = process.env.NODE_ENV !== 'production' ? require('./routes/stressTest') : null
 
@@ -120,7 +121,10 @@ const corsOptions = {
 app.use(cors(corsOptions))
 app.use(apiLimiter) // Apply global rate limiting to all requests
 
-app.use(express.json({ limit: '5' + 'mb' })) // 5mb maximum for payloads (reduced from 50mb to prevent DoS, yet sufficient for spatial images)
+app.use(express.json({
+  limit: '5mb',
+  verify: (req, res, buf) => { req.rawBody = buf; }
+})) // 5mb maximum for payloads (reduced from 50mb to prevent DoS, yet sufficient for spatial images)
 app.use(express.urlencoded({ extended: true, limit: '5' + 'mb' }))
 
 // Request logger (dev only)
@@ -143,6 +147,8 @@ app.use('/api/projects',     projectsRouter)
 app.use('/projects',         projectsRouter)
 app.use('/api/vision',       aiLimiter, visionRouter)
 app.use('/vision',           aiLimiter, visionRouter)
+app.use('/api/billing',      billingRouter)
+app.use('/billing',          billingRouter)
 // ⚠ Stress-test endpoint: development/QA only — NEVER exposed in production
 if (stressTestRouter) {
   app.use('/api/v1/stress-test', stressTestRouter)
@@ -161,6 +167,14 @@ app.get('/api/health', (_req, res) => {
     gemini:    !!process.env.GEMINI_API_KEY,
     ollama:    !!process.env.OLLAMA_BASE_URL,
   })
+})
+
+// ─── Client Error Reporting ──────────────────────────────────────────────────
+// Receives ErrorBoundary reports from the React client (best-effort, no auth required)
+app.post('/api/errors', (req, res) => {
+  const { message, stack, componentStack, url, ts } = req.body || {}
+  console.error('[ClientError]', JSON.stringify({ message, url, ts, stack: stack?.slice(0, 400), componentStack: componentStack?.slice(0, 200) }))
+  res.json({ received: true })
 })
 
 // ─── 404 & Error Handlers ────────────────────────────────────────────────────
@@ -227,11 +241,9 @@ io.on('connection', (socket) => {
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 
-server.listen(PORT, () => {
-  console.log(`\n🪵 Orbin API v2 rodando em http://localhost:${PORT}`)
-  console.log(`   Supabase: ${process.env.SUPABASE_URL         ? '✓ conectado'     : '✗ usando memória'}`)
-  console.log(`   Gemini:   ${process.env.GEMINI_API_KEY        ? '✓ ativo'         : '✗ usando parser regex'}`)
-  console.log(`   Ambiente: ${process.env.NODE_ENV || 'development'}\n`)
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`[Orbin] Server running on port ${PORT} (${process.env.NODE_ENV || 'development'})`)
+  console.log(`   Supabase: ${process.env.SUPABASE_URL ? '✓' : '✗'}  Gemini: ${process.env.GEMINI_API_KEY ? '✓' : '✗'}`)
 })
 
 module.exports = app

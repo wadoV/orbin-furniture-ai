@@ -33,6 +33,7 @@ function getAuthClient() {
 const DEV_USER = {
   id:    'dev-local-user',
   email: 'dev@localhost',
+  plan:  'free',
 }
 
 // ─── requireAuth ──────────────────────────────────────────────────────────────
@@ -40,8 +41,12 @@ const DEV_USER = {
 async function requireAuth(req, res, next) {
   const sb = getAuthClient()
 
-  // ── In-memory / local-dev fallback ──────────────────────────────────────────
+  // ── Local-dev fallback — NUNCA en producción (fail-closed) ───────────────────
   if (!sb) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[requireAuth] Supabase no configurado en producción — acceso denegado.')
+      return res.status(503).json({ error: 'Auth service unavailable' })
+    }
     req.user = DEV_USER
     return next()
   }
@@ -62,12 +67,11 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Unauthorized' })
     }
 
-    const { id, email, role } = data.user
+    const { id, email, role, user_metadata } = data.user
+    const plan = user_metadata?.plan || 'free'
 
-    // Attach minimal identity to request — routes read req.user.id / req.user.email
-    req.user = { id, email, role }
-
-    // Optionally: gate on email_confirmed_at, banned_until, etc. here if needed
+    // Attach identity and plan to request
+    req.user = { id, email, role, plan }
 
     next()
   } catch (err) {
@@ -76,4 +80,39 @@ async function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, DEV_USER }
+// ─── optionalAuth ─────────────────────────────────────────────────────────────
+
+async function optionalAuth(req, res, next) {
+  const sb = getAuthClient()
+
+  if (!sb) {
+    // En producción, sin Supabase = anónimo (nunca DEV_USER autenticado).
+    req.user = (process.env.NODE_ENV === 'production') ? { id: null, plan: 'free' } : DEV_USER
+    return next()
+  }
+
+  const authHeader = req.headers.authorization || ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
+
+  if (!token) {
+    req.user = { id: null, plan: 'free' }
+    return next()
+  }
+
+  try {
+    const { data, error } = await sb.auth.getUser(token)
+    if (error || !data?.user) {
+      req.user = { id: null, plan: 'free' }
+      return next()
+    }
+    const { id, email, role, user_metadata } = data.user
+    const plan = user_metadata?.plan || 'free'
+    req.user = { id, email, role, plan }
+    next()
+  } catch (err) {
+    req.user = { id: null, plan: 'free' }
+    next()
+  }
+}
+
+module.exports = { requireAuth, optionalAuth, DEV_USER }

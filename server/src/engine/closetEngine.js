@@ -84,6 +84,46 @@ function generateCutList(pieces) {
 
 function generateFurniture(params) {
   const cfg = { ...DEFAULTS, ...params }
+
+  // ★ AUTO-FIT de cajones: la pila no puede exceder la altura interna útil (misma fórmula
+  //   que el validador). Primero baja la altura del cajón; si ni al mínimo (80mm) caben,
+  //   reduce la cantidad. Corrige el config que se devuelve y, por ende, la geometría.
+  if ((cfg.numDrawers || 0) > 0) {
+    const CLEAR = 16, MINH = 80
+    const availableHeight = cfg.height
+      - (cfg.baseboard ? (cfg.baseboardHeight || 100) : 0)
+      - (2 * cfg.thickness)
+    if (availableHeight > 0) {
+      const isH = cfg.drawerLayout === 'horizontal' && cfg.numDrawers > 1
+      const cols = isH ? 2 : 1
+      let rows = Math.ceil(cfg.numDrawers / cols)
+      // ¿Cómoda pura? (solo gavetas: sin estantes ni puertas) → las gavetas LLENAN
+      //   el interior, sin dejar hueco abierto arriba. CLEAR (16mm) es la holgura de
+      //   corredera que el validador exige por gaveta (drawerHeight+16)·filas ≤ interna,
+      //   así que repartimos: drawerHeight = floor(interna/filas) − CLEAR ⇒ pila == interna.
+      const drawerOnly = (cfg.numShelves || 0) === 0 && !cfg.hasDoors
+      if (drawerOnly) {
+        let maxRows = Math.max(1, Math.floor(availableHeight / (MINH + CLEAR)))
+        if (maxRows < rows) {                 // ni al mínimo caben todas → reduce cantidad
+          cfg.numDrawers = Math.max(1, maxRows * cols)
+          rows = Math.ceil(cfg.numDrawers / cols)
+        }
+        cfg.drawerHeight = Math.max(MINH, Math.floor(availableHeight / rows) - CLEAR)
+      } else {
+        // Mixto (gavetas abajo + estantes/puertas arriba): reservar ~17% (validador < 85%).
+        const budget = availableHeight * 0.83
+        let maxDH = Math.floor(budget / rows) - CLEAR
+        if ((cfg.drawerHeight || 0) > maxDH) cfg.drawerHeight = Math.max(MINH, maxDH)
+        const maxRows = Math.floor(budget / (MINH + CLEAR))
+        if (maxRows < rows) {
+          cfg.numDrawers = Math.max(1, maxRows * cols)
+          rows = Math.ceil(cfg.numDrawers / cols)
+          maxDH = Math.floor(budget / rows) - CLEAR
+          cfg.drawerHeight = Math.max(MINH, Math.min(cfg.drawerHeight || MINH, maxDH))
+        }
+      }
+    }
+  }
   const { moduleType, width: W, height: H, depth: D, thickness: T, backThickness: BT,
           numShelves, numDrawers, drawerHeight, drawerLayout, baseboard, baseboardHeight,
           hasDoors, numDoors, hasCountertop } = cfg
@@ -406,4 +446,52 @@ function generateProject(params) {
   }
 }
 
-module.exports = { generateProject, generateFurniture, generateCutList, estimateNesting, generateHardwareBOM }
+// ─── AUTO-SPLIT ──────────────────────────────────────────────────────────────
+// La pieza horizontal más ancha (techo/piso/fondo/zócalo ≈ ancho del módulo) debe caber
+// en la chapa. Si el ancho total supera el aprovechable, se parte en N módulos iguales
+// fabricables. Distribuye cajones/divisores; estantes y puertas por módulo según su ancho.
+const MAX_MODULE_WIDTH = MATERIAL.PLATE_WIDTH - 2 * MATERIAL.NESTING_MARGIN  // 2800 - 100 = 2700mm
+
+function distributeCount(total, n, i) {
+  const q = Math.floor(total / n), r = total % n
+  return q + (i < r ? 1 : 0)
+}
+
+function generateProjectAutoSplit(params) {
+  const cfg = { ...DEFAULTS, ...params }
+  const totalWidth = Number(cfg.width) || DEFAULTS.width
+
+  if (totalWidth <= MAX_MODULE_WIDTH) {
+    const single = generateProject(cfg)
+    return { success: single.success, split: false, count: 1, totalWidth, maxModuleWidth: MAX_MODULE_WIDTH, modules: [single] }
+  }
+
+  const N = Math.ceil(totalWidth / MAX_MODULE_WIDTH)
+  const baseW = Math.floor(totalWidth / N)
+  const remainder = totalWidth - baseW * N
+
+  const modules = []
+  for (let i = 0; i < N; i++) {
+    const w = baseW + (i === N - 1 ? remainder : 0)
+    const subCfg = {
+      ...cfg,
+      width:       w,
+      numDrawers:  distributeCount(cfg.numDrawers  || 0, N, i),
+      numDividers: distributeCount(cfg.numDividers || 0, N, i),
+      numShelves:  cfg.numShelves || 0,
+      numDoors:    cfg.hasDoors ? (w > 600 ? 2 : 1) : 0,
+    }
+    const proj = generateProject(subCfg)
+    proj.splitIndex = i + 1
+    proj.splitTotal = N
+    proj.splitLabel = `Módulo ${i + 1}/${N}`
+    modules.push(proj)
+  }
+
+  return {
+    success: modules.every(m => m.success),
+    split: true, count: N, totalWidth, maxModuleWidth: MAX_MODULE_WIDTH, modules,
+  }
+}
+
+module.exports = { generateProject, generateProjectAutoSplit, generateFurniture, generateCutList, estimateNesting, generateHardwareBOM }

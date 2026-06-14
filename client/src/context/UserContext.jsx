@@ -7,7 +7,17 @@ import { supabase } from '../lib/supabase.js'
 
 const PROMO_CODES = {
   KIRA2080: { plan: 'enterprise', company_name: 'Marcenaria Orbin Pro', label: 'Enterprise Desbloqueado' },
-  ORBIN_TEST_INDUSTRIAL_2026: { plan: 'enterprise', company_name: 'Marcenaria Orbin Pro', label: 'Enterprise Desbloqueado' }
+  ORBIN_TEST_INDUSTRIAL_2026: { plan: 'enterprise', company_name: 'Marcenaria Orbin Pro', label: 'Enterprise Desbloqueado' },
+  'ORBIN-TWX2-KGXU': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-GT3J-QURV': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-SYP9-TACN': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-TUTW-DN3D': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-NRDZ-BLDS': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-A49L-UPSZ': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-VH6W-6Y58': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-J59N-3FGS': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-B9MR-36AX': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' },
+  'ORBIN-ZJR5-GBRD': { plan: 'enterprise', company_name: '', label: 'Industrial Desbloqueado' }
 }
 const PROMO_KEY   = 'orbin-promo-plan'
 

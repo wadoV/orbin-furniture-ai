@@ -13,6 +13,23 @@
  * - category: grouping for selector
  */
 
+import { ALL_BOARDS } from './catalogs/index.js'
+
+const CATALOG_MATERIALS = ALL_BOARDS.map(board => ({
+  id: board.id,
+  nameKey: null,
+  fallback: board.displayName,
+  thickness: board.thicknesses[0], // default thickness
+  density: 720,
+  costPerM2: board.costPerM2,
+  color: board.color,
+  textureLabel: board.finish,
+  category: 'catalog',
+  isCatalogBoard: true,
+  thicknesses: board.thicknesses,
+  sheetSize: board.sheetSize,
+}))
+
 export const MATERIALS_DB = [
   {
     id: 'mdf_15',
@@ -102,6 +119,7 @@ export const MATERIALS_DB = [
     textureLabel: 'OSB',
     category: 'osb',
   },
+  ...CATALOG_MATERIALS
 ]
 
 /**

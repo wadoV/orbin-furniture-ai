@@ -59,6 +59,23 @@ class ErrorBoundary extends Component {
     this.state = { hasError: false, error: null };
   }
   static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) {
+    // Non-blocking error report — fails silently if server is down
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || ''
+      fetch(`${API_BASE}/api/errors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: error?.message || String(error),
+          stack: error?.stack?.slice(0, 800),
+          componentStack: info?.componentStack?.slice(0, 400),
+          url: window.location.href,
+          ts: new Date().toISOString(),
+        }),
+      }).catch(() => {}) // never throw — best-effort only
+    } catch (_) {}
+  }
   render() {
     if (this.state.hasError) {
       return (

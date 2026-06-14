@@ -361,6 +361,15 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
   // ★ PROTECTED: Edit mode toggle — prevents accidental modification of existing modules
   const [editMode, setEditMode] = useState(false)
 
+  const selectedMaterial = MATERIALS_DB.find(m => m.id === params.materialId) || MATERIALS_DB[1]
+  const thicknessOptions = selectedMaterial.thicknesses
+    ? selectedMaterial.thicknesses.map(t => ({ value: t, label: `${t}mm` }))
+    : [
+        { value: 15, label: '15mm' },
+        { value: 18, label: '18mm' },
+        { value: 25, label: '25mm' },
+      ]
+
   // Sync from parent module selection ONLY when entering edit mode
   useEffect(() => {
     if (editMode && currentConfig) {
@@ -495,11 +504,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                   name="thickness"
                   value={params.thickness}
                   onChange={setParam}
-                  options={[
-                    { value: 15, label: '15mm' },
-                    { value: 18, label: '18mm' },
-                    { value: 25, label: '25mm' },
-                  ]}
+                  options={thicknessOptions}
                 />
               )}
             </div>
@@ -512,8 +517,11 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                 if (isFree) return   // locked
                 setParam(name, val)
                 const mat = MATERIALS_DB.find(m => m.id === val)
-                if (mat && mat.thickness !== params.thickness) {
-                  setParam('thickness', mat.thickness)
+                if (mat) {
+                  const available = mat.thicknesses || [15, 18, 25]
+                  if (!available.includes(params.thickness)) {
+                    setParam('thickness', available[0])
+                  }
                 }
               }}
               options={isFree
