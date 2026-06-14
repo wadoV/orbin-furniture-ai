@@ -50,3 +50,16 @@ robust-root-*.json
 gcp-*.json
 *.pem
 *.p12
+
+# Confidential promo codes list
+PROMO_CODES_INDUSTRIAL.md
+
+# ── Seguridad añadida (14/06/2026): nunca commitear ──
+recovery-codes-*.txt
+*recovery-codes*
+*.secret
+scratch_secret_test.txt
+
+# Basura de build de Vite (timestamps temporales)
+*.timestamp-*.mjs
+client/src/components/combined.txt

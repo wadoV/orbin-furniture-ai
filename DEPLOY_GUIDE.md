@@ -51,7 +51,9 @@ SUPABASE_SERVICE_KEY=[LA CLAVE QUE COPIASTE EN EL PASO 1]
 GEMINI_API_KEY=<TU_GEMINI_API_KEY>
 GEMINI_MODEL=gemini-2.0-flash
 
-JWT_SECRET=99fab7976eaa26adfd18a631872893e0c871c28b6b6633d65f8b73a282633ff2da1d912595b7f1c5bd92071598b2b69e28a9c4574000eae73e3f63d3b14666b4
+JWT_SECRET=<GENERA_UNO_NUEVO: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))">
+# IMPORTANTE: nunca pegar el secreto real en este archivo (es versionado).
+# El valor real va SOLO en las Variables de entorno de Railway/Vercel.
 ```
 
 ### 2d. Deploy
@@ -124,7 +126,7 @@ CLIENT_URL = https://[TU-URL-VERCEL-REAL.vercel.app]
 
 ## JWT Secret generado para producción
 ```
-99fab7976eaa26adfd18a631872893e0c871c28b6b6633d65f8b73a282633ff2da1d912595b7f1c5bd92071598b2b69e28a9c4574000eae73e3f63d3b14666b4
+<JWT_SECRET_REAL_VA_SOLO_EN_RAILWAY_ENV_VARS>
 ```
 **Úsalo solo en Railway.** No lo commits al repo.
 
@@ -169,5 +171,3 @@ Para aplicar las tablas de perfiles, triggers de registro y telemetría a la bas
 2. Copia y ejecuta en orden las consultas de los archivos:
    - [[003_create_profiles.sql](file:///C:/Users/Azomarg/Documents/Claude_projects/Orbin/server/supabase/migrations/003_create_profiles.sql)]
    - [[004_create_telemetry_logs.sql](file:///C:/Users/Azomarg/Documents/Claude_projects/Orbin/server/supabase/migrations/004_create_telemetry_logs.sql)]
-3. Haz click en **Run**. Verás el mensaje de éxito `status | Tabla profiles... creada correctamente ✓`.
-
