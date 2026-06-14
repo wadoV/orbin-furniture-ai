@@ -163,3 +163,89 @@ router.post('/checkout', requireAuth, async (req, res) => {
   }
 })
 
+
+// ─── Helper: upgrade plan en Supabase (service_role) ─────────────────────────
+async function upgradeUserPlan(userId, plan) {
+  const admin = getSupabaseAdmin()
+  if (!admin) {
+    console.error('[Billing] Supabase Admin no disponible; no se pudo actualizar el plan.')
+    return
+  }
+  const { error } = await admin.auth.admin.updateUserById(userId, {
+    user_metadata: { plan }
+  })
+  if (error) console.error('[Billing] Error actualizando plan:', error.message)
+  else console.log(`[Billing] Usuario ${userId} → plan ${plan}`)
+}
+
+// ─── POST /webhook ───────────────────────────────────────────────────────────
+// Verifica firma (Stripe) y notificaciones (Mercado Pago) y sube el plan del usuario.
+// index.js captura req.rawBody vía el verify de express.json (necesario para Stripe).
+router.post('/webhook', async (req, res) => {
+  const stripeSig = req.headers['stripe-signature']
+
+  // ── Stripe ──
+  if (stripeSig) {
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET
+    if (!endpointSecret) {
+      console.error('[Billing Webhook] STRIPE_WEBHOOK_SECRET no configurado — rechazado.')
+      return res.status(400).json({ success: false, error: 'Webhook secret not configured.' })
+    }
+    let event
+    try {
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
+      event = stripe.webhooks.constructEvent(req.rawBody, stripeSig, endpointSecret)
+    } catch (err) {
+      console.error('[Billing Webhook] Firma Stripe inválida:', err.message)
+      return res.status(400).json({ success: false, error: `Webhook Error: ${err.message}` })
+    }
+    try {
+      const obj = event.data.object
+      switch (event.type) {
+        case 'checkout.session.completed':
+        case 'customer.subscription.updated': {
+          const userId = obj.metadata?.userId || obj.client_reference_id
+          const plan = obj.metadata?.plan
+          if (userId && plan) await upgradeUserPlan(userId, plan)
+          break
+        }
+        case 'customer.subscription.deleted': {
+          const userId = obj.metadata?.userId
+          if (userId) await upgradeUserPlan(userId, 'free')
+          break
+        }
+        default:
+          break
+      }
+      return res.json({ received: true })
+    } catch (err) {
+      console.error('[Billing Webhook] Error handler Stripe:', err.message)
+      return res.status(500).json({ success: false, error: err.message })
+    }
+  }
+
+  // ── Mercado Pago ──
+  try {
+    const dataId = req.query['data.id'] || (req.body && req.body.data && req.body.data.id)
+    const topic = req.query.topic || req.query.type || (req.body && req.body.type)
+    if (!dataId) return res.status(200).json({ received: true }) // ping de prueba sin pago
+    if (topic === 'payment' || (req.body && typeof req.body.action === 'string' && req.body.action.includes('payment'))) {
+      const mpAccessToken = process.env.MP_ACCESS_TOKEN
+      if (!mpAccessToken) return res.status(400).json({ success: false, error: 'MP token not set' })
+      const { MercadoPagoConfig, Payment } = require('mercadopago')
+      const mpClient = new MercadoPagoConfig({ accessToken: mpAccessToken })
+      const payment = await new Payment(mpClient).get({ id: dataId })
+      if (payment && payment.status === 'approved') {
+        let ref = {}
+        try { ref = JSON.parse(payment.external_reference || '{}') } catch (_) {}
+        if (ref.userId && ref.plan) await upgradeUserPlan(ref.userId, ref.plan)
+      }
+    }
+    return res.status(200).json({ received: true })
+  } catch (err) {
+    console.error('[Billing Webhook] Error handler Mercado Pago:', err.message)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+module.exports = router
