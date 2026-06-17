@@ -16,6 +16,7 @@ import {
   AlertCircle, FileSpreadsheet, Lock, Crown, Ruler, Tag as TagIcon
 } from 'lucide-react'
 import { exportDesign, nestPieces, downloadBlob } from '../engine/exportAdapters.js'
+import { drawElevation } from '../engine/planRenderer.js'
 import { generateFactoryCutlist } from '../engine/CutlistGenerator.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
@@ -267,20 +268,15 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   const imgX = MARGIN + (ROT_X - MARGIN - imgW) / 2
   const imgY = MARGIN + (A4_H - 2 * MARGIN - imgH) / 2
 
-  if (typeof captureWireframe === 'function') {
-    const dataURL = captureWireframe()
-    if (dataURL) {
-      const img = new Image(); img.src = dataURL
-      const cvs = document.createElement('canvas'); cvs.width=1600; cvs.height=1200
-      const ctx = cvs.getContext('2d')
-      await new Promise(res => { img.onload=res; img.onerror=res })
-      ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,1600,1200)
-      ctx.drawImage(img,0,0,1600,1200)
-      doc.addImage(cvs.toDataURL('image/jpeg',0.95),'JPEG',imgX,imgY,imgW,imgH)
+  // Alzado técnico 2D (reemplaza el screenshot del wireframe)
+  drawElevation(doc, mod, imgX, imgY, imgW, imgH)
+
+  // MULTI-MÓDULO: tras dibujar el módulo 0, si modules.length > 1, añade una página por cada módulo extra con su propio alzado
+  if (modules.length > 1) {
+    for (let i = 1; i < modules.length; i++) {
+      doc.addPage()
+      drawElevation(doc, modules[i], imgX, imgY, imgW, imgH)
     }
-  } else {
-    doc.setFontSize(10); doc.setTextColor(160,160,160)
-    doc.text('[Vista 3D Alzado]', imgX+imgW/2, imgY+imgH/2, {align:'center'})
   }
 
   // ── LINES OF COTA (DIMENSIONING SYSTEM) ──────────────────────────────────────
