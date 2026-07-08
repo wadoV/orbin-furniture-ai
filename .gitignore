@@ -50,16 +50,14 @@ robust-root-*.json
 gcp-*.json
 *.pem
 *.p12
+# Google OAuth client secret descargado de Google Cloud Console (NUNCA commitear)
+client_secret*.json
+*.apps.googleusercontent.com.json
+# Archivos temporales de auditoría (sandbox) — borrar manualmente
+client/vite.sandbox.mjs
+.env.bak_pre_clean
 
 # Confidential promo codes list
 PROMO_CODES_INDUSTRIAL.md
 
-# ── Seguridad añadida (14/06/2026): nunca commitear ──
-recovery-codes-*.txt
-*recovery-codes*
-*.secret
-scratch_secret_test.txt
-
-# Basura de build de Vite (timestamps temporales)
-*.timestamp-*.mjs
-client/src/components/combined.txt
+# ── Segu
