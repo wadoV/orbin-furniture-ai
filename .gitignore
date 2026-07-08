@@ -59,4 +59,16 @@ client/vite.sandbox.mjs.timestamp-*.mjs
 .env.bak_pre_clean
 ziCGIqiq
 
-# Confidential promo cod
+# Confidential promo codes list
+PROMO_CODES_INDUSTRIAL.md
+
+# ── Seguridad añadida (14/06/2026): nunca commitear ──
+recovery-codes-*.txt
+*recovery-codes*
+*.secret
+scratch_secret_test.txt
+
+# Basura de build de Vite (timestamps temporales)
+*.timestamp-*.mjs
+client/src/components/combined.txt
+Orbin_ActionPlan/
