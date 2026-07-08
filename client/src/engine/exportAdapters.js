@@ -9,7 +9,7 @@ import { generateFactoryCutlist } from './CutlistGenerator.js'
 const SHEET_WIDTH=2440, SHEET_HEIGHT=1830, SAW_KERF=4, EDGE_MARGIN=10
 
 // ── Mapeo tipo→caja-mundo (dx,dy,dz centrados en x,y,z) ──
-const VERTICAL=new Set(['lateral','divider','divisor','drawer_box'])
+const VERTICAL=new Set(['lateral','divider','divisor','drawer_box','tamponado'])
 const HORIZONTAL=new Set(['techo','piso','base','shelf','repisa','estante','drawer_bottom'])
 const HIDDEN_ELEV=new Set(['drawer_box','drawer_bottom','fondo'])
 

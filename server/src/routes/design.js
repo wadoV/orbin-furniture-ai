@@ -9,6 +9,7 @@ const router  = express.Router()
 const { generateProject } = require('../engine/closetEngine')
 const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
 const { parseNaturalLanguage } = require('../engine/nlParser')
+const { validateDesign } = require('../engine/validator')
 
 // ─── POST /api/design/generate ────────────────────────────────────────────────
 
@@ -44,7 +45,7 @@ router.post('/generate', async (req, res) => {
     } else {
       return res.status(400).json({
         success: false,
-        error: 'Forneça "params" (objeto) o "naturalLanguage" (string).',
+        error: 'Enviá "params" (objeto) o "naturalLanguage" (texto).',
       })
     }
 
@@ -55,7 +56,7 @@ router.post('/generate', async (req, res) => {
         finalParams[field] = Number(finalParams[field])
         // BUG FIX T30: NaN check MUST come before range comparisons — NaN < 100 is false in JS
         if (isNaN(finalParams[field]) || !isFinite(finalParams[field])) {
-          return res.status(400).json({ success: false, error: `Campo "${field}" deve ser numérico e finito.` })
+          return res.status(400).json({ success: false, error: `El campo "${field}" debe ser numérico y finito.` })
         }
       }
     }
@@ -88,10 +89,10 @@ router.post('/generate', async (req, res) => {
     // FIXED: was using (width || 0)/2 which caused 18 >= 0 = always true → always rejected
     const t = finalParams.thickness
     if (t <= 0 || t >= finalParams.width / 2) {
-      return res.status(400).json({ success: false, error: `Espessura (${t}mm) inválida para largura (${finalParams.width}mm). Deve ser < metade da largura.` })
+      return res.status(400).json({ success: false, error: `Espesor (${t}mm) inválido para el ancho (${finalParams.width}mm). Debe ser menor a la mitad del ancho.` })
     }
     if (finalParams.baseboard && finalParams.baseboardHeight >= finalParams.height) {
-      return res.status(400).json({ success: false, error: `Altura do rodapé (${finalParams.baseboardHeight}mm) deve ser menor que a altura total (${finalParams.height}mm).` })
+      return res.status(400).json({ success: false, error: `Altura del zócalo (${finalParams.baseboardHeight}mm) debe ser menor que la altura total (${finalParams.height}mm).` })
     }
 
     // Generate design
@@ -101,9 +102,14 @@ router.post('/generate', async (req, res) => {
       return res.status(500).json(result)
     }
 
+    // BUG FIX (Recovery item a): run the real structural validator instead of
+    // letting the client render a hardcoded "all checks passed" message.
+    const validation = validateDesign(result)
+
     const response = {
       success: true,
       design:  result,
+      validation,
     }
 
     if (nlResult) {
@@ -116,8 +122,12 @@ router.post('/generate', async (req, res) => {
 
     res.json(response)
   } catch (err) {
+    // FIX #8 (QA 2026-06-26): el campo `detail: err.message` exponía el error
+    // interno crudo (stack/mensaje de librería) directo en la respuesta JSON,
+    // y la UI lo concatenaba y mostraba tal cual. El detalle ya queda logueado
+    // server-side arriba; al cliente solo le llega un mensaje seguro.
     console.error('[design/generate] Error:', err)
-    res.status(500).json({ success: false, error: 'Erro interno ao gerar projeto.', detail: err.message })
+    res.status(500).json({ success: false, error: 'No pudimos generar el proyecto. Intentá de nuevo.' })
   }
 })
 
@@ -126,7 +136,7 @@ router.post('/generate', async (req, res) => {
 
 router.post('/parse', (req, res) => {
   const { text } = req.body
-  if (!text) return res.status(400).json({ success: false, error: 'Campo "text" obrigatório.' })
+  if (!text) return res.status(400).json({ success: false, error: 'El campo "text" es obligatorio.' })
   const result = parseNaturalLanguage(text)
   res.json({ success: true, ...result })
 })
@@ -188,7 +198,7 @@ async function getPrices(req, res) {
   } catch (err) {
     console.error('[design/getPrices] Error fetching material prices:', err.message)
     // Return empty array to trigger client-side fallback silently
-    return res.json({ success: true, prices: [], source: 'fallback_error', error: err.message })
+    return res.json({ success: true, prices: [], source: 'fallback_error' })
   }
 }
 
@@ -199,3 +209,4 @@ router.get('/prices', getPrices)
 router.getPrices = getPrices
 
 module.exports = router
+

@@ -70,7 +70,7 @@ router.post('/design', async (req, res) => {
   try {
     const { message, sessionId, autoGenerate = true } = req.body
     if (!message || typeof message !== 'string') {
-      return res.status(400).json({ success: false, error: 'Campo "message" obrigatório.' })
+      return res.status(400).json({ success: false, error: 'El campo "message" es obligatorio.' })
     }
 
     // Retrieve or create session history
@@ -110,8 +110,11 @@ router.post('/design', async (req, res) => {
 
     res.json(response)
   } catch (err) {
+    // FIX #8 (QA 2026-06-26): exponía err.message crudo (puede incluir detalle
+    // interno de la llamada a Gemini/Ollama). El detalle real ya queda logueado
+    // arriba; al usuario le mostramos un mensaje seguro y genérico.
     console.error('[chat/design] Error:', err)
-    res.status(500).json({ success: false, error: err.message || 'Erro no chat.' })
+    res.status(500).json({ success: false, error: 'No pudimos procesar tu mensaje. Intentá de nuevo en unos segundos.' })
   }
 })
 
@@ -120,13 +123,13 @@ router.post('/design', async (req, res) => {
 router.post('/parse', async (req, res) => {
   try {
     const { text } = req.body
-    if (!text) return res.status(400).json({ success: false, error: 'Campo "text" obrigatório.' })
+    if (!text) return res.status(400).json({ success: false, error: 'El campo "text" es obligatorio.' })
 
     const result = await parseDesignIntent(text)
     res.json({ success: true, ...result })
   } catch (err) {
     console.error('[chat/parse] Error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No pudimos interpretar el texto. Intentá de nuevo.' })
   }
 })
 

@@ -45,7 +45,7 @@ async function requireAuth(req, res, next) {
   if (!sb) {
     if (process.env.NODE_ENV === 'production') {
       console.error('[requireAuth] Supabase no configurado en producción — acceso denegado.')
-      return res.status(503).json({ error: 'Auth service unavailable' })
+      return res.status(503).json({ error: 'Servicio de autenticación no disponible. Intentá de nuevo en unos minutos.' })
     }
     req.user = DEV_USER
     return next()
@@ -56,7 +56,7 @@ async function requireAuth(req, res, next) {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
 
   if (!token) {
-    return res.status(401).json({ error: 'Unauthorized' })
+    return res.status(401).json({ error: 'Tu sesión expiró o no es válida. Volvé a iniciar sesión.' })
   }
 
   // ── Verify token with Supabase ───────────────────────────────────────────────
@@ -64,11 +64,18 @@ async function requireAuth(req, res, next) {
     const { data, error } = await sb.auth.getUser(token)
 
     if (error || !data?.user) {
-      return res.status(401).json({ error: 'Unauthorized' })
+      return res.status(401).json({ error: 'Tu sesión expiró o no es válida. Volvé a iniciar sesión.' })
     }
 
-    const { id, email, role, user_metadata } = data.user
-    const plan = user_metadata?.plan || 'free'
+    // SECURITY [2026-06-27]: el plan se lee de app_metadata, NUNCA de
+    // user_metadata. user_metadata es escribible por el propio usuario vía
+    // supabase.auth.updateUser() desde el cliente (incluyendo devtools) — leer
+    // el plan de ahí permitía a cualquier usuario autenticado autoasignarse
+    // Enterprise gratis. app_metadata solo es escribible por el service_role
+    // (ver server/src/routes/billing.js: webhook real + /redeem-promo +
+    // /downgrade-free), nunca por el SDK público.
+    const { id, email, role, app_metadata } = data.user
+    const plan = app_metadata?.plan || 'free'
 
     // Attach identity and plan to request
     req.user = { id, email, role, plan }
@@ -76,7 +83,7 @@ async function requireAuth(req, res, next) {
     next()
   } catch (err) {
     console.error('[requireAuth] Unexpected error:', err.message)
-    return res.status(401).json({ error: 'Unauthorized' })
+    return res.status(401).json({ error: 'Tu sesión expiró o no es válida. Volvé a iniciar sesión.' })
   }
 }
 
@@ -105,8 +112,8 @@ async function optionalAuth(req, res, next) {
       req.user = { id: null, plan: 'free' }
       return next()
     }
-    const { id, email, role, user_metadata } = data.user
-    const plan = user_metadata?.plan || 'free'
+    const { id, email, role, app_metadata } = data.user
+    const plan = app_metadata?.plan || 'free'
     req.user = { id, email, role, plan }
     next()
   } catch (err) {

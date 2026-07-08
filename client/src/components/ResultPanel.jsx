@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FileText, Download, Save, Trash2, Box, Wrench, DollarSign, Layers, Package, X } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import CutListTable from './CutListTable.jsx'
+import ValidationReport from './ValidationReport.jsx'
 import { calculateCostEstimation } from '../data/materials.js'
 
 // ─── Cost Card ──────────────────────────────────────────────────────────────
@@ -200,16 +201,22 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
             ))}
           </div>
 
-          {/* Validation */}
-          <div className="p-4 bg-success/5 rounded-2xl border border-success/20 flex items-center gap-4">
-            <div className="w-8 h-8 bg-success/20 rounded-full flex items-center justify-center shadow-[0_0_12px_rgba(34,197,94,0.15)]">
-              <Box size={14} className="text-success" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-success uppercase tracking-widest leading-none mb-1">{t('validation_passed')}</p>
-              <p className="text-[10px] text-success/60 font-medium">{t('all_checks_passed')}</p>
-            </div>
-          </div>
+          {/* Validation — BUG FIX (Recovery item a): real structural validator output
+              from the server, replacing the previous hardcoded "all checks passed" message. */}
+          {design.validation
+            ? <ValidationReport validation={design.validation} />
+            : (
+              <div className="p-4 bg-surface-3/40 rounded-2xl border border-white/5 flex items-center gap-4">
+                <div className="w-8 h-8 bg-white/5 rounded-full flex items-center justify-center">
+                  <Box size={14} className="text-muted" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-muted uppercase tracking-widest leading-none mb-1">{t('validation_unavailable') || 'Validation unavailable'}</p>
+                  <p className="text-[10px] text-muted/60 font-medium">{t('validation_unavailable_desc') || 'No structural validation data for this design.'}</p>
+                </div>
+              </div>
+            )
+          }
 
           {/* Pieces summary table */}
           <div className="space-y-4">

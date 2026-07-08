@@ -4,23 +4,69 @@
  */
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Ruler, Crown, LogOut, Settings, Zap, ChevronDown, Tag, Check, X, Globe, ArrowLeft } from 'lucide-react'
+import { Ruler, Crown, LogOut, Settings, Zap, ChevronDown, Tag, Check, X, Globe, ArrowLeft, Loader2 } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser, PLANS } from '../context/UserContext.jsx'
 import PricingDisplay from './PricingDisplay.jsx'
+import { api } from '../api/client.js'
 
 function UpgradeModal({ onClose }) {
   const { upgradePlan, applyPromoCode, plan } = useUser()
   const [code, setCode]       = useState('')
   const [status, setStatus]   = useState(null)
   const [message, setMessage] = useState('')
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [loadingPlan, setLoadingPlan] = useState(null)
 
-  const handlePromo = () => {
+  // A11Y [2026-06-27]: cerrar con Escape — patrón estándar esperado en cualquier
+  // modal, antes solo se podía cerrar con click en el fondo o en la X.
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // SECURITY [2026-06-27]: applyPromoCode ahora es async (redime contra el
+  // server, ya no otorga nada client-side) — hay que esperarlo.
+  const handlePromo = async () => {
     if (!code.trim()) return
-    const r = applyPromoCode(code)
+    const r = await applyPromoCode(code)
     setStatus(r.success ? 'success' : 'error')
     setMessage(r.message)
     if (r.success) setCode('')
+  }
+
+  // FIX [2026-06-27]: antes este botón llamaba upgradePlan(p) directo para
+  // CUALQUIER plan, incluyendo pro/enterprise — sin pasar por ningún cobro
+  // real. Bloqueo temporal reemplazado el mismo día por el checkout real:
+  // el backend (server/src/routes/billing.js) YA tenía Stripe + Mercado Pago
+  // implementados end-to-end (sesión real, webhook con firma verificada,
+  // upgrade server-side vía service_role) — solo nunca se llamó desde la UI.
+  // Ahora el click pide la sesión real a /api/billing/checkout y redirige al
+  // checkout. Si STRIPE_SECRET_KEY/STRIPE_PRICE_* no están configurados en el
+  // server todavía, el backend devuelve un error controlado que se muestra acá
+  // tal cual (ya viene en español, ver billing.js catch). upgradePlan() se deja
+  // intacto: lo sigue usando el webhook real para confirmar el pago.
+  const handlePlanClick = async (p, active) => {
+    if (active || checkoutLoading) return
+    if (p === 'free') { upgradePlan(p); return }
+    setStatus(null)
+    setCheckoutLoading(true)
+    setLoadingPlan(p)
+    try {
+      const r = await api.createCheckout(p)
+      if (r.checkoutUrl) {
+        window.location.href = r.checkoutUrl
+        return
+      }
+      throw new Error('No se recibió la URL de pago.')
+    } catch (err) {
+      setStatus('error')
+      setMessage(err.message || 'No pudimos iniciar el proceso de pago. Intentá de nuevo o contactá a Eduardo.')
+    } finally {
+      setCheckoutLoading(false)
+      setLoadingPlan(null)
+    }
   }
 
   const COLORS = {
@@ -32,33 +78,40 @@ function UpgradeModal({ onClose }) {
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-[#1A1A1A] border border-white/10 rounded-3xl p-6 w-full max-w-sm mx-4 space-y-5 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title"
+        className="bg-[#1A1A1A] border border-white/10 rounded-3xl p-6 w-full max-w-sm mx-4 space-y-5 shadow-2xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Crown size={16} className="text-primary" />
-            <h3 className="text-sm font-black text-white">Mejorar Plan</h3>
+            <Crown size={16} className="text-primary" aria-hidden="true" />
+            <h3 id="upgrade-modal-title" className="text-sm font-black text-white">Mejorar Plan</h3>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-white transition-colors"><X size={16} /></button>
+          <button onClick={onClose} aria-label="Cerrar" className="text-muted hover:text-white transition-colors"><X size={16} /></button>
         </div>
 
         <div className="space-y-2">
           {['free','pro','enterprise'].map(p => {
-            const cfg    = PLANS[p]
-            const active = plan === p
-            const c      = COLORS[p]
+            const cfg     = PLANS[p]
+            const active  = plan === p
+            const c       = COLORS[p]
+            const loading = loadingPlan === p
             return (
-              <button key={p} onClick={() => !active && upgradePlan(p)}
-                className={"w-full flex items-center justify-between px-4 py-3 rounded-xl border bg-white/3 transition-all text-left " +
-                  (active ? 'border-primary bg-primary/8 cursor-default' : c.border)}>
+              <button key={p} onClick={() => handlePlanClick(p, active)}
+                disabled={active || checkoutLoading}
+                aria-busy={loading}
+                className={"w-full flex items-center justify-between px-4 py-3 rounded-xl border bg-white/3 transition-all text-left disabled:cursor-not-allowed " +
+                  (active ? 'border-primary bg-primary/8 cursor-default' : c.border) +
+                  (checkoutLoading && !loading ? ' opacity-40' : '')}>
                 <div>
                   <p className={"text-[11px] font-black uppercase tracking-widest " + (active ? 'text-primary' : c.accent)}>
-                    {cfg.name.ES}{active && <span className="ml-2 text-[9px] opacity-60">activo</span>}
+                    {cfg.name.ES}
+                    {active && <span className="ml-2 text-[9px] opacity-60">activo</span>}
+                    {loading && <span className="ml-2 text-[9px] opacity-70 animate-pulse">redirigiendo…</span>}
                   </p>
                   <p className="text-[9px] text-muted mt-0.5">
                     {p === 'free' ? 'Gratuito' : p === 'pro' ? 'R$99 / U$19 por mes' : 'R$249 / U$49 por mes'}
                   </p>
                 </div>
-                {!active && <ChevronDown size={12} className={c.accent + ' -rotate-90'} />}
+                {!active && <ChevronDown size={12} className={c.accent + ' -rotate-90'} aria-hidden="true" />}
               </button>
             )
           })}
@@ -67,28 +120,31 @@ function UpgradeModal({ onClose }) {
         <div className="h-px bg-white/5" />
 
         <div className="space-y-2">
-          <p className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-1.5">
-            <Tag size={10} className="text-primary/70" />Codigo Promocional
-          </p>
+          <label htmlFor="promo-code-input" className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-1.5">
+            <Tag size={10} className="text-primary/70" aria-hidden="true" />Codigo Promocional
+          </label>
           <div className="flex gap-2">
-            <input type="text" value={code}
+            <input id="promo-code-input" type="text" value={code}
               onChange={e => { setCode(e.target.value.toUpperCase()); setStatus(null) }}
               onKeyDown={e => e.key === 'Enter' && handlePromo()}
               placeholder="Ej. KIRA2080"
+              autoComplete="off"
               className="input-field flex-1 text-[11px] uppercase tracking-widest" />
             <button type="button" onClick={handlePromo} disabled={!code.trim()}
               className="px-4 py-2 bg-primary/15 text-primary border border-primary/30 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/25 transition-all disabled:opacity-40">
               Aplicar
             </button>
           </div>
-          {status === 'success' && (
-            <p className="text-[10px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-lg px-3 py-1.5 flex items-center gap-1.5">
-              <Check size={10} />{message}
-            </p>
-          )}
-          {status === 'error' && (
-            <p className="text-[10px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5">{message}</p>
-          )}
+          <div aria-live="polite">
+            {status === 'success' && (
+              <p className="text-[10px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-lg px-3 py-1.5 flex items-center gap-1.5">
+                <Check size={10} aria-hidden="true" />{message}
+              </p>
+            )}
+            {status === 'error' && (
+              <p className="text-[10px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5">{message}</p>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -166,6 +222,40 @@ function SettingsModal({ onClose }) {
   const [phone, setPhone] = useState(companySettings?.phone || '')
   const [address, setAddress] = useState(companySettings?.address || '')
   const [saveAsDefault, setSaveAsDefault] = useState(true)
+  const [portalLoading, setPortalLoading] = useState(false)
+  const [portalError, setPortalError] = useState('')
+
+  // RECOVERY [2026-06-27] Tarea #5 Layer 3: portal real de Stripe Customer
+  // Portal (antes simulaba un redirect con alert() y quedaba deshabilitado).
+  // Se muestra para CUALQUIER usuario logueado, no solo planes pagos activos:
+  // alguien que pagó y luego bajó a free conserva su stripe_customer_id
+  // (downgrade-free solo limpia stripe_subscription_id, ver billing.js) y debe
+  // poder ver facturas pasadas. Usuarios MP/BR o de código promocional nunca
+  // tuvieron stripe_customer_id — el backend responde 400 con un mensaje claro
+  // en español que se muestra tal cual (decisión Layer 2: MP es pago único de
+  // por vida, no necesita portal ni cancelación).
+  const handlePortalClick = async () => {
+    setPortalError('')
+    setPortalLoading(true)
+    try {
+      const r = await api.openBillingPortal()
+      if (r?.url) {
+        window.location.href = r.url
+        return
+      }
+      throw new Error('No se recibió la URL del portal de facturación.')
+    } catch (err) {
+      setPortalError(err.message || 'No pudimos abrir el portal de facturación. Intentá de nuevo.')
+      setPortalLoading(false)
+    }
+  }
+
+  // A11Y [2026-06-27]: mismo patrón Escape que UpgradeModal.
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   const handleSaveCompany = (e) => {
     e.preventDefault()
@@ -181,17 +271,18 @@ function SettingsModal({ onClose }) {
   return (
     <div className="fixed inset-0 z-[350] flex items-center justify-center bg-black/75 backdrop-blur-md"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-[#151518] border border-white/10 rounded-3xl p-6 w-full max-w-lg mx-4 space-y-6 shadow-2xl relative overflow-hidden text-white"
+      <div role="dialog" aria-modal="true" aria-labelledby="settings-modal-title"
+        className="bg-[#151518] border border-white/10 rounded-3xl p-6 w-full max-w-lg mx-4 space-y-6 shadow-2xl relative overflow-hidden text-white"
         onClick={e => e.stopPropagation()}>
         {/* Glow */}
         <div className="absolute -top-12 -left-12 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Settings size={18} className="text-primary" />
-            <h3 className="text-sm font-black text-white uppercase tracking-widest">Configuración del Sistema</h3>
+            <Settings size={18} className="text-primary" aria-hidden="true" />
+            <h3 id="settings-modal-title" className="text-sm font-black text-white uppercase tracking-widest">Configuración del Sistema</h3>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-white transition-colors"><X size={16} /></button>
+          <button onClick={onClose} aria-label="Cerrar" className="text-muted hover:text-white transition-colors"><X size={16} /></button>
         </div>
 
         {/* Tab Buttons */}
@@ -212,7 +303,7 @@ function SettingsModal({ onClose }) {
             <div className="space-y-4">
               <div className="space-y-1">
                 <span className="text-[10px] uppercase font-bold text-muted tracking-wider block">Usuario activo</span>
-                <p className="text-sm font-semibold text-white">{user?.email || 'theboy575@gmail.com'}</p>
+                <p className="text-sm font-semibold text-white">{user?.email || '—'}</p>
               </div>
               <div className="space-y-1.5">
                 <span className="text-[10px] uppercase font-bold text-muted tracking-wider block">Suscripción</span>
@@ -272,9 +363,18 @@ function SettingsModal({ onClose }) {
               <p className="text-xs text-muted leading-relaxed">
                 Administre sus detalles de facturación, métodos de pago y descargue sus facturas anteriores desde nuestro portal de Stripe seguro.
               </p>
-              <button type="button" onClick={() => alert('Redirigiendo a Stripe Portal (Simulado)...')}
-                className="btn-primary inline-flex items-center gap-2 px-6 py-3 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/10">
-                <Zap size={12} /> Abrir Portal de Facturación
+              {portalError && (
+                <p className="text-[10px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2 text-center">
+                  {portalError}
+                </p>
+              )}
+              <button type="button" onClick={handlePortalClick} disabled={portalLoading}
+                aria-busy={portalLoading}
+                className="btn-primary inline-flex items-center gap-2 px-6 py-3 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/10 disabled:opacity-50 disabled:cursor-not-allowed">
+                {portalLoading
+                  ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                  : <Zap size={12} aria-hidden="true" />}
+                {portalLoading ? 'Abriendo portal…' : 'Administrar Facturación'}
               </button>
             </div>
           )}
@@ -312,7 +412,7 @@ export default function Header({ modules, serverOnline = true }) {
 
           {/* Left side: Logo & Back Button */}
           <div className="flex items-center gap-4">
-            <div onClick={() => navigate('/')} className="flex items-center gap-3 group cursor-pointer select-none">
+            <button type="button" onClick={() => navigate('/')} aria-label="Orbin AI — ir al inicio" className="flex items-center gap-3 group cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-all duration-300"
                    style={{ background: 'linear-gradient(135deg, #F5A623 0%, #C47A0F 100%)' }}>
                 <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
@@ -329,7 +429,7 @@ export default function Header({ modules, serverOnline = true }) {
                 </div>
                 <span className="hidden sm:block text-[8px] text-muted font-bold tracking-[0.28em] uppercase opacity-50 leading-none">Furniture Engine</span>
               </div>
-            </div>
+            </button>
             {location.pathname === '/app' && (
               <button onClick={() => navigate('/')}
                 className="flex items-center justify-center w-8 h-8 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 hover:border-white/25 hover:bg-white/10 text-white transition-all duration-300 active:scale-95 shadow-sm"

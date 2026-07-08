@@ -463,7 +463,7 @@ function LockedBtn({ label, tier = 'Pro', reason }) {
     ? 'text-blue-400/60 bg-blue-500/10 border-blue-500/20'
     : 'text-yellow-400/60 bg-yellow-500/10 border-yellow-500/20'
   return (
-    <div onClick={() => trackEvent(EVENTS.PLAN_GATE_HIT, { featureBlocked: label, tier })} className="relative w-full text-left p-3.5 rounded-xl border border-white/5 bg-surface-3/30 opacity-60 cursor-pointer hover:opacity-80 transition-opacity select-none">
+    <button type="button" onClick={() => trackEvent(EVENTS.PLAN_GATE_HIT, { featureBlocked: label, tier })} aria-label={`${label} — disponível no plano ${tier}`} className="relative w-full text-left p-3.5 rounded-xl border border-white/5 bg-surface-3/30 opacity-60 cursor-pointer hover:opacity-80 transition-opacity select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
       <div className="flex items-start gap-3">
         <div className="p-2.5 rounded-lg bg-white/5 text-muted"><Lock size={18} /></div>
         <div className="flex-1">
@@ -476,7 +476,7 @@ function LockedBtn({ label, tier = 'Pro', reason }) {
           {reason && <p className="text-[10px] text-muted/50 mt-1">{reason}</p>}
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 

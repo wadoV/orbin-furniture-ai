@@ -42,10 +42,10 @@ export default function ImageToParametricPanel({ onApplyDesign }) {
     setError(null)
 
     try {
-      const response = await api.post('/vision/analyze-space', {
-        imageBase64: image,
-        userPrompt: prompt || 'Analiza este espacio y sugiere una configuración de mueble adecuada.'
-      })
+      const response = await api.analyzeSpace(
+        image,
+        prompt || 'Analiza este espacio y sugiere una configuración de mueble adecuada.'
+      )
 
       if (response.success && response.analysis) {
         onApplyDesign(response.analysis)

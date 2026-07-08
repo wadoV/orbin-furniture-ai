@@ -68,14 +68,38 @@ function PlanPill({ planId }) {
   )
 }
 
+// RECOVERY [2026-06-26]: botón "Continuar con Google" — usa supabase.auth.signInWithOAuth.
+// Requiere que Eduardo habilite el provider Google en Supabase Dashboard → Authentication →
+// Providers, con Client ID/Secret de Google Cloud Console (OAuth consent screen +
+// redirect URI = <SUPABASE_URL>/auth/v1/callback). Sin esa config, el botón mostrará
+// el error de Supabase ("Unsupported provider") al hacer click — es configuración de
+// cuenta, fuera del alcance de cambios de código.
+function GoogleButton({ label, disabled, onClick }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      className="w-full h-11 flex items-center justify-center gap-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[11px] font-bold text-white transition-all disabled:opacity-50">
+      <svg width="16" height="16" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v2.97h3.86c2.26-2.09 3.56-5.17 3.56-8.79z" />
+        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-2.97c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.27v3.07C3.23 21.3 7.31 24 12 24z" />
+        <path fill="#FBBC05" d="M5.27 14.32A7.16 7.16 0 0 1 4.86 12c0-.8.14-1.58.41-2.32V6.61H1.27A11.96 11.96 0 0 0 0 12c0 1.93.46 3.76 1.27 5.39l4-3.07z" />
+        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.23 2.7 1.27 6.61l4 3.07C6.22 6.83 8.87 4.75 12 4.75z" />
+      </svg>
+      {label}
+    </button>
+  )
+}
+
 function PromoCodeField({ onApply }) {
   const [code, setCode]       = useState('')
   const [status, setStatus]   = useState(null)
   const [message, setMessage] = useState('')
 
-  const handle = () => {
+  // SECURITY [2026-06-27]: onApply (applyPromoCode) ahora es async — redime
+  // contra el server, ya no valida nada en el cliente. Hay que esperarlo antes
+  // de leer .success/.message.
+  const handle = async () => {
     if (!code.trim()) return
-    const r = onApply(code)
+    const r = await onApply(code)
     setStatus(r.success ? 'success' : 'error')
     setMessage(r.message)
     if (r.success) setCode('')
@@ -111,13 +135,14 @@ function PromoCodeField({ onApply }) {
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { login } = useUser()
+  const { login, loginWithGoogle } = useUser()
   const { lang } = usePreferences()
   const L = lang || 'ES'
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
 
   const T = {
     title: { ES: 'Bienvenido de vuelta', PT: 'Bem-vindo de volta', EN: 'Welcome back' },
@@ -127,6 +152,8 @@ export function LoginPage() {
     btn:   { ES: 'Iniciar Sesion', PT: 'Entrar', EN: 'Log In' },
     noAcc: { ES: 'No tienes cuenta?', PT: 'Nao tem conta?', EN: "Don't have an account?" },
     reg:   { ES: 'Registrarse', PT: 'Cadastrar', EN: 'Sign Up' },
+    google: { ES: 'Continuar con Google', PT: 'Continuar com Google', EN: 'Continue with Google' },
+    or:    { ES: 'o', PT: 'ou', EN: 'or' },
   }
   const t = k => T[k]?.[L] || T[k]?.ES || k
 
@@ -145,20 +172,39 @@ export function LoginPage() {
     } finally { setLoading(false) }
   }
 
+  const handleGoogle = async () => {
+    setError(''); setGoogleLoading(true)
+    try {
+      await loginWithGoogle()
+      // signInWithOAuth redirects the browser away — no further action needed here.
+    } catch (err) {
+      setError(err?.message || 'Error al conectar con Google')
+      setGoogleLoading(false)
+    }
+  }
+
   return (
     <AuthLayout title={t('title')} subtitle={t('sub')}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <InputField label={t('email')} type="email"    value={email}    onChange={setEmail}    placeholder="tu@email.com" required disabled={loading} />
-        <InputField label={t('pass')}  type="password" value={password} onChange={setPassword} placeholder="..." required disabled={loading} />
-        {error && <p className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2">{error}</p>}
-        <button type="submit" disabled={loading}
-          className="btn-primary w-full h-12 flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-widest">
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <><Zap size={14} />{t('btn')}</>}
-        </button>
-        <div className="text-center text-[11px] text-muted">
-          {t('noAcc')} <Link to="/register" className="text-primary hover:underline font-bold">{t('reg')}</Link>
+      <div className="space-y-4">
+        <GoogleButton label={t('google')} disabled={googleLoading || loading} onClick={handleGoogle} />
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-white/10" />
+          <span className="text-[10px] font-black text-muted uppercase tracking-widest">{t('or')}</span>
+          <div className="h-px flex-1 bg-white/10" />
         </div>
-      </form>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <InputField label={t('email')} type="email"    value={email}    onChange={setEmail}    placeholder="tu@email.com" required disabled={loading} />
+          <InputField label={t('pass')}  type="password" value={password} onChange={setPassword} placeholder="..." required disabled={loading} />
+          {error && <p className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2">{error}</p>}
+          <button type="submit" disabled={loading}
+            className="btn-primary w-full h-12 flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-widest">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <><Zap size={14} />{t('btn')}</>}
+          </button>
+          <div className="text-center text-[11px] text-muted">
+            {t('noAcc')} <Link to="/register" className="text-primary hover:underline font-bold">{t('reg')}</Link>
+          </div>
+        </form>
+      </div>
     </AuthLayout>
   )
 }
@@ -166,7 +212,7 @@ export function LoginPage() {
 export function RegisterPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { register, applyPromoCode } = useUser()
+  const { register, applyPromoCode, loginWithGoogle } = useUser()
   const { lang } = usePreferences()
   const L = lang || 'ES'
   const initialPlan = searchParams.get('plan') || 'free'
@@ -178,6 +224,7 @@ export function RegisterPage() {
   const [error,     setError]     = useState('')
   const [loading,   setLoading]   = useState(false)
   const [confirmed, setConfirmed] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
 
   const T = {
     title:  { ES: 'Crea tu cuenta', PT: 'Crie sua conta', EN: 'Create your account' },
@@ -191,12 +238,27 @@ export function RegisterPage() {
     login:  { ES: 'Iniciar Sesion', PT: 'Entrar', EN: 'Log In' },
     terms:  { ES: 'Al registrarte aceptas los Terminos de Uso de Orbin AI.', PT: 'Ao se cadastrar aceita os Termos de Uso.', EN: 'By signing up you agree to Orbin AI Terms of Use.' },
     check:  { ES: 'Revisa tu email para confirmar tu cuenta.', PT: 'Verifique seu e-mail.', EN: 'Check your email to confirm.' },
+    google: { ES: 'Continuar con Google', PT: 'Continuar com Google', EN: 'Continue with Google' },
+    or:     { ES: 'o', PT: 'ou', EN: 'or' },
   }
   const t = k => T[k]?.[L] || T[k]?.ES || k
 
-  const handlePromo = (code) => {
-    const r = applyPromoCode(code)
-    if (r.success) setPlan(r.plan)
+  const handleGoogle = async () => {
+    setError(''); setGoogleLoading(true)
+    try {
+      await loginWithGoogle()
+    } catch (err) {
+      setError(err?.message || 'Error al conectar con Google')
+      setGoogleLoading(false)
+    }
+  }
+
+  // SECURITY [2026-06-27]: applyPromoCode ahora es async (redime server-side
+  // o, sin sesión, guarda el código pendiente). Si plan viene undefined (caso
+  // "pending" — sin sesión todavía) no tocamos el selector de plan visual.
+  const handlePromo = async (code) => {
+    const r = await applyPromoCode(code)
+    if (r.success && r.plan) setPlan(r.plan)
     return r
   }
 
@@ -234,6 +296,13 @@ export function RegisterPage() {
 
   return (
     <AuthLayout title={t('title')} subtitle={t('sub')}>
+      <div className="space-y-4">
+        <GoogleButton label={t('google')} disabled={googleLoading || loading} onClick={handleGoogle} />
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-white/10" />
+          <span className="text-[10px] font-black text-muted uppercase tracking-widest">{t('or')}</span>
+          <div className="h-px flex-1 bg-white/10" />
+        </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <InputField label={t('name')}  type="text"     value={name}     onChange={setName}     placeholder="Eduardo Ventura"   required disabled={loading} />
         <InputField label={t('email')} type="email"    value={email}    onChange={setEmail}    placeholder="tu@email.com"      required disabled={loading} />
@@ -272,16 +341,29 @@ export function RegisterPage() {
           {t('hasAcc')} <Link to="/login" className="text-primary hover:underline font-bold">{t('login')}</Link>
         </div>
       </form>
+      </div>
     </AuthLayout>
   )
 }
 
+// FIX [2026-06-27] QA en vivo: Supabase está emitiendo OTP de 8 dígitos
+// (confirmado en el email real recibido: "78796281"), pero esta pantalla
+// tenía hardcodeadas 6 casillas — el usuario solo podía ingresar los primeros
+// 6 dígitos, el resto se perdía, y verifyOtp() siempre fallaba con
+// "Token has expired or is invalid" sin importar que el código fuera correcto.
+// Se parametriza a OTP_LENGTH para que la cantidad de casillas, el mensaje y
+// la validación queden en un solo lugar. Si el proyecto de Supabase cambia el
+// OTP Length (Auth > Providers > Email), solo hay que tocar esta constante.
+const OTP_LENGTH = 8
+
 export function VerifyOTPPage() {
   const navigate = useNavigate()
-  const { user, verifyCode } = useUser()
-  const [code, setCode] = useState(['', '', '', '', '', ''])
+  const { user, verifyCode, resendCode } = useUser()
+  const [code, setCode] = useState(Array(OTP_LENGTH).fill(''))
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resendMsg, setResendMsg] = useState('')
 
   const handleChange = (index, value) => {
     if (isNaN(value)) return
@@ -289,7 +371,7 @@ export function VerifyOTPPage() {
     newCode[index] = value
     setCode(newCode)
 
-    if (value !== '' && index < 5) {
+    if (value !== '' && index < OTP_LENGTH - 1) {
       document.getElementById(`otp-${index + 1}`).focus()
     }
   }
@@ -303,14 +385,14 @@ export function VerifyOTPPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     const otpString = code.join('')
-    if (otpString.length < 6) {
-      setError('Ingrese el código de 6 dígitos')
+    if (otpString.length < OTP_LENGTH) {
+      setError(`Ingrese el código de ${OTP_LENGTH} dígitos`)
       return
     }
     setLoading(true)
     setError('')
     try {
-      const r = verifyCode(otpString)
+      const r = await verifyCode(otpString)
       if (r.success) {
         navigate('/app')
       } else {
@@ -323,10 +405,24 @@ export function VerifyOTPPage() {
     }
   }
 
+  const handleResend = async () => {
+    setResending(true)
+    setResendMsg('')
+    setError('')
+    try {
+      const r = await resendCode()
+      setResendMsg(r.success ? 'Código reenviado. Revise su correo.' : (r.error || 'No se pudo reenviar el código.'))
+    } catch (err) {
+      setResendMsg(err.message || 'No se pudo reenviar el código.')
+    } finally {
+      setResending(false)
+    }
+  }
+
   return (
-    <AuthLayout title="Verificación de Cuenta" subtitle={`Hemos enviado un código OTP de 6 dígitos a su correo ${user?.email || ''}.`}>
+    <AuthLayout title="Verificación de Cuenta" subtitle={`Hemos enviado un código OTP de ${OTP_LENGTH} dígitos a su correo ${user?.email || ''}.`}>
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="flex justify-center gap-2">
+        <div className="flex justify-center gap-2 flex-wrap">
           {code.map((num, idx) => (
             <input
               key={idx}
@@ -336,20 +432,25 @@ export function VerifyOTPPage() {
               value={num}
               onChange={e => handleChange(idx, e.target.value)}
               onKeyDown={e => handleKeyDown(idx, e)}
-              className="w-12 h-12 text-center text-lg font-bold bg-white/5 border border-white/10 rounded-xl focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-white transition-all"
+              className="w-10 h-12 text-center text-lg font-bold bg-white/5 border border-white/10 rounded-xl focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-white transition-all"
               disabled={loading}
             />
           ))}
         </div>
         {error && <p className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2 text-center">{error}</p>}
         <button type="submit" disabled={loading}
-          className="btn-primary w-full h-12 flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-widest">
+         className="btn-primary w-full h-12 flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-widest">
           {loading ? <Loader2 size={14} className="animate-spin" /> : 'Verificar Código'}
         </button>
+        {resendMsg && <p className="text-[10px] text-center text-muted">{resendMsg}</p>}
         <p className="text-[10px] text-center text-muted">
-          ¿No recibiste el código? <button type="button" onClick={() => alert('Código reenviado (simulado). Use 123456.')} className="text-primary hover:underline">Reenviar</button>
+          ¿No recibiste el código?{' '}
+          <button type="button" onClick={handleResend} disabled={resending} className="text-primary hover:underline disabled:opacity-50">
+            {resending ? 'Reenviando...' : 'Reenviar'}
+          </button>
         </p>
       </form>
     </AuthLayout>
   )
 }
+

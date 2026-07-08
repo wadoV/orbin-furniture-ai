@@ -149,9 +149,7 @@ export default function LandingPage() {
       {/* ── Nav ──────────────────────────────────────────────────────────── */}
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 glass border-b border-white/5 bg-[#0D0D0D]/80 backdrop-blur-md">
         <div onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2 cursor-pointer select-none">
-          <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center shadow-[0_0_12px_rgba(245,166,35,0.4)]">
-            <span className="text-[11px] font-black text-black">O</span>
-          </div>
+          <img src="/icon-192.png" alt="Orbin AI" className="w-7 h-7 rounded-lg shadow-[0_0_12px_rgba(245,166,35,0.4)]" />
           <span className="text-sm font-black text-white uppercase tracking-widest">Orbin AI</span>
         </div>
         <div className="flex items-center gap-4">
@@ -255,12 +253,7 @@ export default function LandingPage() {
             </div>
             <div className="flex-1 w-full relative">
               <div className="aspect-[4/3] bg-surface-2 rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                <div className="absolute inset-0 bg-gradient-to-tr from-zinc-900 to-zinc-800" />
-                <Camera size={48} className="text-white/10 relative z-10" />
-                <div className="absolute bottom-6 left-6 right-6 bg-black/80 backdrop-blur-md p-5 rounded-xl border border-white/5">
-                  <div className="h-3 w-1/3 bg-primary/50 rounded-full mb-3"></div>
-                  <div className="h-3 w-2/3 bg-white/20 rounded-full"></div>
-                </div>
+                <img src="/orbin_chat_3d_render.png" alt="Orbin AI Vision" className="w-full h-full object-cover" loading="lazy" />
               </div>
             </div>
           </div>
@@ -280,13 +273,7 @@ export default function LandingPage() {
             </div>
             <div className="flex-1 w-full relative">
               <div className="aspect-[4/3] bg-surface-2 rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                <div className="absolute inset-0 bg-gradient-to-tl from-zinc-900 to-zinc-800" />
-                <FileText size={48} className="text-white/10 relative z-10" />
-                <div className="absolute top-6 left-6 right-6 bg-black/80 backdrop-blur-md p-5 rounded-xl border border-white/5 flex flex-col gap-3">
-                   <div className="h-8 w-full bg-white/5 rounded-lg border border-white/5"></div>
-                   <div className="h-8 w-full bg-white/5 rounded-lg border border-white/5"></div>
-                   <div className="h-8 w-3/4 bg-white/5 rounded-lg border border-white/5"></div>
-                </div>
+                <img src="/orbin_day2_cutlist_mockup.png" alt="Lista de Corte y CNC automatica" className="w-full h-full object-cover" loading="lazy" />
               </div>
             </div>
           </div>
@@ -306,14 +293,7 @@ export default function LandingPage() {
             </div>
             <div className="flex-1 w-full relative">
               <div className="aspect-[4/3] bg-surface-2 rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                <div className="absolute inset-0 bg-gradient-to-tr from-zinc-900 to-zinc-800" />
-                <div className="absolute inset-x-12 top-1/2 -translate-y-1/2 flex items-center justify-between">
-                  <div className="w-20 h-20 rounded-full border border-primary/30 bg-primary/10 flex items-center justify-center shadow-[0_0_30px_rgba(245,166,35,0.2)]"><Users size={32} className="text-primary"/></div>
-                  <div className="h-px bg-gradient-to-r from-primary/50 to-white/10 flex-1 mx-6 relative">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-800 px-2 text-[10px] text-white/50 tracking-widest uppercase rounded">Sync</div>
-                  </div>
-                  <div className="w-20 h-20 rounded-full border border-white/10 bg-white/5 flex items-center justify-center"><Box size={32} className="text-white/50"/></div>
-                </div>
+                <img src="/orbin_day3_collab_mockup.png" alt="Colaboracion en tiempo real" className="w-full h-full object-cover" loading="lazy" />
               </div>
             </div>
           </div>

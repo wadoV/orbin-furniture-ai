@@ -152,3 +152,30 @@ describe('validator', () => {
   })
 
 })
+
+// Suite: Mejoras — tamponado + baseType
+describe('Mejoras: tamponado + baseType', () => {
+  it('tamponado both → 2 paneles, VALIDADO', () => {
+    const d = generateProject({ width: 2400, height: 2450, depth: 600, numShelves: 3, hasDoors: true, numDoors: 3, tamponado: 'both' })
+    assert.strictEqual(d.pieces.filter(p => p.type === 'tamponado').length, 2, 'esperaba 2 tamponados')
+    assertValidated(d, 'tamponado both')
+  })
+  it('tamponado left → 1 panel fuera del costado izq', () => {
+    const d = generateProject({ width: 1800, height: 2100, depth: 600, tamponado: 'left' })
+    const tp = d.pieces.filter(p => p.type === 'tamponado')
+    assert.strictEqual(tp.length, 1)
+    assert.ok(tp[0].x < 0, 'tamponado izq debe estar en x<0')
+  })
+  it('baseType none → sin zócalo, VALIDADO', () => {
+    const d = generateProject({ width: 1800, height: 2100, depth: 600, baseType: 'none' })
+    assert.ok(!d.pieces.some(p => p.type === 'baseboard'), 'no debe haber zócalo')
+    assertValidated(d, 'baseType none')
+  })
+  it('baseType legs → 4 patas en hardware + laterales elevados, VALIDADO', () => {
+    const d = generateProject({ width: 1800, height: 2100, depth: 600, baseType: 'legs', legHeight: 120 })
+    assert.ok(d.hardware.some(h => /pata|nivelador/i.test(h.type + h.description) && h.quantity === 4), 'esperaba 4 patas')
+    const lat = d.pieces.find(p => p.type === 'lateral')
+    assert.ok(lat.height < 2100 && lat.y > 120, 'laterales deben arrancar sobre las patas')
+    assertValidated(d, 'baseType legs')
+  })
+})

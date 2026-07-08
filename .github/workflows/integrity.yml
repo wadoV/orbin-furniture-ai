@@ -1,0 +1,16 @@
+name: Orbin Integrity (Blindaje)
+on: [push, pull_request]
+jobs:
+  blindaje:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Blindaje de integridad (nulls / sintaxis / routers exportan)
+        run: node scripts/verify-integrity.cjs
+      - name: Server deps + tests del motor
+        run: cd server && npm ci && npm test
+      - name: Client build check
+        run: cd client && npm ci && npm run build

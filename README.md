@@ -8,8 +8,9 @@
 | Feature | Status |
 |---|---|
 | **Supabase Auth real** — JWT, session persistence, onAuthStateChange | ✅ |
-| **UserContext v2.0** — plan from user_metadata, no mock | ✅ |
-| **Promo code KIRA2080** — unlocks Enterprise via header modal + register page | ✅ |
+| **UserContext v2.1** — plan resuelto desde `app_metadata` (server-only), no `user_metadata` | ✅ |
+| **Promo codes server-side** — validación + grant vía `service_role`, nunca en el bundle del cliente | ✅ |
+| **SECURITY PATCH [2026-06-27]** — cerrado bug de escalación de privilegios: el plan se leía de `user_metadata` (editable por el propio usuario desde devtools, `supabase.auth.updateUser()`), permitiendo autoasignarse Enterprise gratis. Ahora el plan vive en `app_metadata`, solo escribible por `service_role` (ver `server/src/middleware/auth.js` y `server/src/routes/billing.js`). Verificado en vivo con ataque simulado real. | ✅ |
 | **Header v2.0** — user dropdown (email, plan badge, Mejorar Plan, logout) | ✅ |
 | **Plano Ejecutivo 2D** — jsPDF A4 landscape, wireframe capture, title block | ✅ |
 | **Etiquetas Térmicas 60×40mm** — 1 label/piece, QR placeholder, white-label | ✅ |

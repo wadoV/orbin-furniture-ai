@@ -15,6 +15,7 @@ import OnboardingFlow from './components/OnboardingFlow.jsx'
 import OnboardingWizard from './components/OnboardingWizard.jsx'
 import MultiplayerLayer from './components/MultiplayerLayer.jsx'
 import ImageToParametricPanel from './components/ImageToParametricPanel.jsx'
+import { UpgradePrompt } from './components/UpgradePrompt.jsx'
 import { api } from './api/client.js'
 import { parseNaturalLanguage, buildOfflineReply } from './engine/offlineParser.js'
 import { initCollaboration, getSocket, disconnectCollaboration } from './engine/collaboration.js'
@@ -29,29 +30,9 @@ import { usePreferences } from './context/PreferencesContext.jsx'
 import { useUser } from './context/UserContext.jsx'
 
 // ── Plan Upgrade Banner ────────────────────────────────────────────────────────
-function PlanLimitAlert({ message, description, onClose }) {
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-surface-2 border border-primary/30 rounded-3xl p-8 max-w-md mx-4 space-y-4 shadow-2xl shadow-primary/10 animate-in zoom-in-95 duration-300">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary/15 rounded-2xl flex items-center justify-center">
-            <Crown size={20} className="text-primary" />
-          </div>
-          <h3 className="text-sm font-black text-white">{message}</h3>
-        </div>
-        <p className="text-[12px] text-muted leading-relaxed">{description}</p>
-        <div className="flex gap-3">
-          <a href="/register?plan=pro" className="btn-primary flex-1 h-10 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest">
-            <Crown size={12} /> Upgrade Pro
-          </a>
-          <button onClick={onClose} className="flex-1 h-10 bg-surface-3 text-muted hover:text-white border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">
-            Cerrar
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
+// [2026-06-23] Inline PlanLimitAlert replaced by real UpgradePrompt component
+// (analytics-instrumented, was built but orphaned — never wired in). See
+// client/src/components/UpgradePrompt.jsx. Render call site below.
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -106,8 +87,11 @@ class ErrorBoundary extends Component {
 
 export default function App() {
   const { t } = usePreferences()
-  const { isFree, canAddModule, canUseChat, planConfig } = useUser()
+  const { isFree, canAddModule, canUseChat, planConfig, refreshPlan } = useUser()
   const [planAlert, setPlanAlert] = useState(null)   // { message, description }
+  // RECOVERY [2026-06-26]: feedback post-checkout (Stripe/Mercado Pago redirige a
+  // /app?checkout=success|pending|failure). Ver useEffect abajo y billing.js back_urls.
+  const [checkoutAlert, setCheckoutAlert] = useState(null)   // { type, message }
   const [showExports, setShowExports] = useState(true)
   // ★ PLANO EJECUTIVO: read-only capture ref — set by Viewer3D, consumed by ExportPanel
   const captureWireframeRef = useRef(null)
@@ -176,6 +160,32 @@ export default function App() {
     }
   }, [])
 
+  // RECOVERY [2026-06-26]: handler para retorno de checkout real (Stripe/Mercado Pago).
+  // billing.js redirige a /app?checkout=success|pending|failure tras el pago.
+  // En 'success' refresca el plan (refreshSession + app_metadata.plan ya actualizado
+  // por el webhook); en cualquier caso limpia el query param para no re-disparar en reload.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const checkout = params.get('checkout')
+    if (!checkout) return
+
+    if (checkout === 'success') {
+      refreshPlan?.()
+      setCheckoutAlert({ type: 'success', message: t('checkout_success_alert') })
+    } else if (checkout === 'pending') {
+      setCheckoutAlert({ type: 'pending', message: t('checkout_pending_alert') })
+    } else if (checkout === 'failure') {
+      setCheckoutAlert({ type: 'failure', message: t('checkout_failure_alert') })
+    }
+
+    const url = new URL(window.location.href)
+    url.searchParams.delete('checkout')
+    window.history.replaceState({}, '', url)
+
+    const timer = setTimeout(() => setCheckoutAlert(null), 8000)
+    return () => clearTimeout(timer)
+  }, [])
+
   const TABS = [
     { id: 'params', label: t('tab_parameters'), icon: Sliders },
     { id: 'chat',   label: t('tab_chat'),    icon: MessageSquare },
@@ -235,6 +245,7 @@ export default function App() {
     // ── PLAN RESTRICTION: Free plan max 3 modules ─────────────────────────
     if (isFree && !canAddModule(modules.length)) {
       setPlanAlert({
+        feature:     t('plan_module_limit_feature') || 'Módulos ilimitados',
         message:     t('plan_module_limit')     || 'Límite de módulos alcanzado',
         description: t('plan_module_limit_desc') || 'El plan Gratuito permite hasta 3 módulos. Haz upgrade para crear proyectos ilimitados.',
       })
@@ -245,6 +256,11 @@ export default function App() {
     try {
       const data = await api.generateDesign(payload)
       let design = data?.design || (data?.modules && data.modules[0])
+      // BUG FIX (Recovery item a): thread the server's real structural validation
+      // through to ResultPanel instead of relying on its hardcoded success message.
+      if (design && data?.validation) {
+        design = { ...design, validation: data.validation }
+      }
       if (design && design.pieces) {
         // ★ FIX: Ensure configuration wrapper exists so Viewer3D uses the parametric builder
         // (not the legacy buildFromPieces fallback which lacks drawer animation, countertop system, drag & snap)
@@ -287,8 +303,11 @@ export default function App() {
           if (el) el.scrollIntoView({ behavior: 'smooth' })
         }, 100)
       } else if (data && data.error) {
-        console.error('[App/Generate] Server Error:', data.error, data.detail)
-        setError(data.error + ' ' + (data.detail || ''))
+        // En la práctica client.js ya lanza una excepción antes de llegar acá
+        // cuando success=false, así que esta rama es defensiva. data.error ya
+        // viene en español/apto para el usuario — no concatenar campos técnicos.
+        console.error('[App/Generate] Server Error:', data.error)
+        setError(data.error)
       }
     } catch (err) {
       console.error('[App/Generate] Connection Error:', err)
@@ -322,10 +341,10 @@ export default function App() {
           materialFront: 'white',
         }
       }))
-      
+
       saveHistory(newModules, 'Generado desde IA Vision')
       setActiveTab('params')
-      
+
       if (analysisResult.obstacles && analysisResult.obstacles.length > 0) {
         setTimeout(() => alert(`AI Notó los siguientes obstáculos:\n\n- ${analysisResult.obstacles.join('\n- ')}`), 500)
       }
@@ -361,6 +380,7 @@ export default function App() {
     // ── PLAN RESTRICTION: Free plan max 3 modules via chat too ───────────
     if (isFree && !canAddModule(modules.length)) {
       setPlanAlert({
+        feature:     t('plan_module_limit_feature') || 'Módulos ilimitados',
         message:     t('plan_module_limit')     || 'Límite de módulos alcanzado',
         description: t('plan_module_limit_desc') || 'El plan Gratuito permite hasta 3 módulos. Haz upgrade.',
       })
@@ -451,7 +471,11 @@ export default function App() {
       if (data.design) handleChatDesign({ design: data.design })
     } catch (err) {
       // Network error → switch to offline mode immediately for next message
-      const isNetworkError = err.message.includes('conectar') || err.message.includes('connect') || err.message.includes('fetch')
+      // FIX #8 (QA 2026-06-26): antes se detectaba "es un error de red" buscando
+      // substrings ('conectar'/'connect'/'fetch') dentro del mensaje en español —
+      // se rompía apenas cambiara una palabra del texto. client.js ahora adjunta
+      // err.code='NETWORK' de forma explícita, así que ya no depende del wording.
+      const isNetworkError = err.code === 'NETWORK'
       if (isNetworkError) {
         setServerOnline(false)
         const parsed = parseNaturalLanguage(text)
@@ -810,9 +834,10 @@ export default function App() {
 
         {/* ── Plan Limit Alert ──────────────────────────────────────────── */}
         {planAlert && (
-          <PlanLimitAlert
-            message={planAlert.message}
-            description={planAlert.description}
+          <UpgradePrompt
+            featureName={planAlert.feature}
+            requiredPlan="Pro"
+            price="R$99/mês"
             onClose={() => setPlanAlert(null)}
           />
         )}
@@ -826,6 +851,16 @@ export default function App() {
           </div>
         )}
 
+        {checkoutAlert && (
+          <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 border px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50 ${
+            checkoutAlert.type === 'success' ? 'bg-emerald-500/10 border-emerald-400/30' :
+            checkoutAlert.type === 'pending' ? 'bg-amber-500/10 border-amber-400/30' :
+            'bg-red-500/10 border-red-400/30'
+          }`}>
+            <span className="text-sm text-white">{checkoutAlert.message}</span>
+            <button onClick={() => setCheckoutAlert(null)} className="text-white/60 hover:text-white text-xs uppercase tracking-widest">✕</button>
+          </div>
+        )}
 
       </div>
     </ErrorBoundary>

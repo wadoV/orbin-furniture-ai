@@ -40,7 +40,7 @@ router.post('/save', async (req, res) => {
   try {
     const { design, label } = req.body
     if (!design || !design.id) {
-      return res.status(400).json({ success: false, error: 'Campo "design" com "id" obrigatório.' })
+      return res.status(400).json({ success: false, error: 'El campo "design" con "id" es obligatorio.' })
     }
 
     const modules = design.modules || [design]
@@ -69,8 +69,10 @@ router.post('/save', async (req, res) => {
 
     res.json({ success: true, id: record.id, label: record.label, storage: sb ? 'supabase' : 'memory' })
   } catch (err) {
+    // FIX #8 (QA 2026-06-26): err.message podía exponer detalle interno de
+    // Supabase. Ya queda logueado server-side; al cliente solo el mensaje seguro.
     console.error('[projects/save] Error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No pudimos guardar el proyecto. Intentá de nuevo.' })
   }
 })
 
@@ -100,7 +102,7 @@ router.get('/', async (req, res) => {
     res.json({ success: true, projects, storage: 'memory' })
   } catch (err) {
     console.error('[projects/list] Error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No pudimos cargar tus proyectos. Intentá de nuevo.' })
   }
 })
 
@@ -118,16 +120,16 @@ router.get('/:id', async (req, res) => {
         .eq('id', id)
         .eq('owner_id', req.user.id)                                       // ← ownership check at query level
         .single()
-      if (error || !data) return res.status(404).json({ success: false, error: 'Projeto não encontrado.' })
+      if (error || !data) return res.status(404).json({ success: false, error: 'Proyecto no encontrado.' })
       return res.json({ success: true, ...data, storage: 'supabase' })
     }
 
     const record = memStore.get(`${req.user.id}:${id}`)
-    if (!record) return res.status(404).json({ success: false, error: 'Projeto não encontrado.' })
+    if (!record) return res.status(404).json({ success: false, error: 'Proyecto no encontrado.' })
     res.json({ success: true, ...record, storage: 'memory' })
   } catch (err) {
     console.error('[projects/get] Error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    res.status(500).json({ success: false, error: 'No pudimos cargar el proyecto. Intentá de nuevo.' })
   }
 })
 
@@ -146,16 +148,20 @@ router.delete('/:id', async (req, res) => {
         .eq('id', id)
         .eq('owner_id', req.user.id)                                       // ← ownership enforced
       if (error) throw new Error(error.message)
-      if (count === 0) return res.status(404).json({ success: false, error: 'Projeto não encontrado.' })
+      if (count === 0) return res.status(404).json({ success: false, error: 'Proyecto no encontrado.' })
     } else {
       const key = `${req.user.id}:${id}`
-      if (!memStore.has(key)) return res.status(404).json({ success: false, error: 'Projeto não encontrado.' })
+      if (!memStore.has(key)) return res.status(404).json({ success: false, error: 'Proyecto no encontrado.' })
       memStore.delete(key)
     }
 
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message })
+    // FIX #8 (QA 2026-06-26): este catch no logueaba nada server-side y devolvía
+    // err.message crudo al cliente — el único de los 4 handlers de este archivo
+    // sin console.error. Agregado para no perder el detalle al sanear la respuesta.
+    console.error('[projects/delete] Error:', err)
+    res.status(500).json({ success: false, error: 'No pudimos eliminar el proyecto. Intentá de nuevo.' })
   }
 })
 

@@ -55,9 +55,8 @@ client_secret*.json
 *.apps.googleusercontent.com.json
 # Archivos temporales de auditoría (sandbox) — borrar manualmente
 client/vite.sandbox.mjs
+client/vite.sandbox.mjs.timestamp-*.mjs
 .env.bak_pre_clean
+ziCGIqiq
 
-# Confidential promo codes list
-PROMO_CODES_INDUSTRIAL.md
-
-# ── Segu
+# Confidential promo cod

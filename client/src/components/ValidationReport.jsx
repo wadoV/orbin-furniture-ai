@@ -25,7 +25,7 @@ export default function ValidationReport({ validation }) {
       </div>
 
       {errors?.length > 0 && (
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 space-y-2" role="alert" aria-live="polite">
           <p className="text-xs font-semibold text-danger uppercase tracking-wider">{t('critical_errors')}</p>
           {errors.map((e, i) => (
             <div key={i} className="flex items-start gap-2 bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">

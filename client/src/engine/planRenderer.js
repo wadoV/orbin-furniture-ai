@@ -3,7 +3,7 @@
  * Proyecta las piezas reales (pieces[] con x,y,z) al plano frontal. Reemplaza el screenshot del wireframe.
  * Uso en ExportPanel: import { drawElevation, addProjectPlans } from './planRenderer.js'
  */
-const VERTICAL=new Set(['lateral','divider','divisor','drawer_box'])
+const VERTICAL=new Set(['lateral','divider','divisor','drawer_box','tamponado'])
 const HORIZONTAL=new Set(['techo','piso','base','shelf','repisa','estante','drawer_bottom'])
 const HIDDEN=new Set(['drawer_box','drawer_bottom','fondo'])
 function pieceBox(p){const w=p.width,h=p.height,th=p.thickness,t=p.type,nm=(p.name||'').toLowerCase()

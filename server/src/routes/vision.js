@@ -30,8 +30,10 @@ router.post('/analyze-space', async (req, res) => {
       analysis: aiResult
     })
   } catch (err) {
-    console.error('[vision/analyze-space] Error:', err.message)
-    res.status(500).json({ success: false, error: 'Error analizando la imagen espacial.', detail: err.message })
+    // FIX #8 (QA 2026-06-26): se quitó `detail: err.message` de la respuesta —
+    // no debe llegar al cliente. El error completo queda logueado server-side.
+    console.error('[vision/analyze-space] Error:', err)
+    res.status(500).json({ success: false, error: 'No pudimos analizar la imagen. Intentá de nuevo.' })
   }
 })
 

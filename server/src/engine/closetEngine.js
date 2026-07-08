@@ -38,6 +38,8 @@ const DEFAULTS = {
   hasDoors: true, numDoors: 2, doorType: 'hinged',
   edgeBandingType: 'thin',
   baseboard: true, baseboardHeight: 100,
+  baseType: 'recessed', legHeight: 100,
+  tamponado: 'none',
   hasCountertop: true,
   handleType: 'standard'
 }
@@ -84,6 +86,16 @@ function generateCutList(pieces) {
 
 function generateFurniture(params) {
   const cfg = { ...DEFAULTS, ...params }
+
+  // ── Base independiente / patas (compat: baseboard:false legacy → 'none') ──
+  const legHeight = cfg.legHeight || 100
+  let baseType = params.baseType || (params.baseboard === false ? 'none' : (cfg.baseType || 'recessed'))
+  if (cfg.moduleType !== 'aereo') {
+    if (baseType === 'none') { cfg.baseboard = false }
+    else if (baseType === 'legs') { cfg.baseboard = true; cfg.baseboardHeight = legHeight }
+  }
+  cfg.baseType = baseType
+  cfg.legHeight = legHeight
 
   // ★ AUTO-FIT de cajones: la pila no puede exceder la altura interna útil (misma fórmula
   //   que el validador). Primero baja la altura del cajón; si ni al mínimo (80mm) caben,
@@ -157,8 +169,18 @@ function generateFurniture(params) {
     err.statusCode = 400; throw err;
   }
 
-  pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', D, H, T, 1, T/2, H/2, D/2, 'vertical', { front: true }))
-  pieces.push(makePiece(nextId('LAT-R'), 'Lateral Derecho', 'lateral', D, H, T, 1, W - T/2, H/2, D/2, 'vertical', { front: true }))
+  const onLegs = baseType === 'legs'
+  const latH = onLegs ? (H - BH3) : H
+  const latY = onLegs ? (BH3 + latH/2) : H/2
+  pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', D, latH, T, 1, T/2, latY, D/2, 'vertical', { front: true }))
+  pieces.push(makePiece(nextId('LAT-R'), 'Lateral Derecho', 'lateral', D, latH, T, 1, W - T/2, latY, D/2, 'vertical', { front: true }))
+
+  // ── TAMPONADO: panel de acabamiento que tapa tornillos en el costado visible ──
+  const tamp = cfg.tamponado || 'none'
+  if (tamp === 'left' || tamp === 'both')
+    pieces.push(makePiece(nextId('TAMP-L'), 'Tampão Lateral Izq', 'tamponado', D, latH, T, 1, -T/2, latY, D/2, 'vertical', { front: true }, 'Cubre tornillos costado izquierdo'))
+  if (tamp === 'right' || tamp === 'both')
+    pieces.push(makePiece(nextId('TAMP-R'), 'Tampão Lateral Der', 'tamponado', D, latH, T, 1, W + T/2, latY, D/2, 'vertical', { front: true }, 'Cubre tornillos costado derecho'))
 
   if (isBase && hasCountertop && moduleType !== 'standard') {
     pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal', 'tie_strip', internalWidth, 70, T, 1, W/2, H - 70/2, T/2 + 20, 'horizontal', { front: true }, 'Refuerzo Estructural'))
@@ -175,7 +197,7 @@ function generateFurniture(params) {
   const backH = H - BH3 - T - topDeduction
   pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', internalWidth, backH, BT, 1, W/2, BH3 + T + backH/2, D - BT/2, 'none'))
 
-  if (BH3 > 0) {
+  if (baseType === 'recessed' && BH3 > 0) {
     pieces.push(makePiece(nextId('RDPE-F'), 'Zócalo Frontal', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, D - T/2 - 50, 'vertical', { front: true }))
     pieces.push(makePiece(nextId('RDPE-B'), 'Zócalo Trasero', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, T/2 + 50, 'vertical', { front: true }))
   }
@@ -407,6 +429,10 @@ function generateHardwareBOM(cfg) {
   }
 
   bom.push({ type: 'Parafuso Confirmat', description: 'Confirmat o7x50mm fixacao estrutural', quantity: 24, unit: 'un' })
+
+  if (cfg.baseType === 'legs') {
+    bom.push({ type: 'Pe Nivelador', description: 'Pata regulable ' + (cfg.legHeight || 100) + 'mm', quantity: 4, unit: 'un' })
+  }
 
   return bom
 }

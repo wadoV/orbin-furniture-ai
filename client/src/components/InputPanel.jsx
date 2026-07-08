@@ -11,9 +11,23 @@ import { trackEvent, EVENTS } from '../lib/analytics.js'
 
 const FIELD = ({ label, name, value, onChange, type = 'number', min, max, step = 1, suffix = '' }) => {
   const id = useId()
+  const hintId = useId()
   const isFocused = useRef(false)
   // Local draft value as string so user can freely clear and retype
   const [draft, setDraft] = useState(String(value ?? ''))
+  // FIX #9: el clamp/restore en handleBlur era silencioso — el input cambiaba
+  // de valor sin que el usuario supiera por qué. Este estado guarda un aviso
+  // visible y transitorio (se borra solo, o al volver a enfocar el campo).
+  const [notice, setNotice] = useState(null)
+  const noticeTimer = useRef(null)
+
+  const showNotice = (msg) => {
+    setNotice(msg)
+    if (noticeTimer.current) clearTimeout(noticeTimer.current)
+    noticeTimer.current = setTimeout(() => setNotice(null), 4000)
+  }
+
+  useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current) }, [])
 
   // Sync from parent when value changes externally (e.g. reset, load project)
   // BUT: skip if we are currently typing to avoid "snapping" or "cursor jumping"
@@ -40,12 +54,19 @@ const FIELD = ({ label, name, value, onChange, type = 'number', min, max, step =
     if (type === 'number') {
       const num = parseFloat(draft)
       if (isNaN(num)) {
-        // Restore last valid value from parent
+        // Restore last valid value from parent — pero ahora avisando.
         setDraft(String(value ?? ''))
+        showNotice(`Valor inválido — se restauró ${value ?? '0'}${suffix}`)
       } else {
         const clamped = Math.max(min ?? -Infinity, Math.min(max ?? Infinity, num))
         setDraft(String(clamped))
         onChange(name, clamped)
+        if (clamped !== num) {
+          const limit = clamped === (min ?? -Infinity) ? `mínimo ${min}${suffix}` : `máximo ${max}${suffix}`
+          showNotice(`Ajustado al ${limit}`)
+        } else {
+          setNotice(null)
+        }
       }
     }
   }
@@ -58,7 +79,7 @@ const FIELD = ({ label, name, value, onChange, type = 'number', min, max, step =
       </label>
       <input
         id={id}
-        className="input-field w-full focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
+        className={"input-field w-full focus-visible:ring-2 focus-visible:ring-primary focus:outline-none" + (notice ? ' ring-1 ring-amber-400/60' : '')}
         type={type === 'number' ? 'text' : type}
         inputMode={type === 'number' ? 'decimal' : undefined}
         name={name}
@@ -66,10 +87,17 @@ const FIELD = ({ label, name, value, onChange, type = 'number', min, max, step =
         min={min}
         max={max}
         step={step}
+        aria-describedby={notice ? hintId : undefined}
         onChange={handleChange}
-        onFocus={() => { isFocused.current = true }}
+        onFocus={() => { isFocused.current = true; setNotice(null); if (noticeTimer.current) clearTimeout(noticeTimer.current) }}
         onBlur={handleBlur}
       />
+      {notice && (
+        <p id={hintId} role="status" aria-live="polite"
+          className="text-[9px] text-amber-400 mt-1 leading-tight">
+          {notice}
+        </p>
+      )}
     </div>
   )
 }
@@ -195,6 +223,20 @@ const FURNITURE_PRESETS = [
       </svg>
     ),
     params: { moduleType: 'base', materialId: 'mdf_18', width: 600, height: 720, depth: 580, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true }
+  },
+  {
+    id: 'kitchen_island',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 mx-auto">
+        <rect x="2" y="8" width="20" height="10" rx="1" />
+        <line x1="2" y1="6.5" x2="22" y2="6.5" />
+        <line x1="9" y1="11" x2="9" y2="18" />
+        <line x1="15" y1="11" x2="15" y2="18" />
+        <circle cx="6" cy="20.5" r="0.9" fill="currentColor" />
+        <circle cx="18" cy="20.5" r="0.9" fill="currentColor" />
+      </svg>
+    ),
+    params: { moduleType: 'base', materialId: 'mdf_18', width: 1500, height: 900, depth: 900, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true }
   },
   {
     id: 'wardrobe',
@@ -347,6 +389,7 @@ const DEFAULTS = {
   drawerLayout: 'vertical',
   hasDoors: true, numDoors: 2, doorType: 'hinged',
   edgeBandingType: 'thin', baseboard: true, baseboardHeight: 100,
+  baseType: 'recessed', legHeight: 100, tamponado: 'none',
   hasCountertop: true
 }
 
@@ -562,6 +605,41 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                   </p>
                 </div>
               </div>
+            )}
+          </fieldset>
+
+          {/* Acabamiento y Base (tamponado / mueble independiente) */}
+          <fieldset className="space-y-4">
+            <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4">{t('finishing_base') || 'Acabamiento y base'}</legend>
+            <div className="grid grid-cols-2 gap-4">
+              <SELECT
+                label={t('tamponado') || 'Tamponado (tapa tornillos)'}
+                name="tamponado"
+                value={params.tamponado || 'none'}
+                onChange={setParam}
+                options={[
+                  { value: 'none',  label: t('tamponado_none')  || 'Ninguno' },
+                  { value: 'left',  label: t('tamponado_left')  || 'Izquierdo' },
+                  { value: 'right', label: t('tamponado_right') || 'Derecho' },
+                  { value: 'both',  label: t('tamponado_both')  || 'Ambos' },
+                ]}
+              />
+              {!isAereo && (
+                <SELECT
+                  label={t('base_type') || 'Base del mueble'}
+                  name="baseType"
+                  value={params.baseType || 'recessed'}
+                  onChange={setParam}
+                  options={[
+                    { value: 'recessed', label: t('base_recessed') || 'Rodapie empotrado' },
+                    { value: 'none',     label: t('base_none')     || 'Sin rodapie' },
+                    { value: 'legs',     label: t('base_legs')     || 'Patas (independiente)' },
+                  ]}
+                />
+              )}
+            </div>
+            {params.baseType === 'legs' && !isAereo && (
+              <FIELD label={t('leg_height') || 'Altura de patas (mm)'} name="legHeight" value={params.legHeight || 100} onChange={setParam} min={50} max={300} step={5} suffix="mm" />
             )}
           </fieldset>
 

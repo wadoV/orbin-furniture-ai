@@ -111,7 +111,7 @@ const corsOptions = {
       return callback(null, true)
     }
     
-    return callback(new Error(`CORS blocked: ${origin} (Orbin Strict Policy)`))
+    return callback(new Error('CORS blocked (Orbin Strict Policy)'))
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -121,11 +121,21 @@ const corsOptions = {
 app.use(cors(corsOptions))
 app.use(apiLimiter) // Apply global rate limiting to all requests
 
+// ─── Security Headers ────────────────────────────────────────────────────────
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('X-XSS-Protection', '0') // Modern CSP supersedes; disable to avoid false positives
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  next()
+})
+
 app.use(express.json({
   limit: '5mb',
   verify: (req, res, buf) => { req.rawBody = buf; }
 })) // 5mb maximum for payloads (reduced from 50mb to prevent DoS, yet sufficient for spatial images)
-app.use(express.urlencoded({ extended: true, limit: '5' + 'mb' }))
+app.use(express.urlencoded({ extended: true, limit: '5mb' }))
 
 // Request logger (dev only)
 if (process.env.NODE_ENV !== 'production') {
@@ -161,11 +171,7 @@ app.get('/api/health', (_req, res) => {
     status:    'ok',
     service:   'orbin-api',
     version:   '3.0.0',
-    timestamp: new Date().toISOString(),
-    env:       process.env.NODE_ENV || 'development',
-    supabase:  !!process.env.SUPABASE_URL,
-    gemini:    !!process.env.GEMINI_API_KEY,
-    ollama:    !!process.env.OLLAMA_BASE_URL,
+    timestamp: new Date().toISOString()
   })
 })
 
@@ -180,12 +186,15 @@ app.post('/api/errors', (req, res) => {
 // ─── 404 & Error Handlers ────────────────────────────────────────────────────
 
 app.use((req, res) => {
-  res.status(404).json({ success: false, error: `Rota não encontrada: ${req.method} ${req.path}` })
+  res.status(404).json({ success: false, error: `Ruta no encontrada: ${req.method} ${req.path}` })
 })
 
+// FIX #8 (QA 2026-06-26): este handler global ya no leía/lanzaba err.message
+// hacia el cliente, pero quedaba en portugués ("Erro interno do servidor"),
+// inconsistente con el resto de la copy (CLAUDE.md exige español en UI).
 app.use((err, _req, res, _next) => {
   console.error('[Server Error]', err)
-  res.status(500).json({ success: false, error: 'Erro interno do servidor.' })
+  res.status(500).json({ success: false, error: 'Error interno del servidor. Intentá de nuevo en unos segundos.' })
 })
 
 // ─── Socket.IO Collaboration ───────────────────────────────────────────────────
@@ -206,9 +215,19 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   // Join a collaborative room
   socket.on('join-room', (roomId, userProfile) => {
+    // Validate roomId to prevent injection / abuse
+    if (typeof roomId !== 'string' || roomId.length < 1 || roomId.length > 128 || !/^[\w\-:.]+$/.test(roomId)) {
+      return socket.emit('error', { message: 'Room ID inválido.' })
+    }
+    // Limit rooms per socket to prevent resource exhaustion
+    if (socket.rooms.size > 5) {
+      return socket.emit('error', { message: 'Límite de salas alcanzado.' })
+    }
     socket.join(roomId)
     socket.roomId = roomId
-    socket.userProfile = userProfile || { name: 'Anónimo' }
+    // Sanitize profile: only allow name string, truncate to 50 chars
+    const safeName = (typeof userProfile?.name === 'string' ? userProfile.name : 'Anónimo').slice(0, 50)
+    socket.userProfile = { name: safeName }
     
     // Broadcast to others in room that a user joined
     socket.to(roomId).emit('user-joined', { id: socket.id, profile: socket.userProfile })
@@ -217,10 +236,13 @@ io.on('connection', (socket) => {
   // Broadcast cursor movement
   socket.on('cursor-move', (data) => {
     if (!socket.roomId) return
+    // Validate cursor data types to prevent arbitrary payloads
+    const x = typeof data?.x === 'number' && isFinite(data.x) ? data.x : 0
+    const y = typeof data?.y === 'number' && isFinite(data.y) ? data.y : 0
     socket.to(socket.roomId).emit('cursor-update', {
       id: socket.id,
-      x: data.x,
-      y: data.y,
+      x,
+      y,
       name: socket.userProfile?.name
     })
   })

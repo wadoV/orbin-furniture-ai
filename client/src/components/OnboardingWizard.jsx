@@ -239,14 +239,35 @@ export default function OnboardingWizard({ onComplete, onSkip }) {
   const [step, setStep] = useState(1)
   const [selectedType, setSelectedType] = useState(FURNITURE_TYPES[0])
   const [selectedMethod, setSelectedMethod] = useState(STARTING_METHODS[0])
+  // [2026-06-23] Recovered from orphaned OnboardingFlow.jsx: in-onboarding
+  // dimension customization. OnboardingWizard previously shipped only fixed
+  // preset dimensions per furniture type — this restores manual width/
+  // height/depth control without losing analytics/i18n/method-selection.
+  const [useCustomSize, setUseCustomSize] = useState(false)
+  const [customSize, setCustomSize] = useState({
+    width:  FURNITURE_TYPES[0].params.width,
+    height: FURNITURE_TYPES[0].params.height,
+    depth:  FURNITURE_TYPES[0].params.depth,
+  })
+
+  const selectType = (type) => {
+    setSelectedType(type)
+    setUseCustomSize(false)
+    setCustomSize({ width: type.params.width, height: type.params.height, depth: type.params.depth })
+  }
+
+  // Effective params actually sent downstream (recommended preset, or user-customized size)
+  const finalParams = useCustomSize
+    ? { ...selectedType.params, width: customSize.width, height: customSize.height, depth: customSize.depth }
+    : selectedType.params
 
   const handleNext = () => {
-    if (step < 3) {
+    if (step < 4) {
       setStep(step + 1)
     } else {
-      // Step 3 complete -> trigger payload generation
+      // Step 4 complete -> trigger payload generation
       trackEvent(EVENTS.ONBOARDING_COMPLETED)
-      onComplete({ params: selectedType.params }, selectedMethod.id)
+      onComplete({ params: finalParams }, selectedMethod.id)
     }
   }
 
@@ -285,13 +306,13 @@ export default function OnboardingWizard({ onComplete, onSkip }) {
         {/* Step Indicator & Progress Bar */}
         <div className="mt-4 space-y-2">
           <div className="flex justify-between items-center text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-            <span>Passo {step} de 3</span>
-            <span className="text-primary">{Math.round((step / 3) * 100)}% Concluído</span>
+            <span>Passo {step} de 4</span>
+            <span className="text-primary">{Math.round((step / 4) * 100)}% Concluído</span>
           </div>
           <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-            <div 
+            <div
               className="h-full bg-gradient-to-r from-primary to-primary-hover rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${(step / 3) * 100}%` }}
+              style={{ width: `${(step / 4) * 100}%` }}
             />
           </div>
         </div>
@@ -315,7 +336,7 @@ export default function OnboardingWizard({ onComplete, onSkip }) {
                 {FURNITURE_TYPES.map(type => (
                   <button
                     key={type.id}
-                    onClick={() => setSelectedType(type)}
+                    onClick={() => selectType(type)}
                     className={`flex flex-col items-center justify-between p-5 rounded-2xl border text-center transition-all duration-300 active:scale-[0.98] focus:outline-none select-none group min-h-[140px] ${
                       selectedType.id === type.id
                         ? 'bg-primary/10 border-primary shadow-[0_0_24px_rgba(245,166,35,0.15)] text-primary'
@@ -336,8 +357,76 @@ export default function OnboardingWizard({ onComplete, onSkip }) {
             </div>
           )}
 
-          {/* STEP 2: Entry method selection */}
+          {/* STEP 2: Dimension customization (recovered from OnboardingFlow.jsx) */}
           {step === 2 && (
+            <div className="space-y-4 animate-in zoom-in-95 duration-200">
+              <div className="text-center space-y-1.5">
+                <h2 className="text-lg sm:text-xl font-black text-white leading-tight">
+                  {t('onboard_step_size_title') || 'Quais as medidas do seu projeto?'}
+                </h2>
+                <p className="text-[11px] text-zinc-400">
+                  {t('onboard_step_size_subtitle') || 'Use o tamanho recomendado ou personalize agora.'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={() => setUseCustomSize(false)}
+                  className={`p-4 rounded-2xl border text-left transition-all duration-300 active:scale-[0.98] focus:outline-none select-none ${
+                    !useCustomSize
+                      ? 'bg-primary/10 border-primary shadow-[0_0_15px_rgba(245,166,35,0.10)] text-primary'
+                      : 'bg-zinc-900/40 border-white/5 hover:border-white/15 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <p className="text-[11px] font-black uppercase tracking-wider">
+                    {t('onboard_size_recommended') || 'Tamanho recomendado'}
+                  </p>
+                  <p className="text-[10px] font-mono mt-1 opacity-80">
+                    {selectedType.params.width}×{selectedType.params.height}×{selectedType.params.depth} mm
+                  </p>
+                </button>
+                <button
+                  onClick={() => setUseCustomSize(true)}
+                  className={`p-4 rounded-2xl border text-left transition-all duration-300 active:scale-[0.98] focus:outline-none select-none ${
+                    useCustomSize
+                      ? 'bg-primary/10 border-primary shadow-[0_0_15px_rgba(245,166,35,0.10)] text-primary'
+                      : 'bg-zinc-900/40 border-white/5 hover:border-white/15 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <p className="text-[11px] font-black uppercase tracking-wider">
+                    {t('onboard_size_custom') || 'Personalizar medidas'}
+                  </p>
+                  <p className="text-[10px] mt-1 opacity-80">
+                    {t('onboard_size_custom_hint') || 'Defina largura, altura e profundidade'}
+                  </p>
+                </button>
+              </div>
+
+              {useCustomSize && (
+                <div className="grid grid-cols-3 gap-3 pt-2">
+                  {[
+                    { key: 'width',  label: t('onboard_size_width')  || 'Largura mm', min: 200, max: 3000 },
+                    { key: 'height', label: t('onboard_size_height') || 'Altura mm',  min: 400, max: 2800 },
+                    { key: 'depth',  label: t('onboard_size_depth')  || 'Prof. mm',   min: 300, max: 800  },
+                  ].map(f => (
+                    <div key={f.key}>
+                      <label className="label">{f.label}</label>
+                      <input
+                        type="number"
+                        min={f.min} max={f.max}
+                        value={customSize[f.key]}
+                        onChange={e => setCustomSize(s => ({ ...s, [f.key]: Number(e.target.value) }))}
+                        className="input-field text-center font-mono text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 3: Entry method selection */}
+          {step === 3 && (
             <div className="space-y-4 animate-in zoom-in-95 duration-200">
               <div className="text-center space-y-1.5">
                 <h2 className="text-lg sm:text-xl font-black text-white leading-tight">
@@ -389,8 +478,8 @@ export default function OnboardingWizard({ onComplete, onSkip }) {
             </div>
           )}
 
-          {/* STEP 3: Automated preview & CTA */}
-          {step === 3 && (
+          {/* STEP 4: Automated preview & CTA */}
+          {step === 4 && (
             <div className="space-y-4 animate-in zoom-in-95 duration-200">
               <div className="text-center space-y-1.5">
                 <h2 className="text-lg sm:text-xl font-black text-white leading-tight">
@@ -450,7 +539,7 @@ export default function OnboardingWizard({ onComplete, onSkip }) {
                 </div>
 
                 <div className="mt-4 text-center font-mono text-[9px] text-zinc-500 font-bold uppercase tracking-wider space-y-0.5">
-                  <p>{t(selectedType.titleKey)} · {selectedType.params.width}x{selectedType.params.height}x{selectedType.params.depth} mm</p>
+                  <p>{t(selectedType.titleKey)} · {finalParams.width}x{finalParams.height}x{finalParams.depth} mm</p>
                   <p className="text-[8px] text-[#00FF99]">100% Validado por Orbin Guard</p>
                 </div>
               </div>
@@ -476,11 +565,11 @@ export default function OnboardingWizard({ onComplete, onSkip }) {
             className="btn-primary h-11 flex-1 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest"
           >
             <span>
-              {step === 3 
-                ? (t('onboard_btn_finish') || 'Ver meu projeto completo →') 
+              {step === 4
+                ? (t('onboard_btn_finish') || 'Ver meu projeto completo →')
                 : (t('onboard_btn_continue') || 'Continuar')}
             </span>
-            {step < 3 && <ArrowRight size={14} />}
+            {step < 4 && <ArrowRight size={14} />}
           </button>
         </div>
 
