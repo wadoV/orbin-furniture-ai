@@ -99,6 +99,9 @@ export default function App() {
   // ★ Captura isométrica (gris CAD) del visor para el Plano de Montaje
   const captureIsometricRef = useRef(null)
   const handleIsoCaptureReady = useCallback(fn => { captureIsometricRef.current = fn }, [])
+  // ★ Captura CAD unificada (front/top/iso) para el Plano de Montaje
+  const cadCaptureRef = useRef(null)
+  const handleCadCaptureReady = useCallback(fn => { cadCaptureRef.current = fn }, [])
   const [showWelcome, setShowWelcome] = useState(true)
   const [activeTab, setActiveTab] = useState('params')
   const [loading,   setLoading]   = useState(false)
@@ -777,6 +780,7 @@ export default function App() {
                   modules={modules}
                   captureWireframe={() => captureWireframeRef.current?.()}
                   captureIsometric={() => captureIsometricRef.current?.()}
+                  captureView={(kind) => cadCaptureRef.current?.(kind)}
                 />
               )}
 
@@ -810,6 +814,7 @@ export default function App() {
                     onUpdateModule={handleUpdateModule}
                     onCaptureReady={handleCaptureReady}
                     onIsoCaptureReady={handleIsoCaptureReady}
+                    onCadCaptureReady={handleCadCaptureReady}
                     onAddModule={() => {
                       setActiveTab('params')
                       setTimeout(() => {

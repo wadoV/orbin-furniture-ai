@@ -482,7 +482,7 @@ function LockedBtn({ label, tier = 'Pro', reason }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function ExportPanel({ modules = [], captureWireframe = null, captureIsometric = null }) {
+export default function ExportPanel({ modules = [], captureWireframe = null, captureIsometric = null, captureView = null }) {
   const { t, lang } = usePreferences()
   const { canExportPDF, canExportCSV, canExportCNC, canExportBOM, isEnterprise, isPro, isFree, user, companySettings, updateCompanySettings } = useUser()
   const [exporting,      setExporting]      = useState(null)
@@ -579,7 +579,9 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
     if (genPlan) return
     setGenPlan(true); setError(null)
     try {
-      const iso = (typeof captureIsometric === 'function') ? captureIsometric() : null
+      const cap = (kind) => (typeof captureView === 'function') ? captureView(kind) : null
+      const captures = { front: cap('front'), top: cap('top'), iso: cap('iso') }
+      const iso = (captures.iso && captures.iso.url) ? captures.iso.url : ((typeof captureIsometric === 'function') ? captureIsometric() : null)
       const company = companyForPlan()
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
       const PW = pdf.internal.pageSize.getWidth(), PH = pdf.internal.pageSize.getHeight()
@@ -589,10 +591,10 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
         pdf.addImage(png, 'PNG', 0, 0, PW, PH)
       }
       if (mode === 'conjunto') {
-        await addSVG(generateConjuntoPlanSVG(modules, { theme: 'print', company, isoDataURL: iso }), true)
+        await addSVG(generateConjuntoPlanSVG(modules, { theme: 'print', lang, company, captures, isoDataURL: iso }), true)
       } else {
         for (let i = 0; i < modules.length; i++) {
-          await addSVG(generateModulePlanSVG(modules[i], { theme: 'print', company, isoDataURL: iso }), i === 0)
+          await addSVG(generateModulePlanSVG(modules[i], { theme: 'print', lang, company, captures, isoDataURL: iso }), i === 0)
         }
       }
       pdf.save(`orbin-plano-${mode}-${Date.now()}.pdf`)
@@ -667,42 +669,74 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
           onClick={() => setShowCompanyForm(v => !v)}
           className="w-full flex items-center justify-between text-left text-[10px] tracking-widest uppercase font-semibold text-zinc-500 hover:text-white transition-colors"
         >
-          <span>📋 Datos de Emisión (Marca Blanca)</span>
+          <span>{t('exp_company_section') || '📋 Datos de Emisión'}</span>
           <span className="text-zinc-600">{showCompanyForm ? '▲' : '▼'}</span>
         </button>
         {showCompanyForm && (
           <div className="mt-3 space-y-3 p-4 border border-zinc-800/40 rounded-lg bg-zinc-950/20">
             <div className="space-y-1">
-              <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">Nombre de Empresa</label>
+              <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">{t('hdr_company_name') || 'Nombre de Empresa'}</label>
               <input
                 type="text"
                 value={companySettings?.name || ''}
                 onChange={e => handleCompanyFieldChange('name', e.target.value)}
                 className="input-field w-full text-xs"
-                placeholder="Ej. Mi Marcenaria Pro"
+                placeholder={t('hdr_company_name_ph') || 'Ej. Mi Carpintería Pro'}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">Teléfono</label>
+                <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">{t('hdr_phone') || 'Teléfono'}</label>
                 <input
                   type="text"
                   value={companySettings?.phone || ''}
                   onChange={e => handleCompanyFieldChange('phone', e.target.value)}
                   className="input-field w-full text-xs"
-                  placeholder="Ej. +55 (11) 99999-9999"
+                  placeholder={t('hdr_phone_ph') || '+55 (11) 99999-9999'}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">Dirección</label>
+                <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">{t('hdr_address') || 'Dirección'}</label>
                 <input
                   type="text"
                   value={companySettings?.address || ''}
                   onChange={e => handleCompanyFieldChange('address', e.target.value)}
                   className="input-field w-full text-xs"
-                  placeholder="Ej. Av. Principal 123"
+                  placeholder={t('hdr_address_ph') || 'Av. Principal 123'}
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">{isPT?'Desenhista':isES?'Diseñador':'Designer'}</label>
+                <input
+                  type="text"
+                  value={companySettings?.desenhista || ''}
+                  onChange={e => handleCompanyFieldChange('desenhista', e.target.value)}
+                  className="input-field w-full text-xs"
+                  placeholder={isPT?'Ex. João Silva':isES?'Ej. Juan Pérez':'e.g. John Smith'}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">{isPT?'Setor':'Sector'}</label>
+                <input
+                  type="text"
+                  value={companySettings?.setor || ''}
+                  onChange={e => handleCompanyFieldChange('setor', e.target.value)}
+                  className="input-field w-full text-xs"
+                  placeholder={isPT?'Ex. Montagem':isES?'Ej. Montaje':'e.g. Assembly'}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider block">{t('material') || 'Material'}</label>
+              <input
+                type="text"
+                value={companySettings?.material || ''}
+                onChange={e => handleCompanyFieldChange('material', e.target.value)}
+                className="input-field w-full text-xs"
+                placeholder={'MDF 18 mm'}
+              />
             </div>
             <label className="flex items-center gap-2 cursor-pointer pt-1">
               <input
@@ -711,7 +745,7 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
                 onChange={handleCheckboxChange}
                 className="rounded border-zinc-800 bg-zinc-950/40 text-[#F5A623] focus:ring-0"
               />
-              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Establecer como predeterminado</span>
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">{t('hdr_save_default') || 'Guardar como predeterminado'}</span>
             </label>
           </div>
         )}
