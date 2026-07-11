@@ -72,3 +72,6 @@ scratch_secret_test.txt
 *.timestamp-*.mjs
 client/src/components/combined.txt
 Orbin_ActionPlan/
+
+# temporal de prueba (auditoría) — borrar manual
+client/src/engine/_cg_probe.js

@@ -243,7 +243,9 @@ export default function App() {
 
   const handleGenerate = async (payload) => {
     // ── PLAN RESTRICTION: Free plan max 3 modules ─────────────────────────
-    if (isFree && !canAddModule(modules.length)) {
+    // Un preset con replace:true reemplaza el diseño (resultado = 1 módulo),
+    // así que nunca excede el límite y no debe bloquearse por él.
+    if (!payload?.replace && isFree && !canAddModule(modules.length)) {
       setPlanAlert({
         feature:     t('plan_module_limit_feature') || 'Módulos ilimitados',
         message:     t('plan_module_limit')     || 'Límite de módulos alcanzado',
@@ -287,7 +289,12 @@ export default function App() {
           }
         }
         const newModule = { ...design, id: design.id || ('MOD-' + Date.now()) }
-        saveHistory([...modules, newModule], 'Generated ' + (design.type || 'module'))
+        // ★ Preset "quick-start" (replace:true) reemplaza el diseño actual →
+        //   resultado limpio de 1 módulo, sin apilar. "Generar" manual y NL
+        //   siguen AGREGANDO a la composición existente. Reversible con Ctrl+Z
+        //   porque pasa por saveHistory.
+        const nextModules = payload?.replace ? [newModule] : [...modules, newModule]
+        saveHistory(nextModules, (payload?.replace ? 'Preset ' : 'Generated ') + (design.type || 'module'))
         setSelectedModuleId(newModule.id)
         try {
           const mem = loadMemory()

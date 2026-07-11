@@ -11,6 +11,8 @@
  */
 
 const { v4: uuidv4 } = require('uuid')
+// ── Manifiesto matemático (Single Source of Truth) — DeepSeek R1 specs ──
+const FurnitureMath = require('../ai/furnitureMathSpecs')
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const HARDWARE = {
@@ -148,7 +150,7 @@ function generateFurniture(params) {
   const isBase = moduleType === 'base' || moduleType === 'standard'
   const BH3 = (baseboard && !isAereo) ? (baseboardHeight || 100) : 0
   const structuralHeight = H - BH3
-  const internalWidth = W - (2 * T)
+  const internalWidth = FurnitureMath.internalSpan(W, T)
   const internalDepth = D - BT
 
   // BUG FIX T06/T09/T10/T12/T15/T23/T29: Descriptive guard before any calculation
@@ -195,7 +197,14 @@ function generateFurniture(params) {
   // Standard/aereo use 2*T (bottom base + top techo). Base+countertop uses T+70.
   const topDeduction = (isBase && hasCountertop && moduleType !== 'standard') ? 70 : T
   const backH = H - BH3 - T - topDeduction
-  pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', internalWidth, backH, BT, 1, W/2, BH3 + T + backH/2, D - BT/2, 'none'))
+  // ── Fondo: ancho según método (manifiesto = SSOT). Default = vano interno (sin cambios).
+  //   'grooved' (ranurado) = internalSpan + 2·grooveDepth ; 'nailed' (clavado) = W − 2mm.
+  const backWidth = (cfg.backStyle === 'grooved')
+    ? FurnitureMath.backPanels.groovedWidth(internalWidth, cfg.grooveDepth || 8)
+    : (cfg.backStyle === 'nailed')
+      ? FurnitureMath.backPanels.nailedWidth(W)
+      : internalWidth
+  pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', backWidth, backH, BT, 1, W/2, BH3 + T + backH/2, D - BT/2, 'none'))
 
   if (baseType === 'recessed' && BH3 > 0) {
     pieces.push(makePiece(nextId('RDPE-F'), 'Zócalo Frontal', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, D - T/2 - 50, 'vertical', { front: true }))
@@ -231,8 +240,8 @@ function generateFurniture(params) {
         drawerGroupId: drawerId
       })
 
-      const boxOuterW = drawerW - (2 * SLIDE_GAP)
-      const boxInnerW = boxOuterW - (2 * T)
+      const boxOuterW = FurnitureMath.drawerBox.netWidth(drawerW)
+      const boxInnerW = FurnitureMath.drawerBox.headerWidth(boxOuterW, T)
       const boxD = D - 50
       const boxH = safeDrawerHeight - 40
       const boxZ = D/2 + BT/2

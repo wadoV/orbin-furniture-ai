@@ -279,7 +279,7 @@ const FURNITURE_PRESETS = [
         <line x1="15.5" y1="16.5" x2="17.5" y2="16.5" />
       </svg>
     ),
-    params: { moduleType: 'standard', materialId: 'mdf_25', width: 1200, height: 750, depth: 600, thickness: 25, backThickness: 6, numShelves: 0, numDrawers: 3, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, drawerLayout: 'right', drawerHeight: 150 }
+    params: { moduleType: 'standard', materialId: 'mdf_25', width: 1200, height: 750, depth: 600, thickness: 25, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, drawerLayout: 'right', drawerHeight: 150 }
   },
   {
     id: 'floating_shelf',
@@ -501,7 +501,19 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
 
           {/* ★ v2.6: Furniture Type Presets */}
           <FurniturePresets
-            onApply={(presetParams) => setParams(p => ({ ...p, ...presetParams }))}
+            onApply={(presetParams) => {
+              // FIX [presets]: el preset solo actualizaba el formulario local y
+              // nunca disparaba la regeneración → el 3D no cambiaba. Ahora, ademas
+              // de setear params, llama a onGenerate (mismo camino que "Generar":
+              // handleGenerate → /api/design/generate → modulo + validacion).
+              // Base = DEFAULTS (config completa y limpia) para NO heredar las
+              // dimensiones del modulo anterior (eso causaba el error critico de
+              // sobre-apilado de gavetas en Oficina). replace:true → el preset
+              // reemplaza el diseno actual (quick-start); "+"/"Generar" agregan.
+              const merged = { ...DEFAULTS, ...presetParams }
+              setParams(merged)
+              onGenerate({ params: merged, replace: true })
+            }}
             t={t}
           />
 

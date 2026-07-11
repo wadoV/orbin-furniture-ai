@@ -13,7 +13,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
-import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan } from 'lucide-react'
+import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan, ZoomIn, ZoomOut } from 'lucide-react'
 
 import PresentationMode from './PresentationMode.jsx'
 import AIVisualStylist from './AIVisualStylist.jsx'
@@ -1392,6 +1392,24 @@ export default function Viewer3D({
     link.click()
   }, [])
 
+  // --- Zoom controls (+ / - buttons) ---
+  // Moves the camera along the vector to the orbit target. Distance is clamped
+  // so the user can't zoom through the model or fly off to infinity. Works with
+  // OrbitControls (perspective camera) and respects the current pan target.
+  const zoomCamera = useCallback((direction) => {
+    const cam = camRef.current
+    const controls = controlsRef.current
+    if (!cam || !controls) return
+    const factor = direction === 'in' ? 0.82 : 1.22
+    const offset = new THREE.Vector3().subVectors(cam.position, controls.target)
+    const minDist = controls.minDistance || 20
+    const maxDist = controls.maxDistance && controls.maxDistance !== Infinity ? controls.maxDistance : 4000
+    const nextLen = Math.max(minDist, Math.min(maxDist, offset.length() * factor))
+    offset.setLength(nextLen)
+    cam.position.copy(controls.target).add(offset)
+    controls.update()
+  }, [])
+
   // --- Empty State ---
   const isEmpty = modules.length === 0
 
@@ -1658,6 +1676,29 @@ export default function Viewer3D({
         {isExportingAR ? <Loader2 size={16} className="animate-spin" /> : <Scan size={16} />}
         Ver en mi espacio
       </button>
+
+      {/* ─── Zoom controls (+ / -) — right side, vertically centered ─── */}
+      <div className="absolute top-1/2 -translate-y-1/2 right-4 flex flex-col gap-2 bg-black/60 backdrop-blur-xl p-2 rounded-2xl border border-white/10 shadow-2xl z-30 transition-all duration-300 hover:border-white/20">
+        <button
+          onClick={() => zoomCamera('in')}
+          className="p-2.5 rounded-xl transition-all duration-200 group/btn relative hover:bg-white/10 text-white/80 hover:text-white"
+        >
+          <ZoomIn size={18} />
+          <span className="absolute right-14 top-1/2 -translate-y-1/2 bg-black border border-white/10 text-white text-[10px] font-bold py-1 px-2 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'ES' ? 'Acercar' : lang === 'PT' ? 'Aproximar' : 'Zoom in'}
+          </span>
+        </button>
+        <div className="h-px bg-white/10 mx-1.5" />
+        <button
+          onClick={() => zoomCamera('out')}
+          className="p-2.5 rounded-xl transition-all duration-200 group/btn relative hover:bg-white/10 text-white/80 hover:text-white"
+        >
+          <ZoomOut size={18} />
+          <span className="absolute right-14 top-1/2 -translate-y-1/2 bg-black border border-white/10 text-white text-[10px] font-bold py-1 px-2 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'ES' ? 'Alejar' : lang === 'PT' ? 'Afastar' : 'Zoom out'}
+          </span>
+        </button>
+      </div>
 
       {/* AR Model Viewer Overlay */}
       {arModelUrl && (
