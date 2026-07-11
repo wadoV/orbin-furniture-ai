@@ -103,6 +103,7 @@ export default function Viewer3D({
   onUpdateModule   = () => {},
   onAddModule      = () => {},
   onCaptureReady   = null,   // (fn) => void  — called once renderer is ready; fn() returns PNG dataURL
+  onIsoCaptureReady = null,  // (fn) => void  — expone captura isométrica en gris CAD (PNG dataURL)
 }) {
   const { t, lang } = usePreferences()
   const mountRef = useRef(null)
@@ -810,6 +811,69 @@ export default function Viewer3D({
         return dataURL
       }
       onCaptureReady(captureWireframeDataURL)
+    }
+
+    // ★ CAPTURE ISOMÉTRICO — vista 3D en gris CAD (caras grises + aristas oscuras),
+    //   ángulo isométrico. Read-only: guarda y restaura materiales/fondo/grid.
+    //   Para el Plano Ejecutivo. No altera estado React, módulos ni física.
+    if (typeof onIsoCaptureReady === 'function') {
+      const captureIsometricDataURL = () => {
+        if (!rendererRef.current || !sceneRef.current || !groupRef.current) return null
+        const rdr = rendererRef.current
+        const sc  = sceneRef.current
+        const meshes = meshesRef.current
+        if (!meshes || meshes.length === 0) return null
+        const box = new THREE.Box3().setFromObject(groupRef.current)
+        if (box.isEmpty()) return null
+        const center = new THREE.Vector3(); box.getCenter(center)
+        const size = new THREE.Vector3(); box.getSize(size)
+        const maxDim = Math.max(size.x, size.y, size.z) || 10
+        const aspect = rdr.domElement.width / rdr.domElement.height
+        const isoCam = new THREE.PerspectiveCamera(32, aspect, 1, 100000)
+        const dir = new THREE.Vector3(1, 0.8, 1).normalize()
+        isoCam.position.copy(center).add(dir.multiplyScalar(maxDim * 2.3))
+        isoCam.lookAt(center)
+        const saved = meshes.map(m => ({
+          color: m.material.color.getHex(), emissive: m.material.emissive.getHex(),
+          emissiveInt: m.material.emissiveIntensity, roughness: m.material.roughness,
+          metalness: m.material.metalness, opacity: m.material.opacity, wireframe: m.material.wireframe,
+          edgeColor: m.userData.edgeHelper?.material.color.getHex(),
+          edgeOpacity: m.userData.edgeHelper?.material.opacity,
+        }))
+        const savedBg = sc.background ? sc.background.getHex() : 0x0f0f0f
+        const savedGridVis = gridRef.current?.visible
+        sc.background.set(0xf4f4f5)
+        if (gridRef.current) gridRef.current.visible = false
+        meshes.forEach(m => {
+          m.material.wireframe = false
+          m.material.color.set(0xd7dade)
+          m.material.emissive.set(0x000000)
+          m.material.emissiveIntensity = 0
+          m.material.roughness = 1.0
+          m.material.metalness = 0.0
+          m.material.opacity = 1.0
+          if (m.userData.edgeHelper) {
+            m.userData.edgeHelper.material.color.set(0x1f2226)
+            m.userData.edgeHelper.material.opacity = 1.0
+          }
+        })
+        rdr.render(sc, isoCam)
+        const dataURL = rdr.domElement.toDataURL('image/png', 1.0)
+        meshes.forEach((m, i) => {
+          const sv = saved[i]
+          m.material.color.set(sv.color); m.material.emissive.set(sv.emissive)
+          m.material.emissiveIntensity = sv.emissiveInt; m.material.roughness = sv.roughness
+          m.material.metalness = sv.metalness; m.material.opacity = sv.opacity; m.material.wireframe = sv.wireframe
+          if (m.userData.edgeHelper && sv.edgeColor != null) {
+            m.userData.edgeHelper.material.color.set(sv.edgeColor)
+            m.userData.edgeHelper.material.opacity = sv.edgeOpacity
+          }
+        })
+        sc.background.set(savedBg)
+        if (gridRef.current) gridRef.current.visible = savedGridVis
+        return dataURL
+      }
+      onIsoCaptureReady(captureIsometricDataURL)
     }
 
     // ★ Cleanup: cancela loop y event listeners al desmontar
