@@ -18,6 +18,7 @@ import {
 import { exportDesign, nestPieces, downloadBlob } from '../engine/exportAdapters.js'
 import { drawElevation } from '../engine/planRenderer.js'
 import { generateFactoryCutlist } from '../engine/CutlistGenerator.js'
+import { generateModulePlanSVG, generateConjuntoPlanSVG } from '../engine/planGenerator.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { trackEvent, EVENTS } from '../lib/analytics.js'
@@ -481,7 +482,7 @@ function LockedBtn({ label, tier = 'Pro', reason }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function ExportPanel({ modules = [], captureWireframe = null }) {
+export default function ExportPanel({ modules = [], captureWireframe = null, captureIsometric = null }) {
   const { t, lang } = usePreferences()
   const { canExportPDF, canExportCSV, canExportCNC, canExportBOM, isEnterprise, isPro, isFree, user, companySettings, updateCompanySettings } = useUser()
   const [exporting,      setExporting]      = useState(null)
@@ -548,6 +549,55 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
     setGenPlan(true); setError(null)
     try { await generatePlanoPDF({ modules, captureWireframe, user, lang, t, companySettings }) }
     catch(e) { console.error("PLANO ERROR:", e); setError('PLANO ERROR: ' + e.message) }
+    finally { setGenPlan(false) }
+  }
+
+  // ── PLANO DE MONTAGEM (novo) — SVG paramétrico (planGenerator) -> PNG -> PDF ──
+  const companyForPlan = () => ({
+    empresa: companySettings?.name, setor: companySettings?.setor,
+    material: companySettings?.material, desenhista: companySettings?.desenhista || user?.name,
+    data: companySettings?.data,
+  })
+  const svgToPngDataURL = (svgString, scale = 2.5) => new Promise((resolve, reject) => {
+    try {
+      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      img.onload = () => {
+        const W = Math.round(1000 * scale), H = Math.round(740 * scale)
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H
+        const ctx = cv.getContext('2d')
+        ctx.drawImage(img, 0, 0, W, H)
+        URL.revokeObjectURL(url)
+        resolve(cv.toDataURL('image/png'))
+      }
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('SVG->PNG failed')) }
+      img.src = url
+    } catch (err) { reject(err) }
+  })
+  const handlePlanoPro = async (mode) => {
+    if (genPlan) return
+    setGenPlan(true); setError(null)
+    try {
+      const iso = (typeof captureIsometric === 'function') ? captureIsometric() : null
+      const company = companyForPlan()
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
+      const PW = pdf.internal.pageSize.getWidth(), PH = pdf.internal.pageSize.getHeight()
+      const addSVG = async (svg, first) => {
+        const png = await svgToPngDataURL(svg, 2.5)
+        if (!first) pdf.addPage('a4', 'landscape')
+        pdf.addImage(png, 'PNG', 0, 0, PW, PH)
+      }
+      if (mode === 'conjunto') {
+        await addSVG(generateConjuntoPlanSVG(modules, { theme: 'print', company, isoDataURL: iso }), true)
+      } else {
+        for (let i = 0; i < modules.length; i++) {
+          await addSVG(generateModulePlanSVG(modules[i], { theme: 'print', company, isoDataURL: iso }), i === 0)
+        }
+      }
+      pdf.save(`orbin-plano-${mode}-${Date.now()}.pdf`)
+      trackEvent(EVENTS.FILE_EXPORTED, { format: 'plano-pro-' + mode })
+    } catch (err) { console.error('PLANO PRO ERROR:', err); setError('PLANO ERROR: ' + err.message) }
     finally { setGenPlan(false) }
   }
 
@@ -693,6 +743,35 @@ export default function ExportPanel({ modules = [], captureWireframe = null }) {
           </button>
         ) : <LockedBtn label={planoLabel} tier="Pro" reason={t('plan_free_export_banner')} />}
       </div>
+
+      {/* ── 1b. PLANO DE MONTAGEM (novo · 3 vistas + cortes) — Pro+ ──────── */}
+      {canExportPDF && (
+        <div className="space-y-2">
+          <button onClick={() => handlePlanoPro('module')} disabled={genPlan}
+            className="relative overflow-hidden group w-full text-left p-4 rounded-xl border border-primary/35 bg-gradient-to-br from-primary/8 via-surface-3 to-surface-2 hover:border-primary/60 transition-all active:scale-[0.99] disabled:opacity-60">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-lg bg-primary/12 text-primary shrink-0">
+                {genPlan ? <Loader2 size={20} className="animate-spin"/> : <Ruler size={20} className="stroke-[2px]"/>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-black text-sm text-white group-hover:text-primary transition-colors">{isPT?'Plano de Montagem':'Plano de Montaje'}</span>
+                  <span className="text-[9px] font-bold text-primary/80 uppercase tracking-widest bg-primary/10 px-1.5 py-0.5 rounded shrink-0">.PDF</span>
+                </div>
+                <p className="text-[11px] text-white/50 mt-1">{isPT?'3 vistas (alçado, planta, isométrico) + lista de cortes':'3 vistas (alzado, planta, isométrico) + lista de cortes'}{modules.length>1?(isPT?' · 1 folha por módulo':' · 1 hoja por módulo'):''}</p>
+              </div>
+            </div>
+          </button>
+          {modules.length > 1 && (
+            <button onClick={() => handlePlanoPro('conjunto')} disabled={genPlan}
+              className="w-full text-left p-3 rounded-xl border border-white/10 bg-surface-3/40 hover:border-primary/40 transition-all disabled:opacity-60 flex items-center gap-3">
+              <Box size={16} className="text-primary shrink-0"/>
+              <span className="text-[12px] font-bold text-white">{isPT?'Vista de Conjunto (todos os móveis)':'Vista de Conjunto (todos los muebles)'}</span>
+              <span className="ml-auto text-[9px] font-bold text-primary/80 uppercase bg-primary/10 px-1.5 py-0.5 rounded">.PDF</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── 2. CSV LISTA DE CORTE — Pro+ ──────────────────────────────────── */}
       <div>

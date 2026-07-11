@@ -96,6 +96,9 @@ export default function App() {
   // ★ PLANO EJECUTIVO: read-only capture ref — set by Viewer3D, consumed by ExportPanel
   const captureWireframeRef = useRef(null)
   const handleCaptureReady  = useCallback(fn => { captureWireframeRef.current = fn }, [])
+  // ★ Captura isométrica (gris CAD) del visor para el Plano de Montaje
+  const captureIsometricRef = useRef(null)
+  const handleIsoCaptureReady = useCallback(fn => { captureIsometricRef.current = fn }, [])
   const [showWelcome, setShowWelcome] = useState(true)
   const [activeTab, setActiveTab] = useState('params')
   const [loading,   setLoading]   = useState(false)
@@ -773,6 +776,7 @@ export default function App() {
                 <ExportPanel
                   modules={modules}
                   captureWireframe={() => captureWireframeRef.current?.()}
+                  captureIsometric={() => captureIsometricRef.current?.()}
                 />
               )}
 
@@ -805,6 +809,7 @@ export default function App() {
                     onDeleteModule={handleDeleteModule}
                     onUpdateModule={handleUpdateModule}
                     onCaptureReady={handleCaptureReady}
+                    onIsoCaptureReady={handleIsoCaptureReady}
                     onAddModule={() => {
                       setActiveTab('params')
                       setTimeout(() => {
