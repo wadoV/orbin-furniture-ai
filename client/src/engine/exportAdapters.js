@@ -32,6 +32,14 @@ function moduleBoxes(mod, fallbackPieces){
 }
 const safeId=(s,i)=>String(s||`MOD-${i+1}`).replace(/[^A-Za-z0-9_-]/g,'_')
 
+// ── Mapa tipo→abreviatura y color ACI (para capas/subcapas por pieza) ──
+const TYPE_ABBR={lateral:'LAT',divider:'DIV',divisor:'DIV',shelf:'EST',repisa:'EST',estante:'EST',techo:'TAM',piso:'BASE',base:'BASE',drawer_front:'FFR',drawer_box:'CGV',drawer_bottom:'FUN',fondo:'FND',door:'PTA',tamponado:'TMP',countertop:'TMP',baseboard:'ZOC',feet:'PATA',structural:'EST'}
+const TYPE_ACI={lateral:5,divider:4,divisor:4,shelf:3,repisa:3,estante:3,techo:2,piso:2,base:2,drawer_front:1,drawer_box:6,drawer_bottom:8,fondo:8,door:1,tamponado:4,countertop:30,baseboard:9,feet:250,structural:3}
+const abbrOf=(t)=>TYPE_ABBR[t]||'PZA'
+const aciOf=(t)=>TYPE_ACI[t]||7
+// Capa por pieza: M{n}-{TIPO}-{k}. Prefijo de módulo → AutoCAD agrupa (subcapas por filtro).
+function pieceLayer(modIdx,box,counters){const key=`M${modIdx+1}-${abbrOf(box.type)}`;const n=(counters[key]=(counters[key]||0)+1);return `${key}-${n}`}
+
 class ExportAdapter{
   constructor(name,extension,mimeType){this.name=name;this.extension=extension;this.mimeType=mimeType}
   async export(){throw new Error(`${this.name}.export() not implemented`)}
@@ -72,9 +80,12 @@ const QUADS=[[0,1,2,3],[4,5,6,7],[0,1,5,4],[2,3,7,6],[1,2,6,5],[0,3,7,4]]
 class OBJAdapter extends ExportAdapter{
   constructor(){super('OBJ (3D)','.obj','text/plain')}
   async export(modules){
-    let obj='# Orbin AI — OBJ (grupos por módulo)\n',vb=0
-    modules.forEach((mod,i)=>{const id=safeId(mod.id,i);obj+=`\no ${id}\ng ${id}\n`
-      for(const b of moduleBoxes(mod,this.extractPieces([mod]))){for(const v of boxVerts(b))obj+=`v ${v[0]} ${v[1]} ${v[2]}\n`;for(const f of QUADS)obj+=`f ${f.map(k=>k+1+vb).join(' ')}\n`;vb+=8}})
+    let obj='# Orbin AI — OBJ (un objeto por PIEZA, editable por separado)\n',vb=0
+    modules.forEach((mod,i)=>{const id=safeId(mod.id,i);let pn=0
+      for(const b of moduleBoxes(mod,this.extractPieces([mod]))){pn++
+        obj+=`\no ${id}__${safeId(b.name,0).slice(0,28)}_${pn}\ng ${id}\n`
+        for(const v of boxVerts(b))obj+=`v ${v[0]} ${v[1]} ${v[2]}\n`
+        for(const f of QUADS)obj+=`f ${f.map(k=>k+1+vb).join(' ')}\n`;vb+=8}})
     return{blob:new Blob([obj],{type:this.mimeType}),filename:`orbin-3d-${Date.now()}.obj`,metadata:{format:'OBJ',modules:modules.length}}
   }
 }
@@ -83,12 +94,16 @@ class DAEAdapter extends ExportAdapter{
   constructor(){super('SketchUp (COLLADA)','.dae','model/vnd.collada+xml')}
   async export(modules){
     const geos=[],nodes=[]
-    modules.forEach((mod,i)=>{const id=safeId(mod.id,i);const verts=[],faces=[];let vb=0
-      for(const b of moduleBoxes(mod,this.extractPieces([mod]))){boxVerts(b).forEach(v=>verts.push(v[0],v[1],v[2]));for(const f of QUADS){faces.push(f[0]+vb,f[1]+vb,f[2]+vb,f[0]+vb,f[2]+vb,f[3]+vb)}vb+=8}
-      geos.push(`<geometry id="geo_${id}" name="${id}"><mesh><source id="pos_${id}"><float_array id="posA_${id}" count="${verts.length}">${verts.join(' ')}</float_array><technique_common><accessor source="#posA_${id}" count="${verts.length/3}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source><vertices id="vtx_${id}"><input semantic="POSITION" source="#pos_${id}"/></vertices><triangles count="${faces.length/3}"><input semantic="VERTEX" source="#vtx_${id}" offset="0"/><p>${faces.join(' ')}</p></triangles></mesh></geometry>`)
-      nodes.push(`<node id="${id}" name="${id}"><instance_geometry url="#geo_${id}"/></node>`)})
+    modules.forEach((mod,i)=>{const modId=safeId(mod.id,i);const children=[];let pn=0
+      for(const b of moduleBoxes(mod,this.extractPieces([mod]))){pn++
+        const pid=`${modId}_p${pn}_${safeId(b.name,0).slice(0,24)}`
+        const verts=[];boxVerts(b).forEach(v=>verts.push(v[0],v[1],v[2]))
+        const faces=[];for(const f of QUADS){faces.push(f[0],f[1],f[2],f[0],f[2],f[3])}
+        geos.push(`<geometry id="geo_${pid}" name="${pid}"><mesh><source id="pos_${pid}"><float_array id="posA_${pid}" count="${verts.length}">${verts.join(' ')}</float_array><technique_common><accessor source="#posA_${pid}" count="${verts.length/3}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source><vertices id="vtx_${pid}"><input semantic="POSITION" source="#pos_${pid}"/></vertices><triangles count="${faces.length/3}"><input semantic="VERTEX" source="#vtx_${pid}" offset="0"/><p>${faces.join(' ')}</p></triangles></mesh></geometry>`)
+        children.push(`<node id="${pid}" name="${(b.name||pid).replace(/[<>&\"]/g,'_')}"><instance_geometry url="#geo_${pid}"/></node>`)}
+      nodes.push(`<node id="${modId}" name="${modId}">${children.join('')}</node>`)})
     const dae=`<?xml version="1.0" encoding="utf-8"?>\n<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1"><asset><up_axis>Y_UP</up_axis><unit name="millimeter" meter="0.001"/></asset><library_geometries>${geos.join('')}</library_geometries><library_visual_scenes><visual_scene id="Scene" name="Orbin">${nodes.join('')}</visual_scene></library_visual_scenes><scene><instance_visual_scene url="#Scene"/></scene></COLLADA>`
-    return{blob:new Blob([dae],{type:this.mimeType}),filename:`orbin-sketchup-${Date.now()}.dae`,metadata:{format:'COLLADA 1.4.1',modules:modules.length}}
+    return{blob:new Blob([dae],{type:this.mimeType}),filename:`orbin-sketchup-${Date.now()}.dae`,metadata:{format:'COLLADA 1.4.1',modules:modules.length,pieces:geos.length}}
   }
 }
 // ── GLTF real (geometría) ──
@@ -113,20 +128,25 @@ class GLTFAdapter extends ExportAdapter{
 class DXFAdapter extends ExportAdapter{
   constructor(){super('DXF (AutoCAD)','.dxf','application/dxf')}
   async export(modules){
-    const layers=modules.map((m,i)=>safeId(m.id,i))
-    let dxf='0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n'
-    dxf+='0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n'+(layers.length+1)+'\n0\nLAYER\n2\n0\n70\n0\n62\n7\n6\nCONTINUOUS\n'
-    const col=[1,2,3,4,5,6,8,9];layers.forEach((ln,i)=>dxf+=`0\nLAYER\n2\n${ln}\n70\n0\n62\n${col[i%col.length]}\n6\nCONTINUOUS\n`)
-    dxf+='0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n'
-    let xOff=0
-    modules.forEach((mod,i)=>{const layer=layers[i],cfg=mod.configuration||{}
+    // Cada PIEZA visible en su propia capa: M{n}-{TIPO}-{k}. El prefijo de módulo
+    // (M1*) y de tipo (M1-LAT*) agrupan como subcapas en el Layer Manager de AutoCAD,
+    // permitiendo aislar/congelar/editar cualquier pieza por separado. Color por tipo.
+    const counters={}, pieceLayers=[], modLayers=[]
+    let entities='', xOff=0
+    modules.forEach((mod,i)=>{const cfg=mod.configuration||{}
+      const cotasLayer=`M${i+1}-COTAS`; modLayers.push({name:cotasLayer,aci:8})
       for(const b of moduleBoxes(mod,this.extractPieces([mod])).filter(b=>!HIDDEN_ELEV.has(b.type))){
+        const ln=pieceLayer(i,b,counters); pieceLayers.push({name:ln,aci:aciOf(b.type)})
         const x0=xOff+b.cx-b.dx/2,x1=xOff+b.cx+b.dx/2,y0=b.cy-b.dy/2,y1=b.cy+b.dy/2
-        dxf+=L(layer,x0,y0,x1,y0)+L(layer,x1,y0,x1,y1)+L(layer,x1,y1,x0,y1)+L(layer,x0,y1,x0,y0)}
-      dxf+=TXT(layer,xOff+(cfg.width||600)/2,-120,`${safeId(mod.id,i)} ${cfg.width||''}x${cfg.height||''}x${cfg.depth||''}`,50)
+        entities+=L(ln,x0,y0,x1,y0)+L(ln,x1,y0,x1,y1)+L(ln,x1,y1,x0,y1)+L(ln,x0,y1,x0,y0)}
+      entities+=TXT(cotasLayer,xOff+(cfg.width||600)/2,-120,`${safeId(mod.id,i)} ${cfg.width||''}x${cfg.height||''}x${cfg.depth||''}`,50)
       xOff+=(cfg.width||600)+300})
-    dxf+='0\nENDSEC\n0\nEOF\n'
-    return{blob:new Blob([dxf],{type:this.mimeType}),filename:`orbin-cad-${Date.now()}.dxf`,metadata:{format:'DXF R12',layers:layers.length}}
+    const allLayers=[...modLayers,...pieceLayers]
+    let dxf='0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n'
+    dxf+='0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n'+(allLayers.length+1)+'\n0\nLAYER\n2\n0\n70\n0\n62\n7\n6\nCONTINUOUS\n'
+    allLayers.forEach(l=>dxf+=`0\nLAYER\n2\n${l.name}\n70\n0\n62\n${l.aci}\n6\nCONTINUOUS\n`)
+    dxf+='0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n'+entities+'0\nENDSEC\n0\nEOF\n'
+    return{blob:new Blob([dxf],{type:this.mimeType}),filename:`orbin-cad-${Date.now()}.dxf`,metadata:{format:'DXF R12',layers:allLayers.length,pieces:pieceLayers.length}}
   }
 }
 const L=(l,x1,y1,x2,y2)=>`0\nLINE\n8\n${l}\n10\n${x1}\n20\n${y1}\n30\n0\n11\n${x2}\n21\n${y2}\n31\n0\n`

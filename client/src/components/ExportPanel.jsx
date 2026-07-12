@@ -875,7 +875,7 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
             </div>
           </div>
         </button>
-        <button onClick={()=>handleExport('gltf')} disabled={!!exporting}
+        <button onClick={()=>handleExport('dae')} disabled={!!exporting}
           className="relative overflow-hidden group w-full text-left p-3.5 rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/40 via-surface-3 to-surface-2 hover:border-emerald-400 transition-all active:scale-[0.99] disabled:opacity-50">
           <div className="flex items-start gap-3">
             <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:scale-110 transition-all">
@@ -883,8 +883,8 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-sm text-white group-hover:text-emerald-300 transition-colors">{t('export_gltf')}</span>
-                {exporting==='gltf'?<Loader2 size={14} className="animate-spin text-emerald-400"/>:success==='gltf'?<Check size={14} className="text-green-400"/>:<span className="text-[9px] font-bold text-emerald-400/80 bg-emerald-500/10 px-1.5 py-0.5 rounded">.GLTF</span>}
+                <span className="font-semibold text-sm text-white group-hover:text-emerald-300 transition-colors">{isPT?'SketchUp (grupos editáveis)':isES?'SketchUp (grupos editables)':'SketchUp (editable groups)'}</span>
+                {exporting==='dae'?<Loader2 size={14} className="animate-spin text-emerald-400"/>:success==='dae'?<Check size={14} className="text-green-400"/>:<span className="text-[9px] font-bold text-emerald-400/80 bg-emerald-500/10 px-1.5 py-0.5 rounded">.DAE</span>}
               </div>
               <p className="text-[11px] text-white/50 mt-1">{gltfDesc}</p>
             </div>

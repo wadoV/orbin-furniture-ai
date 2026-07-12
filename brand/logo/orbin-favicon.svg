@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Orbin">
+  <g transform="translate(50 50) scale(1.06) translate(-50 -50)">
+    <path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="12" stroke-linecap="round"/>
+    <circle cx="73.3" cy="26.7" r="8.6" fill="#F5A623"/>
+  </g>
+</svg>

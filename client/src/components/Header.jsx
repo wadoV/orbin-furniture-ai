@@ -9,6 +9,7 @@ import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser, PLANS } from '../context/UserContext.jsx'
 import PricingDisplay from './PricingDisplay.jsx'
 import { api } from '../api/client.js'
+import OrbinLogo from './OrbinLogo.jsx'
 
 function UpgradeModal({ onClose }) {
   const { upgradePlan, applyPromoCode, plan } = useUser()
@@ -413,15 +414,7 @@ export default function Header({ modules, serverOnline = true }) {
           {/* Left side: Logo & Back Button */}
           <div className="flex items-center gap-4">
             <button type="button" onClick={() => navigate('/')} aria-label="Orbin AI — ir al inicio" className="flex items-center gap-3 group cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-all duration-300"
-                   style={{ background: 'linear-gradient(135deg, #F5A623 0%, #C47A0F 100%)' }}>
-                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
-                  <rect x="2" y="3" width="20" height="18" rx="2.5" stroke="black" strokeWidth="1.8"/>
-                  <line x1="2" y1="11" x2="22" y2="11" stroke="black" strokeWidth="1.4"/>
-                  <rect x="5" y="14" width="5.5" height="5" rx="1" fill="black" opacity="0.55"/>
-                  <rect x="13.5" y="14" width="5.5" height="5" rx="1" fill="black" opacity="0.55"/>
-                </svg>
-              </div>
+              <OrbinLogo variant="isotipo" theme="dark" className="w-9 h-9 group-hover:scale-105 transition-transform duration-300" />
               <div>
                 <div className="flex items-baseline gap-1">
                   <span className="font-black text-white text-[17px] tracking-tight leading-none">Orbin</span>

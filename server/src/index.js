@@ -183,6 +183,28 @@ app.post('/api/errors', (req, res) => {
   res.json({ received: true })
 })
 
+// ─── Dev-only: guardar capturas del canvas 3D en marketing/captures ──────────
+// Solo desarrollo. Recibe {name, dataURL} y escribe el PNG/JPG. Nombre sanitizado.
+if (process.env.NODE_ENV !== 'production') {
+  const fs = require('fs'); const path = require('path')
+  const capDir = path.resolve(__dirname, '../../marketing/captures')
+  app.post('/api/dev/capture', (req, res) => {
+    try {
+      const { name, dataURL } = req.body || {}
+      if (!dataURL || typeof dataURL !== 'string') return res.status(400).json({ success: false, error: 'dataURL requerido' })
+      const m = dataURL.match(/^data:image\/(png|jpeg);base64,(.+)$/)
+      if (!m) return res.status(400).json({ success: false, error: 'formato inválido' })
+      const ext = m[1] === 'jpeg' ? 'jpg' : 'png'
+      const safe = String(name || 'capture').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60)
+      fs.mkdirSync(capDir, { recursive: true })
+      const file = path.join(capDir, safe + '.' + ext)
+      fs.writeFileSync(file, Buffer.from(m[2], 'base64'))
+      res.json({ success: true, file })
+    } catch (e) { res.status(500).json({ success: false, error: e.message }) }
+  })
+  console.log('[Dev] Capture route active at /api/dev/capture -> marketing/captures')
+}
+
 // ─── 404 & Error Handlers ────────────────────────────────────────────────────
 
 app.use((req, res) => {
@@ -269,4 +291,4 @@ server.listen(PORT, '0.0.0.0', () => {
 })
 
 module.exports = app
-// trigger-reload
+// trigger-reload 1783809258

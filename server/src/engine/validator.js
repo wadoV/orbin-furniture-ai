@@ -100,10 +100,20 @@ function validateDesign(design) {
         'Pilha de gavetas (' + drawersPerCol + ' × ' + slotHeight + 'mm c/folga = ' + drawerStack + 'mm) ' +
         'excede a altura interna util (' + availableHeight + 'mm).'
       )
-    } else if (drawerStack > availableHeight * 0.85) {
+    } else if (drawerStack > availableHeight * 0.85 && (cfg.numShelves > 0 || cfg.numDividers > 0)) {
+      // El usuario pidió estantes/divisores ADEMÁS de gavetas, pero la pila los
+      // deja sin espacio → error de diseño real.
       errors.push(
         'Pilha de gavetas (' + drawerStack + 'mm) ocupa ' +
         Math.round(drawerStack/availableHeight*100) + '% da altura interna — sem espaco para estantes ou separador.'
+      )
+    } else if (drawerStack > availableHeight * 0.85) {
+      // [2026-07] Cômoda pura (numShelves === 0, sem divisores): llenar 85-100%
+      // con gavetas ES el diseño buscado. Que quepa físicamente ya lo garantiza
+      // el `if` inicial (drawerStack > availableHeight) → aviso, no rechazo.
+      warnings.push(
+        'Pilha de gavetas ocupa ' + Math.round(drawerStack/availableHeight*100) +
+        '% da altura interna (cômoda de gavetas — sem estantes).'
       )
     } else if (drawerStack > availableHeight * 0.7) {
       warnings.push('Pilha de gavetas (' + drawerStack + 'mm) ocupa mais de 70% da altura interna.')

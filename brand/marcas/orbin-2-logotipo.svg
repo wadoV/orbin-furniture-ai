@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 170" role="img" aria-label="orbin logotipo">
+  <text font-family="Poppins, 'Segoe UI', Arial, sans-serif" font-weight="600" font-size="120" fill="#16181D">
+    <tspan x="8" y="125">o</tspan><tspan x="76.5">r</tspan><tspan x="118.5">b</tspan><tspan x="188.1">&#x0131;</tspan><tspan x="215.2">n</tspan>
+  </text>
+  <circle cx="204" cy="37" r="7" fill="#F5A623"/>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 150" role="img" aria-label="Orbin imagotipo">
+  <g transform="translate(10 22) scale(1.06)">
+    <path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/>
+  </g>
+  <text font-family="Poppins, 'Segoe UI', Arial, sans-serif" font-weight="600" font-size="95" fill="#16181D">
+    <tspan x="140" y="98">o</tspan><tspan x="194.4">r</tspan><tspan x="227.8">b</tspan><tspan x="283">&#x0131;</tspan><tspan x="304.6">n</tspan>
+  </text>
+  <circle cx="295" cy="29" r="6" fill="#F5A623"/>
+</svg>

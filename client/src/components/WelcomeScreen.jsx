@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Zap, Layers, Ruler } from 'lucide-react'
+import OrbinLogo from './OrbinLogo.jsx'
 
 export default function WelcomeScreen({ onStart }) {
   const [animate, setAnimate] = useState(false)
@@ -23,15 +24,7 @@ export default function WelcomeScreen({ onStart }) {
       <div className="relative z-10 max-w-lg w-full text-center space-y-10">
         {/* Logo mark */}
         <div className={`transition-all duration-700 ${animate ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`}>
-          <div className="w-20 h-20 mx-auto rounded-3xl shadow-glow-lg flex items-center justify-center mb-4"
-               style={{ background: 'linear-gradient(135deg, #F5A623 0%, #C47A0F 100%)' }}>
-            <svg viewBox="0 0 40 40" className="w-10 h-10" fill="none">
-              <rect x="4" y="6" width="32" height="28" rx="3" stroke="black" strokeWidth="2.5"/>
-              <line x1="4" y1="18" x2="36" y2="18" stroke="black" strokeWidth="2"/>
-              <rect x="8" y="22" width="10" height="8" rx="1.5" fill="black" opacity="0.55"/>
-              <rect x="22" y="22" width="10" height="8" rx="1.5" fill="black" opacity="0.55"/>
-            </svg>
-          </div>
+          <OrbinLogo variant="isotipo" theme="dark" className="w-20 h-20 mx-auto mb-4" />
           <div className="flex items-baseline justify-center gap-1.5">
             <span className="text-3xl font-black text-white tracking-tight">Orbin</span>
             <span className="text-3xl font-black text-primary tracking-tight">AI</span>

@@ -75,3 +75,6 @@ Orbin_ActionPlan/
 
 # temporal de prueba (auditoría) — borrar manual
 client/src/engine/_cg_probe.js
+
+# Temporales de rasterizado de iconos (sandbox) — borrar manual
+client/public/_*

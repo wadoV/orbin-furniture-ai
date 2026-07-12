@@ -7,15 +7,14 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { Eye, EyeOff, Zap, ArrowRight, Check, Tag, Loader2 } from 'lucide-react'
 import { useUser } from '../context/UserContext.jsx'
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import OrbinLogo from './OrbinLogo.jsx'
 
 function AuthLayout({ children, title, subtitle }) {
   return (
     <div className="min-h-screen bg-[#0D0D0D] flex flex-col items-center justify-center px-4 py-12">
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary/4 rounded-full blur-[100px] pointer-events-none" />
       <Link to="/" className="flex items-center gap-2 mb-10 group">
-        <div className="w-8 h-8 bg-primary rounded-xl flex items-center justify-center shadow-[0_0_16px_rgba(245,166,35,0.4)] group-hover:brightness-110 transition-all">
-          <span className="text-[12px] font-black text-black">O</span>
-        </div>
+        <OrbinLogo variant="isotipo" theme="dark" className="w-8 h-8 group-hover:scale-105 transition-transform" />
         <span className="text-sm font-black text-white uppercase tracking-widest">Orbin AI</span>
       </Link>
       <div className="w-full max-w-md">

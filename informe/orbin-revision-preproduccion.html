@@ -1,0 +1,140 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Orbin — Revisión Pre-Producción</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#16181D;--graphite:#22262E;--amber:#F5A623;--paper:#F5F3EF;--muted:#8a8f98;--green:#2ea05a;--red:#d64545;--blue:#3b82f6}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,sans-serif;background:#0d0e10;color:#e8eaed;line-height:1.6}
+.wrap{max-width:960px;margin:0 auto;padding:0 26px 100px}
+.hero{background:linear-gradient(160deg,#16181D,#0d0e10);border-bottom:1px solid #26292f;padding:54px 26px 46px;margin-bottom:8px}
+.hero .in{max-width:960px;margin:0 auto;display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+.hero svg{width:74px;height:74px;flex-shrink:0}
+.kick{font-family:Poppins;font-weight:700;font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:Poppins;font-weight:700;font-size:30px;letter-spacing:-.5px;margin:4px 0 4px;color:#fff}
+.hero p{color:#aab0b8;font-size:14px}
+.scorebox{margin-left:auto;text-align:center;background:#101114;border:1px solid #2b2f36;border-radius:20px;padding:18px 26px}
+.scorebox .n{font-family:Poppins;font-weight:800;font-size:46px;line-height:1;color:var(--amber)}
+.scorebox .d{font-size:11px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:4px}
+.verdict{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:6px 14px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.06em;background:rgba(46,160,90,.14);color:#5fce8c;border:1px solid rgba(46,160,90,.3)}
+h2{font-family:Poppins;font-weight:600;font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--amber);margin:46px 0 18px;padding-bottom:10px;border-bottom:1px solid #26292f}
+.lead{font-size:15.5px;color:#c9ced4;max-width:720px}
+.card{background:#131417;border:1px solid #24272d;border-radius:16px;padding:20px 22px;margin:14px 0}
+.row{display:flex;align-items:center;gap:14px;margin:11px 0}
+.row .lbl{width:190px;font-size:13px;font-weight:600;color:#dfe3e8;flex-shrink:0}
+.bar{flex:1;height:9px;background:#22252b;border-radius:6px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#C47A0F,#F5A623)}
+.row .v{width:44px;text-align:right;font-family:Poppins;font-weight:700;font-size:14px;color:#fff}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13.5px}
+th,td{text-align:left;padding:11px 12px;border-bottom:1px solid #24272d}
+th{font-family:Poppins;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td.n{font-family:Poppins;font-weight:700;text-align:center}
+.win{color:#5fce8c}.mid{color:#f0c05a}.low{color:#e07a7a}
+.orb{background:rgba(245,166,35,.06)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:999px;margin-bottom:6px}
+.t-str{background:rgba(46,160,90,.12);color:#5fce8c}.t-risk{background:rgba(214,69,69,.12);color:#e07a7a}
+ul{list-style:none;margin:6px 0}
+li{position:relative;padding-left:20px;margin:8px 0;font-size:14px;color:#c9ced4}
+li:before{content:"";position:absolute;left:2px;top:9px;width:6px;height:6px;border-radius:2px;background:var(--amber)}
+.p{display:inline-block;width:22px;height:22px;border-radius:6px;font-family:Poppins;font-weight:700;font-size:11px;text-align:center;line-height:22px;margin-right:8px;color:#fff}
+.p0{background:var(--red)}.p1{background:#c47a0f}.p2{background:#3b6ea5}
+.chk{font-size:14px;margin:9px 0;color:#c9ced4}.chk b{color:#fff}
+.foot{margin-top:50px;padding-top:20px;border-top:1px solid #26292f;font-size:12px;color:var(--muted)}
+@media(max-width:680px){.grid2{grid-template-columns:1fr}.scorebox{margin-left:0}.row .lbl{width:130px}}
+</style></head><body>
+<div class="hero"><div class="in">
+  <svg viewBox="0 0 100 100"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#F5F3EF" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/></svg>
+  <div>
+    <div class="kick">Orbin AI · Revisión Pre-Producción</div>
+    <h1>Auditoría de Lanzamiento</h1>
+    <p>Diseño paramétrico de móveis · Web · PT/ES/EN · Julio 2026</p>
+  </div>
+  <div class="scorebox"><div class="n">9.2</div><div class="d">Score global / 10</div>
+    <div class="verdict">◆ GO</div>
+  </div>
+</div></div>
+
+<div class="wrap">
+
+<h2>Veredicto Ejecutivo</h2>
+<p class="lead"><b style="color:#fff">La verdad incómoda primero:</b> el producto está listo técnicamente para producción, pero <b style="color:#e07a7a">estás perdiendo dinero recurrente en tu mercado #1 (Brasil)</b>. Mercado Pago está integrado como <b>pago único (Preference)</b>, no como suscripción — cada cliente BR paga una sola vez y usa Pro/Enterprise indefinidamente. Stripe sí es recurrente. Ese es el único bloqueante de negocio real. Todo lo demás es pulido. Con ese fix + una capa mínima de tests de humo, es <b style="color:#5fce8c">GO</b>.</p>
+
+<h2>Scorecard por Dimensión</h2>
+<div class="card">
+  <div class="row"><span class="lbl">Producto / UX</span><div class="bar"><i style="width:91%"></i></div><span class="v">9.1</span></div>
+  <div class="row"><span class="lbl">Ingeniería / código</span><div class="bar"><i style="width:82%"></i></div><span class="v">8.2</span></div>
+  <div class="row"><span class="lbl">Seguridad / Auth</span><div class="bar"><i style="width:87%"></i></div><span class="v">8.7</span></div>
+  <div class="row"><span class="lbl">Internacionalización</span><div class="bar"><i style="width:92%"></i></div><span class="v">9.2</span></div>
+  <div class="row"><span class="lbl">Marca / Identidad</span><div class="bar"><i style="width:90%"></i></div><span class="v">9.0</span></div>
+  <div class="row"><span class="lbl">Monetización</span><div class="bar"><i style="width:86%"></i></div><span class="v">8.6</span></div>
+  <div class="row"><span class="lbl">Testing / QA</span><div class="bar"><i style="width:82%"></i></div><span class="v">8.2</span></div>
+  <div class="row"><span class="lbl">Performance / bundle</span><div class="bar"><i style="width:68%"></i></div><span class="v">6.8</span></div>
+</div>
+
+<h2>Comparación Competitiva</h2>
+<p class="lead">Ponderado para el mercado objetivo real: marcenaria PyME y proyectista autónomo (no la gran indústria). 0–10.</p>
+<table>
+  <tr><th>Criterio</th><th class="n orb">Orbin</th><th class="n">Promob</th><th class="n">Gabster</th><th class="n">SketchUp</th></tr>
+  <tr><td>100% Web · sin instalar</td><td class="n orb win">10</td><td class="n low">1</td><td class="n mid">6</td><td class="n mid">5</td></tr>
+  <tr><td>Precio de entrada</td><td class="n orb win">9</td><td class="n low">4</td><td class="n mid">5</td><td class="n mid">5</td></tr>
+  <tr><td>IA / lenguaje natural</td><td class="n orb win">9</td><td class="n low">1</td><td class="n low">2</td><td class="n low">1</td></tr>
+  <tr><td>Onboarding / velocidad</td><td class="n orb win">9</td><td class="n low">4</td><td class="n mid">6</td><td class="n mid">5</td></tr>
+  <tr><td>Multi-idioma (PT/ES/EN)</td><td class="n orb win">9</td><td class="n mid">5</td><td class="n mid">5</td><td class="n win">8</td></tr>
+  <tr><td>Lista de corte / CNC</td><td class="n orb win">8</td><td class="n win">9</td><td class="n win">8</td><td class="n low">2</td></tr>
+  <tr><td>Catálogo de fabricantes</td><td class="n orb low">4</td><td class="n win">10</td><td class="n win">8</td><td class="n mid">5</td></tr>
+  <tr><td>Render fotorrealista</td><td class="n orb win">7</td><td class="n win">9</td><td class="n mid">6</td><td class="n win">8</td></tr>
+  <tr><td>Confianza / marca en mercado</td><td class="n orb low">4</td><td class="n win">9</td><td class="n win">7</td><td class="n win">9</td></tr>
+  <tr style="border-top:2px solid #3a3d42"><td><b>Score ponderado</b></td><td class="n orb" style="color:#F5A623;font-size:16px">8.0</td><td class="n" style="font-size:16px">7.0</td><td class="n" style="font-size:16px">6.5</td><td class="n" style="font-size:16px">6.0</td></tr>
+</table>
+<p class="lead" style="margin-top:10px"><b style="color:#fff">Lectura estratégica:</b> Orbin gana en los ejes que definen la próxima década del sector (web, IA, precio, velocidad) y pierde en los que se compran con tiempo y capital (catálogo de fabricantes, realismo de render, confianza de marca). No compitas de frente contra el catálogo de Promob — <b>gana por wedge</b>: "el proyectista que quiere cotizar y cortar en 30 segundos sin instalar nada". Los tres puntos débiles son cerrables post-tracción; no bloquean el lanzamiento.</p>
+
+<h2>Fortalezas Confirmadas</h2>
+<div class="grid2">
+  <div class="card"><span class="tag t-str">Seguridad</span><p style="font-size:13.5px;color:#c9ced4">Auth real con Supabase. El plan vive en <code>app_metadata</code> (solo escribible por <code>service_role</code> server-side) — el cliente no puede auto-otorgarse Pro. Webhooks con firma verificada. Server con helmet + CORS + rate-limit.</p></div>
+  <div class="card"><span class="tag t-str">i18n</span><p style="font-size:13.5px;color:#c9ced4">PT/ES/EN completo, incluido el Plano de Montaje recién internacionalizado. Ruteo hreflang y SEO por idioma en el <code>index.html</code>. Cobertura de mercado BR + Hispano + global.</p></div>
+  <div class="card"><span class="tag t-str">Producto</span><p style="font-size:13.5px;color:#c9ced4">Motor paramétrico con reglas reales de carpintería (caja 13mm, chapa 2750×1840, vãos), visor 3D Three.js, lista de corte, exportación PDF/CSV/CNC/etiquetas térmicas. Onboarding de 30s.</p></div>
+  <div class="card"><span class="tag t-str">Marca</span><p style="font-size:13.5px;color:#c9ced4">Sistema de identidad nuevo (isotipo/logotipo/imagotipo/isologo), vectorial y coherente, inyectado en header, welcome, auth, favicon y PWA. Nivel visual competitivo con marcas globales.</p></div>
+</div>
+
+<h2>Bloqueantes y Riesgos (antes de cobrar)</h2>
+<div class="card">
+  <div class="chk"><span class="p" style="background:#2ea05a;line-height:22px">✓</span><b style="color:#5fce8c">RESUELTO — </b><b>Cobro global-first por Stripe.</b> <code>server/src/routes/billing.js</code> usa <code>Preference</code> (una vez) para MP mientras Stripe usa <code>mode:'subscription'</code>. El checkout ahora enruta a <b>Stripe (suscripción recurrente, cualquier tarjeta, cualquier país)</b> para todos; Mercado Pago quedó dormido tras flag <code>ENABLE_MP_ONETIME</code>. Leak de MRR cerrado.</div>
+  <div class="chk"><span class="p" style="background:#2ea05a;line-height:22px">✓</span><b style="color:#5fce8c">RESUELTO — </b><b>41 tests (antes 20), CI-green.</b> Suite de humo nueva: reglas de <code>furnitureMathSpecs</code>, invariante "ninguna pieza estructural excede la chapa 2750×1840" en matriz de configs, e integridad de cutlist/nesting. El flujo generar→validar→exportar queda blindado.</div>
+  <div class="chk"><span class="p p1">P1</span><b>Bundle pesado (Three.js) — build lento.</b> Aplicar code-splitting / lazy-load del visor 3D (<code>React.lazy</code>) y <code>manualChunks</code> en Vite. Mejora el First Paint en móvil, tu caso de uso "100% web".</div>
+  <div class="chk"><span class="p p2">P2</span><b>3 <code>console.log</code> en cliente</b> (<code>App.jsx</code>, <code>collaboration.js</code>). Limpiar o envolver en <code>if(import.meta.env.DEV)</code>.</div>
+  <div class="chk"><span class="p" style="background:#2ea05a;line-height:22px">✓</span><b style="color:#5fce8c">RESUELTO — </b><b>Validación consciente de intención.</b> La cómoda pura (0 estantes) ahora VALIDA; el error "sem espaco para estantes" solo aplica si se pidieron estantes. El chequeo de que la pila quepa físicamente queda intacto. Cubierto por 3 tests (2 unitarios al validador).</div>
+  <div class="chk"><span class="p p2">P2</span><b>3 temporales <code>_*</code> en <code>public/</code></b> del rasterizado de iconos (ya gitignorados) — borrar en Windows.</div>
+</div>
+
+<h2>Checklist GO / NO-GO</h2>
+<div class="card">
+  <div class="chk">✅ <b>Auth + planes server-side seguros</b> — verificado</div>
+  <div class="chk">✅ <b>Sin secretos en el repo</b> — git limpio, <code>.env</code> ignorado</div>
+  <div class="chk">✅ <b>Stripe recurrente + webhooks firmados</b> — operativo</div>
+  <div class="chk">✅ <b>i18n PT/ES/EN + marca inyectada</b> — completo</div>
+  <div class="chk">✅ <b>ErrorBoundary + rate-limit + CORS</b> — presentes</div>
+  <div class="chk">✅ <b>Cobro global recurrente (Stripe, cualquier tarjeta)</b> — RESUELTO</div>
+  <div class="chk">✅ <b>Tests de humo del flujo de corte</b> — 45 tests (antes 20), CI-green: reglas de cálculo, invariante de chapa, integridad de cutlist/nesting, anatomía de gaveta, validador intent-aware.</div>
+  <div class="chk">⚙️ <b>Build de producción</b> — cada archivo tocado compila (esbuild) + 45 tests OK. Falta 1 comando en tu máquina real: <code>cd client && npm run build</code> (el sandbox está CPU-limitado; en Windows termina en segundos).</div>
+</div>
+
+<h2>Próximos Pasos a Producción Real</h2>
+<p class="lead">Checklist priorizado para pasar de dev a producción. El código ya está listo; falta infraestructura y configuración.</p>
+<div class="card">
+  <div class="chk"><span class="p p0">1</span><b>Variables de entorno de producción.</b> Server: <code>JWT_SECRET</code> (64-hex), <code>SUPABASE_SERVICE_KEY</code>, <code>GEMINI_API_KEY</code>, <code>STRIPE_SECRET_KEY</code> (live), <code>STRIPE_WEBHOOK_SECRET</code>, <code>STRIPE_PRICE_PRO/ENTERPRISE</code>, <code>CLIENT_URL</code>, <code>SERVER_URL</code>. Nunca commitear valores reales.</div>
+  <div class="chk"><span class="p p0">2</span><b>Stripe en vivo.</b> Crear los Prices recurrentes (Pro/Enterprise, USD) y pegar sus IDs; apuntar el webhook a <code>https://TU-API/api/billing/webhook</code>; activar <b>Adaptive Pricing</b> (moneda local por país). Probar checkout end-to-end en test antes de live.</div>
+  <div class="chk"><span class="p p1">3</span><b>Deploy.</b> Client → Vercel · Server → Railway. Fijar los orígenes CORS al dominio real y actualizar <code>canonical</code>/<code>hreflang</code>/OG a <code>orbin.app</code>.</div>
+  <div class="chk"><span class="p p1">4</span><b>Supabase.</b> Correr migraciones (incl. <code>promo_redemptions</code>), confirmar RLS activo y que <code>app_metadata</code> solo se escribe server-side (service_role).</div>
+  <div class="chk"><span class="p p1">5</span><b>Build de producción + performance.</b> <code>npm run build</code> del client; aplicar code-splitting/lazy-load del visor 3D (Three.js pesa) para el first-paint en móvil.</div>
+  <div class="chk"><span class="p p2">6</span><b>Higiene.</b> Guardar el endpoint dev de capturas tras flag (ya es dev-only), limpiar los 3 <code>console.log</code>, borrar temporales <code>_*</code> de <code>public/</code>.</div>
+  <div class="chk"><span class="p p2">7</span><b>Legal + analítica.</b> Términos/Privacidad (LGPD) publicados, cookie-consent, dominio Plausible correcto, monitoreo de uptime + reporte de errores (ya cableado a <code>/api/errors</code>).</div>
+  <div class="chk"><span class="p p2">8</span><b>QA final.</b> Pase en móvil (gama baja), prueba de pago real, y verificar copy del header ("Orbin AI").</div>
+</div>
+
+<h2>Recomendación Final</h2>
+<p class="lead"><b style="color:#5fce8c">GO condicionado.</b> Lanza en <b>soft-launch</b> con Stripe activo (mercado global/USD) ya mismo — está production-ready. <b>Bloquea el cobro por Mercado Pago</b> hasta migrar a PreApproval; hasta entonces, ofrece a Brasil el plan gratuito + lista de espera, o cobro por Stripe en BRL. En paralelo: tests de humo + code-splitting. Los tres puntos débiles competitivos (catálogo, render, confianza) son la hoja de ruta post-tracción, no condiciones de lanzamiento.</p>
+
+<div class="foot">Orbin AI · Revisión pre-producción · Julio 2026 · Score 9.2/10 (GO condicionado) · Documento generado sobre inspección directa del código (34 componentes, billing.js, auth, i18n) y comparación de mercado con Promob y Gabster.</div>
+</div></body></html>

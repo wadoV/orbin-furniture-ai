@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Orbin — Brand Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#16181D;--graphite:#22262E;--amber:#F5A623;--amber-deep:#E0921A;--paper:#F5F3EF;--muted:#8a8f98;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Inter,system-ui,sans-serif;background:var(--paper);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:64px 32px 96px}
+  h1{font-family:Poppins;font-weight:700;font-size:13px;letter-spacing:.32em;text-transform:uppercase;color:var(--muted)}
+  h2{font-family:Poppins;font-weight:600;font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);margin-bottom:20px}
+  .hero{background:var(--ink);border-radius:28px;padding:80px 40px;display:flex;flex-direction:column;align-items:center;gap:34px;margin:28px 0 56px}
+  .hero svg{width:190px;height:190px}
+  .hero .wm{font-family:Poppins;font-weight:600;font-size:72px;letter-spacing:-2.5px;color:var(--paper)}
+  .hero .tag{font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+  section{margin:56px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  .card{background:#fff;border:1px solid #e7e3dc;border-radius:18px;padding:28px;display:flex;flex-direction:column;align-items:center;gap:16px}
+  .card.dark{background:var(--ink);border-color:#000}
+  .card .lbl{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .card.dark .lbl{color:#6f757e}
+  .card svg{width:120px;height:120px}
+  .lockrow{display:flex;align-items:center;gap:18px;justify-content:center}
+  .lockrow .wm{font-family:Poppins;font-weight:600;letter-spacing:-1.5px}
+  .swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .sw{border-radius:14px;overflow:hidden;border:1px solid #e7e3dc}
+  .sw .chip{height:96px}
+  .sw .meta{padding:12px 14px;font-size:12px}
+  .sw .meta b{display:block;font-family:Poppins;font-weight:600;font-size:13px;letter-spacing:.02em}
+  .sw .meta span{color:var(--muted)}
+  .intro{font-size:16px;max-width:680px;color:#3c3f45}
+  .kicker{font-family:Poppins;font-weight:700;font-size:44px;letter-spacing:-1.5px;margin:6px 0 18px}
+  .note{font-size:13px;color:var(--muted);margin-top:14px}
+  .sizes{display:flex;align-items:flex-end;gap:32px;flex-wrap:wrap;justify-content:center;background:#fff;border:1px solid #e7e3dc;border-radius:18px;padding:34px}
+  .sizes .u{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .sizes .u span{font-size:11px;color:var(--muted);letter-spacing:.1em}
+  .dont .card{align-items:stretch}
+  .badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:4px 9px;border-radius:999px}
+  .ok{background:rgba(46,160,90,.12);color:#2ea05a}
+  .no{background:rgba(214,69,69,.12);color:#d64545}
+  .constr{background:#fff;border:1px solid #e7e3dc;border-radius:18px;padding:30px;display:flex;justify-content:center}
+  .constr svg{width:340px;height:340px}
+  footer{margin-top:72px;padding-top:26px;border-top:1px solid #e0dcd4;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  @media(max-width:720px){.grid3,.swatches{grid-template-columns:1fr 1fr}.grid2{grid-template-columns:1fr}.hero .wm{font-size:52px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Orbin · Sistema de Identidad</h1>
+  <div class="hero">
+    <svg viewBox="0 0 100 100"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#F5F3EF" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/></svg>
+    <div class="wm">orbin</div>
+    <div class="tag">Diseño Paramétrico · Precisión Industrial</div>
+  </div>
+
+  <section>
+    <div class="kicker">Órbita + Nodo</div>
+    <p class="intro">La <b>O</b> de Orbin es una órbita abierta; un <b>nodo ámbar</b> flota en su abertura. Comunica inteligencia que orbita un módulo — y la abertura lee como una junta de carpintería. Geometría pura, un solo color, legible a 16&nbsp;px: la misma disciplina de Figma, Tesla o Starlink.</p>
+  </section>
+
+  <section>
+    <h2>Construcción · Grid</h2>
+    <div class="constr">
+      <svg viewBox="0 0 100 100">
+        <defs><pattern id="g" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M10 0H0V10" fill="none" stroke="#eceae4" stroke-width="0.5"/></pattern></defs>
+        <rect width="100" height="100" fill="url(#g)"/>
+        <circle cx="50" cy="50" r="33" fill="none" stroke="#d9d5cd" stroke-width="0.6" stroke-dasharray="2 2"/>
+        <line x1="50" y1="4" x2="50" y2="96" stroke="#e2ded6" stroke-width="0.5"/>
+        <line x1="4" y1="50" x2="96" y2="50" stroke="#e2ded6" stroke-width="0.5"/>
+        <line x1="50" y1="50" x2="73.3" y2="26.7" stroke="#F5A623" stroke-width="0.7" stroke-dasharray="2 2"/>
+        <path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="11" stroke-linecap="round"/>
+        <circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/>
+        <circle cx="50" cy="50" r="1.1" fill="#16181D"/>
+      </svg>
+    </div>
+    <p class="note">Radio de órbita R = 33u · grosor = ⅓R · nodo sobre la órbita a 45°, abertura de 64° centrada en el nodo. Todo derivado de un solo módulo (R), reproducible con regla y compás.</p>
+  </section>
+
+  <section>
+    <h2>Versiones del isotipo</h2>
+    <div class="grid3">
+      <div class="card"><svg viewBox="0 0 100 100"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/></svg><div class="lbl">Primario</div></div>
+      <div class="card dark"><svg viewBox="0 0 100 100"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#F5F3EF" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/></svg><div class="lbl">Sobre oscuro</div></div>
+      <div class="card"><svg viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#16181D"/><g transform="translate(50 50) scale(0.82) translate(-50 -50)"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#F5F3EF" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/></g></svg><div class="lbl">App icon</div></div>
+      <div class="card"><svg viewBox="0 0 100 100"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#000" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#000"/></svg><div class="lbl">Mono negro · 1 tinta</div></div>
+      <div class="card dark"><svg viewBox="0 0 100 100"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#fff"/></svg><div class="lbl">Mono blanco · 1 tinta</div></div>
+      <div class="card"><svg viewBox="0 0 100 100"><g transform="translate(50 50) scale(1.06) translate(-50 -50)"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="12" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.6" fill="#F5A623"/></g></svg><div class="lbl">Favicon</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Lockups</h2>
+    <div class="grid2">
+      <div class="card"><div class="lockrow"><svg viewBox="0 0 100 100" style="width:74px;height:74px"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/></svg><div class="wm" style="font-size:52px;color:#16181D">orbin</div></div><div class="lbl">Horizontal</div></div>
+      <div class="card"><div style="display:flex;flex-direction:column;align-items:center;gap:6px"><svg viewBox="0 0 100 100" style="width:82px;height:82px"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/></svg><div class="wm" style="font-size:42px;color:#16181D">orbin</div></div><div class="lbl">Vertical</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Paleta</h2>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:#16181D"></div><div class="meta"><b>Ink</b><span>#16181D</span></div></div>
+      <div class="sw"><div class="chip" style="background:#22262E"></div><div class="meta"><b>Grafito</b><span>#22262E</span></div></div>
+      <div class="sw"><div class="chip" style="background:#F5A623"></div><div class="meta"><b>Ámbar señal</b><span>#F5A623</span></div></div>
+      <div class="sw"><div class="chip" style="background:#F5F3EF;border-bottom:1px solid #e7e3dc"></div><div class="meta"><b>Paper</b><span>#F5F3EF</span></div></div>
+    </div>
+    <p class="note">El ámbar es exclusivo del nodo (≈8&nbsp;% del área). Nunca colorear el anillo de ámbar: pierde jerarquía y contraste en 1 tinta.</p>
+  </section>
+
+  <section>
+    <h2>Tamaños mínimos · Área de resguardo</h2>
+    <div class="sizes">
+      <div class="u"><svg viewBox="0 0 100 100" style="width:96px;height:96px"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/></svg><span>96 px</span></div>
+      <div class="u"><svg viewBox="0 0 100 100" style="width:48px;height:48px"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="11" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.2" fill="#F5A623"/></svg><span>48 px</span></div>
+      <div class="u"><svg viewBox="0 0 100 100" style="width:24px;height:24px"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="12" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="8.6" fill="#F5A623"/></svg><span>24 px · mín.</span></div>
+      <div class="u"><svg viewBox="0 0 100 100" style="width:16px;height:16px"><path d="M82.15 42.58 A33 33 0 1 1 57.42 17.85" fill="none" stroke="#16181D" stroke-width="13" stroke-linecap="round"/><circle cx="73.3" cy="26.7" r="9" fill="#F5A623"/></svg><span>16 px · favicon</span></div>
+    </div>
+    <p class="note">Área de resguardo = el diámetro del nodo en los 4 lados. No colocar texto ni bordes dentro de esa zona.</p>
+  </section>
+
+  <section class="dont">
+    <h2>Usos incorrectos</h2>
+    <div class="grid3">
+      <div class="card"><span class="badge no">No</span><div class="lbl">No estirar ni deformar</div></div>
+      <div class="card"><span class="badge no">No</span><div class="lbl">No teñir el anillo de ámbar</div></div>
+      <div class="card"><span class="badge no">No</span><div class="lbl">No rotar el nodo fuera de 45°</div></div>
+      <div class="card"><span class="badge no">No</span><div class="lbl">No añadir sombras ni gradientes</div></div>
+      <div class="card"><span class="badge no">No</span><div class="lbl">No cerrar la abertura de la órbita</div></div>
+      <div class="card"><span class="badge ok">Sí</span><div class="lbl">Un color plano · fondo con contraste ≥ 4.5:1</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Orbin AI · Brand v1 · <span id="d"></span></span>
+    <span>Wordmark: Poppins SemiBold (convertir a curvas en producción). Detalle firma: punto de la "i" en ámbar #F5A623.</span>
+  </footer>
+</div>
+<script>document.getElementById('d').textContent=new Date().toLocaleDateString('es-ES',{year:'numeric',month:'long'});</script>
+</body>
+</html>

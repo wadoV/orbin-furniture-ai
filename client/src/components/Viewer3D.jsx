@@ -20,6 +20,11 @@ import AIVisualStylist from './AIVisualStylist.jsx'
 import ViralShare from './ViralShare.jsx'
 import { getPBRMaterial } from '../engine/materialLibrary.js'
 
+// Captura técnica (plano gris CAD): esconde y restaura las texturas PBR (bumpMap)
+// para que las vistas del plano queden en gris plano, sin veta de madera. [2026-07]
+const _stashPBRMaps = (m) => { const mt = m.material; if (!mt) return; m.userData._cm = { map: mt.map, bumpMap: mt.bumpMap, roughnessMap: mt.roughnessMap }; mt.map = null; mt.bumpMap = null; mt.roughnessMap = null; mt.needsUpdate = true }
+const _restorePBRMaps = (m) => { const c = m.userData._cm; if (!c) return; m.material.map = c.map; m.material.bumpMap = c.bumpMap; m.material.roughnessMap = c.roughnessMap; m.material.needsUpdate = true; delete m.userData._cm }
+
 // ─── Color Palette ────────────────────────────────────────────────────────────
 const MATERIAL_COLORS = {
   white:         0xffffff,
@@ -775,6 +780,7 @@ export default function Viewer3D({
         if (gridRef.current) gridRef.current.visible = false
         meshes.forEach(m => {
           m.material.wireframe      = false
+          _stashPBRMaps(m)
           m.material.color.set(0xfafafa)
           m.material.emissive.set(0x000000)
           m.material.emissiveIntensity = 0
@@ -794,6 +800,7 @@ export default function Viewer3D({
         // ── Restore ALL materials exactly ─────────────────────────────────
         meshes.forEach((m, i) => {
           const s = saved[i]
+          _restorePBRMaps(m)
           m.material.color.set(s.color)
           m.material.emissive.set(s.emissive)
           m.material.emissiveIntensity = s.emissiveInt
@@ -852,6 +859,7 @@ export default function Viewer3D({
         if (gridRef.current) gridRef.current.visible = false
         meshes.forEach(m => {
           m.material.wireframe = false
+          _stashPBRMaps(m)
           m.material.color.set(0xd7dade)
           m.material.emissive.set(0x000000)
           m.material.emissiveIntensity = 0
@@ -867,6 +875,7 @@ export default function Viewer3D({
         const dataURL = rdr.domElement.toDataURL('image/png', 1.0)
         meshes.forEach((m, i) => {
           const sv = saved[i]
+          _restorePBRMaps(m)
           m.material.color.set(sv.color); m.material.emissive.set(sv.emissive)
           m.material.emissiveIntensity = sv.emissiveInt; m.material.roughness = sv.roughness
           m.material.metalness = sv.metalness; m.material.opacity = sv.opacity; m.material.wireframe = sv.wireframe
@@ -928,6 +937,7 @@ export default function Viewer3D({
         if (gridRef.current) gridRef.current.visible = false
         meshes.forEach(m => {
           m.material.wireframe = false
+          _stashPBRMaps(m)
           m.material.color.set(0xd7dade)
           m.material.emissive.set(0x000000); m.material.emissiveIntensity = 0
           m.material.roughness = 1.0; m.material.metalness = 0.0; m.material.opacity = 1.0
@@ -937,6 +947,7 @@ export default function Viewer3D({
         const url = rdr.domElement.toDataURL('image/png', 1.0)
         meshes.forEach((m, i) => {
           const sv = saved[i]
+          _restorePBRMaps(m)
           m.material.color.set(sv.color); m.material.emissive.set(sv.emissive)
           m.material.emissiveIntensity = sv.emissiveInt; m.material.roughness = sv.roughness
           m.material.metalness = sv.metalness; m.material.opacity = sv.opacity; m.material.wireframe = sv.wireframe
@@ -1224,6 +1235,24 @@ export default function Viewer3D({
       const dH = Math.min((cfg.drawerHeight || 180) * SCALE, maxDH)
       let curY = yBase + BH + T
 
+      // Gaveta REAL como caja abierta (5 paneles) — refleja la lista de corte:
+      // 2 laterales + frente interno + trasera interna + fundo. Sin tapa (abierta).
+      // Reemplaza el antiguo "Cuerpo Gaveta" sólido. No toca la fabricación.
+      const addDrawerBox = (cx, cy, boxW, boxH, boxD, cz, key) => {
+        const wall = T
+        const bt = Math.max(0.3, T * 0.5) // fundo más fino (6mm)
+        const col = TYPE_COLORS.drawer_box
+        const add = (w, h, d, x, y, z, name) => {
+          const mesh = makeMesh(w, h, d, col, name, 'drawer_box', key)
+          mesh.position.set(x, y, z); mGroup.add(mesh)
+        }
+        add(wall, boxH, boxD, cx - boxW / 2 + wall / 2, cy, cz, 'Lateral Cajón')
+        add(wall, boxH, boxD, cx + boxW / 2 - wall / 2, cy, cz, 'Lateral Cajón')
+        add(boxW - 2 * wall, boxH, wall, cx, cy, cz + boxD / 2 - wall / 2, 'Frente Interno Cajón')
+        add(boxW - 2 * wall, boxH, wall, cx, cy, cz - boxD / 2 + wall / 2, 'Trasera Cajón')
+        add(boxW - 2 * wall, bt, boxD - 2 * wall, cx, cy - boxH / 2 + bt / 2, cz, 'Fondo Cajón')
+      }
+
       if (nD > 0) {
         if (isHorizontal) {
           const colW = iW / 2
@@ -1237,9 +1266,7 @@ export default function Viewer3D({
               const df = makeMesh(colW - 0.4, dH - 0.4, T, frontColor, `Frente Gaveta H-${col + 1}-${i + 1}`, 'drawer_front', dKey)
               df.position.set(startX, colY + dH / 2, D - T / 2)
               mGroup.add(df)
-              const db = makeMesh(colW - 3, dH - 4, iD - 4, TYPE_COLORS.drawer_box, 'Cuerpo Gaveta', 'drawer_box', dKey)
-              db.position.set(startX, colY + dH / 2, zCenter)
-              mGroup.add(db)
+              addDrawerBox(startX, colY + dH / 2, colW - 3, dH - 4, iD - 4, zCenter, dKey)
               colY += dH
             }
           }
@@ -1250,9 +1277,7 @@ export default function Viewer3D({
             const df = makeMesh(iW - 0.4, dH - 0.4, T, frontColor, `Frente Gaveta ${i + 1}`, 'drawer_front', dKey)
             df.position.set(xOffset, curY + dH / 2, D - T / 2)
             mGroup.add(df)
-            const db = makeMesh(iW - 3, dH - 4, iD - 4, TYPE_COLORS.drawer_box, 'Cuerpo Gaveta', 'drawer_box', dKey)
-            db.position.set(xOffset, curY + dH / 2, zCenter)
-            mGroup.add(db)
+            addDrawerBox(xOffset, curY + dH / 2, iW - 3, dH - 4, iD - 4, zCenter, dKey)
             curY += dH
           }
         }

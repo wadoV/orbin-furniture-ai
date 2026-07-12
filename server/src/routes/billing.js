@@ -100,9 +100,17 @@ router.post('/checkout', requireAuth, async (req, res) => {
   }
 
   try {
-    const isBrazil = provider === 'mercadopago' || region === 'BR' || region === 'PT' || region === 'pt-BR' || region === 'pt' || req.body.currency === 'BRL';
+    // [2026-07] GLOBAL-FIRST: Stripe es el riel primario mundial (suscripción
+    // recurrente, cualquier tarjeta de crédito/débito, cualquier país). Mercado
+    // Pago queda DORMIDO por defecto: estaba como pago ÚNICO (Preference) y
+    // filtraba el MRR de cada cliente. Ya NO se enruta por región/moneda —
+    // un cliente de Brasil también paga por Stripe (suscripción real, cancelable,
+    // con Customer Portal). MP solo se activa si el usuario lo pide explícito
+    // (provider === 'mercadopago') Y el flag ENABLE_MP_ONETIME === 'true'
+    // (reservado para métodos locales BR a futuro; hoy apagado).
+    const useMercadoPago = provider === 'mercadopago' && process.env.ENABLE_MP_ONETIME === 'true';
 
-    if (isBrazil) {
+    if (useMercadoPago) {
       const mpAccessToken = process.env.MP_ACCESS_TOKEN;
       if (!mpAccessToken) {
         throw new Error('Mercado Pago Access Token is not configured on the server.');
@@ -159,7 +167,13 @@ router.post('/checkout', requireAuth, async (req, res) => {
       }
 
       const session = await stripe.checkout.sessions.create({
+        // 'card' cubre todas las tarjetas de crédito y débito del mundo
+        // (Visa, Mastercard, Amex, etc.). Para monedas locales por país,
+        // activar "Adaptive Pricing" en el Dashboard de Stripe (sin cambio de código).
         payment_method_types: ['card'],
+        customer_email: req.user.email,
+        billing_address_collection: 'auto',
+        allow_promotion_codes: true,
         line_items: [
           {
             price: priceId,
