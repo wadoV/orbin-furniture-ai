@@ -26,6 +26,7 @@ Basado en la config real del repo (`vercel.json`, `railway.json`, `server/Procfi
    - `001_create_projects.sql`
    - `002_create_material_prices.sql`
    - `003_create_promo_redemptions.sql`
+   - `004_projects_owner_and_lockdown.sql` ← **CRÍTICO**: agrega `owner_id` (sin esto, guardar proyectos falla) y **remueve el acceso público** que dejaba el MVP (la policy `allow_all_mvp` exponía todos los proyectos con la anon key).
 2. **Verificar RLS activo** en `public.projects`, `public.promo_redemptions`, `public.material_prices` (Table editor → RLS enabled).
 3. Copiar llaves (Settings → API):
    - `SUPABASE_URL`
