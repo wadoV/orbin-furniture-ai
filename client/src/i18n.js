@@ -168,6 +168,7 @@ export const translations = {
     active_selection:   'Seleção Ativa',
     bot_welcome:        'Olá, sou Orbin.',
     bot_greeting:       'Motor visual sincronizado e pronto para fabricar. O que vamos projetar?',
+    ai_greeting_named:  'Olá {name}, sou Orbin.',
 
     // ── InputPanel ──────────────────────────────────────────────────────────
     nl_input:              'Linguagem Natural',
@@ -688,6 +689,7 @@ export const translations = {
     active_selection:   'Selección Activa',
     bot_welcome:        'Hola, soy Orbin.',
     bot_greeting:       'Motor visual sincronizado y listo para fabricar. ¿Qué vamos a diseñar?',
+    ai_greeting_named:  'Hola {name}, soy Orbin.',
 
     // ── InputPanel ──────────────────────────────────────────────────────────
     nl_input:             'Lenguaje Natural',
@@ -1208,6 +1210,7 @@ export const translations = {
     active_selection:   'Active Selection',
     bot_welcome:        "Hello, I'm Orbin.",
     bot_greeting:       "Visual engine synchronized and ready to manufacture. What are we designing?",
+    ai_greeting_named:  "Hi {name}, I'm Orbin.",
 
     // ── InputPanel ──────────────────────────────────────────────────────────
     nl_input:             'Natural Language',

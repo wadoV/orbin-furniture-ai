@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, Sparkles, Wand2, Hammer, Ruler, History, Zap, ChevronDown, ChevronUp, Lock, Crown } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import { useUser } from '../context/UserContext.jsx'
 
 // ★ PROTECTED: AI Model badge config — color-coded per provider
 const MODEL_BADGES = {
@@ -36,6 +37,7 @@ function savePromptHistory(list) {
 
 export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, lastPrompt, currentDesign, planLocked = false }) {
   const { t } = usePreferences()
+  const { user } = useUser()
   const [input, setInput] = useState('')
   const scrollRef = useRef(null)
   const [promptHistory, setPromptHistory] = useState(() => loadPromptHistory())
@@ -186,7 +188,7 @@ export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, 
               <Sparkles size={32} className="text-primary/40" />
             </div>
             <div className="max-w-xs space-y-2">
-              <h4 className="text-sm font-black text-white uppercase tracking-widest">{t('bot_welcome')}</h4>
+              <h4 className="text-sm font-black text-white uppercase tracking-widest">{user?.name ? t('ai_greeting_named').replace('{name}', user.name) : t('bot_welcome')}</h4>
               <p className="text-[11px] text-muted leading-relaxed font-medium">
                 {t('bot_greeting')}
               </p>

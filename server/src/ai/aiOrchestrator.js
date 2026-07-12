@@ -76,11 +76,11 @@ async function parseDesignIntent(text) {
 
 // ─── chatDesign ───────────────────────────────────────────────────────────────
 
-async function chatDesign(history, userMessage) {
+async function chatDesign(history, userMessage, options = {}) {
   // Tier 1 — Gemini SDK (vertexClient)
   try {
     console.log('[Orchestrator] Chat Tier 1: Gemini SDK (vertexClient)…')
-    const result = await vertexClient.chatDesign(history, userMessage)
+    const result = await vertexClient.chatDesign(history, userMessage, options)
     return { ...result, source: result.source || 'gemini-api' }
   } catch (err1) {
     console.warn('[Orchestrator] Chat Tier 1 failed:', err1.message)
@@ -89,7 +89,7 @@ async function chatDesign(history, userMessage) {
   // Tier 2 — Gemini REST (geminiClient)
   try {
     console.log('[Orchestrator] Chat Tier 2: Gemini REST (geminiClient)…')
-    const result = await geminiClient.chatDesign(history, userMessage)
+    const result = await geminiClient.chatDesign(history, userMessage, options)
     return { ...result, source: result.source || 'gemini-fallback' }
   } catch (err2) {
     console.warn('[Orchestrator] Chat Tier 2 failed:', err2.message)
@@ -98,7 +98,7 @@ async function chatDesign(history, userMessage) {
   // Tier 3 — Ollama
   try {
     console.log('[Orchestrator] Chat Tier 3: Ollama…')
-    return await ollamaClient.chatDesign(history, userMessage)
+    return await ollamaClient.chatDesign(history, userMessage, options)
   } catch (err3) {
     console.warn('[Orchestrator] Chat Tier 3 failed:', err3.message)
   }

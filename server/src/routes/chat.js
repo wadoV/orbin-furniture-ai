@@ -7,6 +7,7 @@
 const express = require('express')
 const router  = express.Router()
 const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
+const { buildOrbinChatPrompt } = require('../ai/systemPrompts')
 const { generateProject } = require('../engine/closetEngine')
 
 // ─── Param Normalizer (mirrors design.js logic so chat can safely call engine) ─
@@ -68,7 +69,7 @@ const sessions = new Map()
 
 router.post('/design', async (req, res) => {
   try {
-    const { message, sessionId, autoGenerate = true } = req.body
+    const { message, sessionId, autoGenerate = true, lang, userName, company } = req.body
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ success: false, error: 'El campo "message" es obligatorio.' })
     }
@@ -76,7 +77,10 @@ router.post('/design', async (req, res) => {
     // Retrieve or create session history
     const history = sessions.get(sessionId) || []
 
-    const result = await chatDesign(history, message)
+    const options = (lang || userName || company)
+      ? { systemPrompt: buildOrbinChatPrompt({ userName, company, lang }) }
+      : {}
+    const result = await chatDesign(history, message, options)
 
     // Update history
     const newHistory = [

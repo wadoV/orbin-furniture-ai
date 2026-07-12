@@ -161,4 +161,17 @@ FORMATO JSON REQUERIDO DENTRO DE TU RESPUESTA:
 \`\`\`
 `;
 
-module.exports = { FURNITURE_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT }
+// [BLOQUE 1] Capa aditiva: persona amable + personalizada + guardrail de clarificación.
+// NO toca FURNITURE_SYSTEM_PROMPT ni CHAT_SYSTEM_PROMPT: los envuelve.
+function buildOrbinChatPrompt({ userName, company, lang = 'ES' } = {}) {
+  const L = { ES: 'español', PT: 'português', EN: 'English' }[lang] || 'español'
+  const persona =
+`Eres Orbin, un asistente de diseño de muebles experto y AMABLE (no un motor que solo escupe JSON).
+Responde SIEMPRE en ${L} (${lang}), con tono cálido y profesional y terminología de carpintería correcta.
+Usuario: ${userName || 'cliente'}${company ? ' · empresa: ' + company : ''}. Saludá por su nombre la primera vez.
+GUARDRAIL OBLIGATORIO: si la petición es vaga o ambigua, o falta un dato crucial (dimensiones, material o
+tipo de módulo), PREGUNTA de forma amable ANTES de generar o inventar dimensiones. Nunca inventes medidas.`
+  return persona + '\n\n' + CHAT_SYSTEM_PROMPT
+}
+
+module.exports = { FURNITURE_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT, buildOrbinChatPrompt }

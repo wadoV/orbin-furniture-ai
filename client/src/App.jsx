@@ -86,8 +86,8 @@ class ErrorBoundary extends Component {
 }
 
 export default function App() {
-  const { t } = usePreferences()
-  const { isFree, canAddModule, canUseChat, planConfig, refreshPlan } = useUser()
+  const { t, lang } = usePreferences()
+  const { isFree, canAddModule, canUseChat, planConfig, refreshPlan, user } = useUser()
   const [planAlert, setPlanAlert] = useState(null)   // { message, description }
   // RECOVERY [2026-06-26]: feedback post-checkout (Stripe/Mercado Pago redirige a
   // /app?checkout=success|pending|failure). Ver useEffect abajo y billing.js back_urls.
@@ -469,7 +469,7 @@ export default function App() {
 
     // ★ ONLINE PATH: call backend with automatic offline fallback on network error
     try {
-      const data = await api.chatDesign(text, 'default-session')
+      const data = await api.chatDesign(text, 'default-session', { lang, userName: user?.name, company: user?.company_name })
       setServerOnline(true)
       setChatMessages(prev => [...prev, {
         role: 'assistant',

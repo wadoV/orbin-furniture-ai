@@ -101,7 +101,7 @@ async function parseDesignIntent(text) {
   }
 }
 
-async function chatDesign(history, userMessage) {
+async function chatDesign(history, userMessage, options = {}) {
   try {
     // History needs to be formatted for Gemini if we wanted full context, 
     // but for fallback we might just send the latest context or a simplified summary.
@@ -109,7 +109,7 @@ async function chatDesign(history, userMessage) {
     const context = history.map(h => `${h.role}: ${h.content}`).join('\n')
     const fullMessage = context ? `History:\n${context}\n\nUser: ${userMessage}` : userMessage
     
-    const text = await callGemini(CHAT_SYSTEM_PROMPT, fullMessage)
+    const text = await callGemini(options.systemPrompt || CHAT_SYSTEM_PROMPT, fullMessage)
     
     const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/)
     let params = null

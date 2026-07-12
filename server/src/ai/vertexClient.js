@@ -76,11 +76,11 @@ async function parseDesignIntent(text) {
 
 // ─── Chat Design ──────────────────────────────────────────────────────────────
 
-async function chatDesign(history, userMessage) {
+async function chatDesign(history, userMessage, options = {}) {
   const client = getClient()
   const model = client.getGenerativeModel({
     model: modelName,
-    systemInstruction: CHAT_SYSTEM_PROMPT,
+    systemInstruction: options.systemPrompt || CHAT_SYSTEM_PROMPT,
     generationConfig: { maxOutputTokens: 2048, temperature: 0.2 },
   })
 

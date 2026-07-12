@@ -62,12 +62,12 @@ async function parseDesignIntent(text) {
   return { ...parsed, source: 'ollama' }
 }
 
-async function chatDesign(history, userMessage) {
+async function chatDesign(history, userMessage, options = {}) {
   // Format history for Ollama chat
   const context = history.map(h => `${h.role}: ${h.content}`).join('\n')
   const fullMessage = context ? `History:\n${context}\n\nUser: ${userMessage}` : userMessage
 
-  const text = await callOllama(CHAT_SYSTEM_PROMPT, fullMessage, true)
+  const text = await callOllama(options.systemPrompt || CHAT_SYSTEM_PROMPT, fullMessage, true)
   
   // [PRECISION FIX] Ensure JSON compatibility with module state
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*"params"[\s\S]*\})/)

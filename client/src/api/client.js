@@ -78,7 +78,7 @@ export const api = {
   health:         ()         => request('GET',  '/health'),
 
   // Chat (AI-powered design)
-  chatDesign:     (message, sessionId) => request('POST', '/chat/design', { message, sessionId }),
+  chatDesign:     (message, sessionId, ctx = {}) => request('POST', '/chat/design', { message, sessionId, ...ctx }),
   chatParse:      (text)     => request('POST', '/chat/parse', { text }),
 
   // Projects (persistence)
