@@ -120,6 +120,7 @@ export default function Viewer3D({
   // Three.js persistent refs (survive StrictMode remount)
   const sceneRef     = useRef(null)
   const rendererRef  = useRef(null)
+  const composerRef  = useRef(null)
   const camRef       = useRef(null)
   const controlsRef  = useRef(null)
   const groupRef     = useRef(null)
@@ -286,6 +287,32 @@ export default function Viewer3D({
 
     // --- Camera ---
     const cam = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 1, 50000)
+
+    // [2026-07] SSAO opcional (oclusión ambiental en juntas) — OFF por defecto.
+    // Se activa con ?ssao=1 o localStorage 'orbin-ssao'='1'. Import dinámico +
+    // try/catch: si algo falla, el render normal sigue intacto (no rompe nada).
+    // Las capturas del plano usan rdr.render directo → nunca pasan por el composer.
+    const _ssaoOn = (() => { try { return new URLSearchParams(window.location.search).has('ssao') || window.localStorage.getItem('orbin-ssao') === '1' } catch (_) { return false } })()
+    if (_ssaoOn) {
+      ;(async () => {
+        try {
+          const [{ EffectComposer }, { RenderPass }, { SSAOPass }, { OutputPass }] = await Promise.all([
+            import('three/examples/jsm/postprocessing/EffectComposer.js'),
+            import('three/examples/jsm/postprocessing/RenderPass.js'),
+            import('three/examples/jsm/postprocessing/SSAOPass.js'),
+            import('three/examples/jsm/postprocessing/OutputPass.js'),
+          ])
+          const w = canvas.clientWidth || 800, h = canvas.clientHeight || 600
+          const comp = new EffectComposer(renderer)
+          comp.addPass(new RenderPass(scene, cam))
+          const ssao = new SSAOPass(scene, cam, w, h)
+          ssao.kernelRadius = 8; ssao.minDistance = 0.002; ssao.maxDistance = 0.08
+          comp.addPass(ssao)
+          comp.addPass(new OutputPass())
+          composerRef.current = comp
+        } catch (e) { composerRef.current = null; if (import.meta.env.DEV) console.warn('[SSAO] deshabilitado:', e && e.message) }
+      })()
+    }
     cam.position.set(350, 250, 450)
     camRef.current = cam
 
@@ -364,6 +391,7 @@ export default function Viewer3D({
       cam.aspect = w / h
       cam.updateProjectionMatrix()
       renderer.setSize(w, h)
+      if (composerRef.current) composerRef.current.setSize(w, h)
     }
     window.addEventListener('resize', onResize)
 
@@ -715,7 +743,7 @@ export default function Viewer3D({
       if (currentHover) setHoveredInfo(currentHover.userData)
       else setHoveredInfo(null)
 
-      renderer.render(scene, cam)
+      if (composerRef.current) composerRef.current.render(); else renderer.render(scene, cam)
     }
     animate()
     if (mountRef.current) setIsReady(true)
@@ -964,6 +992,7 @@ export default function Viewer3D({
     // ★ Cleanup: cancela loop y event listeners al desmontar
     return () => {
       initRef.current = false
+      if (composerRef.current) { try { composerRef.current.dispose() } catch (_) {} composerRef.current = null }
       if (frameRef.current) { cancelAnimationFrame(frameRef.current); frameRef.current = null }
       window.removeEventListener('resize', onResize)
       canvas.removeEventListener('mousemove', onMouseMove)
