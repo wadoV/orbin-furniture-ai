@@ -13,12 +13,12 @@ export function initCollaboration(roomId, userName) {
   })
 
   socket.on('connect', () => {
-    console.log('[Collaboration] Connected to server')
+    if (import.meta.env.DEV) console.log('[Collaboration] Connected to server')
     socket.emit('join-room', roomId, { name: userName })
   })
 
   socket.on('disconnect', () => {
-    console.log('[Collaboration] Disconnected from server')
+    if (import.meta.env.DEV) console.log('[Collaboration] Disconnected from server')
   })
 
   return socket

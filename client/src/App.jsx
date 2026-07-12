@@ -841,7 +841,7 @@ export default function App() {
                     onSelectPieces={setSelectedPieceIds}
                     onDeleteModule={handleDeleteModule}
                     onDeletePiece={handleDeletePiece}
-                    onSave={() => console.log('Saving module', currentResult.id)}
+                    onSave={() => { if (import.meta.env.DEV) console.log('Saving module', currentResult.id) }}
                   />
                 </div>
               )}

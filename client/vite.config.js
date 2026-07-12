@@ -12,6 +12,8 @@ export default defineConfig({
           three:   ['three'],
           react:   ['react', 'react-dom'],
           socket:  ['socket.io-client'],
+          pdf:     ['jspdf'],
+          icons:   ['lucide-react'],
         },
       },
     },
