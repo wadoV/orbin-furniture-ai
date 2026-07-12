@@ -1,0 +1,58 @@
+# Orbin AI — Backup automático y CIFRADO de la base de datos (Supabase).
+# Los datos de clientes se respaldan aunque pierdas acceso a Supabase.
+#
+# Requiere 2 secrets en GitHub → Settings → Secrets and variables → Actions:
+#   • SUPABASE_DB_URL     : cadena de conexión DIRECTA de Supabase
+#       (Supabase → Settings → Database → Connection string → URI, puerto 5432)
+#   • BACKUP_PASSPHRASE   : una frase larga SOLO tuya (guardala en tu gestor de
+#       contraseñas). Sin ella, el backup NO se puede descifrar → guardala bien.
+#
+# El backup queda como "artifact" del run, CIFRADO con AES-256. Para restaurar
+# ver RECOVERY.md.
+name: Orbin DB Backup (cifrado)
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'   # cada domingo 04:00 UTC (subir a diario: '0 4 * * *')
+  workflow_dispatch: {}    # también se puede correr a mano desde la pestaña Actions
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Verificar secrets
+        run: |
+          if [ -z "${{ secrets.SUPABASE_DB_URL }}" ] || [ -z "${{ secrets.BACKUP_PASSPHRASE }}" ]; then
+            echo "::error::Faltan secrets SUPABASE_DB_URL y/o BACKUP_PASSPHRASE. Ver RECOVERY.md."
+            exit 1
+          fi
+
+      - name: Dump + gzip + cifrado AES-256
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          STAMP=$(date -u +%Y%m%d-%H%M)
+          FILE="orbin-backup-$STAMP.sql"
+          # --no-owner/--no-acl: restaurable en cualquier proyecto Supabase nuevo
+          pg_dump "$DB_URL" --no-owner --no-acl --clean --if-exists > "$FILE"
+          gzip "$FILE"
+          gpg --batch --yes --symmetric --cipher-algo AES256 \
+              --passphrase "$PASS" "$FILE.gz"
+          rm -f "$FILE.gz"   # nunca subir el dump sin cifrar
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          echo "Backup cifrado listo: $FILE.gz.gpg"
+
+      - name: Subir artifact cifrado (retención 90 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbin-db-backup-${{ env.STAMP }}
+          path: '*.sql.gz.gpg'
+          retention-days: 90
+          if-no-files-found: error

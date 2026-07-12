@@ -1849,6 +1849,18 @@ export default function Viewer3D({
         )}
       </div>
 
+      {/* ★ Modo Presentación (cinematic turntable) — antes el botón no renderizaba nada.
+          Ahora se cablea pasando la cámara y los controles reales; PresentationMode
+          orbita alrededor del centro del modelo (controls.target). */}
+      {isPresentationMode && (
+        <PresentationMode
+          camera={camRef.current}
+          controls={controlsRef.current}
+          isEnabled={isPresentationMode}
+          onToggle={() => setIsPresentationMode(false)}
+        />
+      )}
+
       {/* Export button */}
       <button
         onClick={handleExport}

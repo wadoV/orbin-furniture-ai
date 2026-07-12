@@ -1,0 +1,7 @@
+# Orbin AI — control de versiones: SOLO el owner aprueba/publica cambios.
+# Requiere en GitHub → Settings → Branches → Branch protection de `main`:
+#   • Require a pull request before merging
+#   • Require review from Code Owners
+#   • Require status checks (Orbin Integrity / blindaje) to pass
+#   • Do not allow bypassing · Restrict who can push to `main` (solo @wadoV)
+* @wadoV

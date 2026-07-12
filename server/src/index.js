@@ -99,16 +99,16 @@ const corsOptions = {
       return callback(null, true)
     }
     
-    if (/\.vercel\.app$/.test(origin)) {
-      return callback(null, true)
-    }
-    
-    if (/\.railway\.app$/.test(origin)) {
-      return callback(null, true)
-    }
-    
-    if (/\.ngrok(-free)?\.app$/.test(origin) || /\.loca\.lt$/.test(origin)) {
-      return callback(null, true)
+    // [2026-07 seguridad] Comodines de túneles/previews SOLO fuera de producción.
+    // En prod, con credentials:true, permitir *.ngrok / *.loca.lt / *.vercel / *.railway
+    // sería un vector de exfiltración de datos con credenciales. En producción solo
+    // se acepta el allowlist explícito (orbin.app vía CLIENT_URL). Para un preview
+    // puntual, agregar su origen exacto a CLIENT_URL.
+    if (process.env.NODE_ENV !== 'production') {
+      if (/\.vercel\.app$/.test(origin) || /\.railway\.app$/.test(origin) ||
+          /\.ngrok(-free)?\.app$/.test(origin) || /\.loca\.lt$/.test(origin)) {
+        return callback(null, true)
+      }
     }
     
     return callback(new Error('CORS blocked (Orbin Strict Policy)'))
@@ -128,6 +128,9 @@ app.use((_req, res, next) => {
   res.setHeader('X-XSS-Protection', '0') // Modern CSP supersedes; disable to avoid false positives
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  // La API solo devuelve JSON → CSP mínima bloquea ejecución de cualquier contenido inyectado.
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
   next()
 })
 
