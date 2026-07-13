@@ -33,6 +33,13 @@ describe('buildOrbinChatPrompt', () => {
     assert.match(p, /PREGUNTA de forma amable ANTES de generar o inventar/)
   })
 
+  it('inyecta la ORDEN INDUSTRIAL: muebles base primero, 1 módulo por turno', () => {
+    const p = buildOrbinChatPrompt({ userName: 'Ana', lang: 'ES' })
+    assert.match(p, /ORDEN INDUSTRIAL/)
+    assert.match(p, /muebles BASE/)
+    assert.match(p, /UN \(1\) solo módulo por turno/)
+  })
+
   it('reusa el CHAT_SYSTEM_PROMPT estable (esquema JSON) al final', () => {
     const p = buildOrbinChatPrompt({ userName: 'Ana' })
     assert.ok(p.endsWith(CHAT_SYSTEM_PROMPT))

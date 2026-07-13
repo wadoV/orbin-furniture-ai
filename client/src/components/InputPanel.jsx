@@ -580,8 +580,8 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                 }
               }}
               options={isFree
-                ? [{ value: 'mdf_18', label: 'MDF 18mm (estándar) — Plan Free' }]
-                : MATERIALS_DB.map(m => ({ value: m.id, label: `${m.fallback} — $${m.costPerM2}/m²` }))
+                ? [{ value: 'mdf_18', label: 'MDF 18mm (estándar) · Plan Free' }]
+                : MATERIALS_DB.map(m => ({ value: m.id, label: `${m.fallback} · $${m.costPerM2}/m²` }))
               }
             />
             {isBase && (
@@ -623,7 +623,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
           {/* Acabamiento y Base (tamponado / mueble independiente) */}
           <fieldset className="space-y-4">
             <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4">{t('finishing_base') || 'Acabamiento y base'}</legend>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 items-start [&_.label]:min-h-[2.1rem] [&_.label]:flex [&_.label]:items-end">
               <SELECT
                 label={t('tamponado') || 'Tamponado (tapa tornillos)'}
                 name="tamponado"

@@ -130,6 +130,9 @@ export default function App() {
   })
   const [showUndoToast, setShowUndoToast] = useState(false)
   const [chatMessages, setChatMessages] = useState([])
+  // BLOQUE 2 (HITL): módulo propuesto en espera de validación.
+  // null = sin propuesta. NO es estado firme, NO se persiste en Supabase.
+  const [volatileOverlay, setVolatileOverlay] = useState(null)
   const [chatLoading, setChatLoading] = useState(false)
   const [lastPrompt, setLastPrompt] = useState('')
   const [aiStatus, setAiStatus] = useState('')
@@ -387,20 +390,9 @@ export default function App() {
     { msg: 'Generating 3D model...', delay: 4000 },
   ]
 
-  // ★ FIX: handleChatDesign was called in handleSendMessage but never defined.
-  //   Converts a raw AI design object into a proper module and pushes it to history.
-  const handleChatDesign = ({ design }) => {
-    // ── PLAN RESTRICTION: Free plan max 3 modules via chat too ───────────
-    if (isFree && !canAddModule(modules.length)) {
-      setPlanAlert({
-        feature:     t('plan_module_limit_feature') || 'Módulos ilimitados',
-        message:     t('plan_module_limit')     || 'Límite de módulos alcanzado',
-        description: t('plan_module_limit_desc') || 'El plan Gratuito permite hasta 3 módulos. Haz upgrade.',
-      })
-      return
-    }
-    if (!design) return
-    // Normalize: wrap bare params object into full module shape expected by Viewer3D
+  // BLOQUE 2: normaliza un design crudo de IA -> módulo completo (shape de Viewer3D).
+  // Extraído tal cual del cuerpo de handleChatDesign; MISMA salida, sin cambio de conducta.
+  const buildModuleFromDesign = (design) => {
     const configuration = design.configuration
       ? design.configuration
       : {
@@ -421,12 +413,62 @@ export default function App() {
           materialBody:  design.materialBody  || 'oak_light',
           materialFront: design.materialFront || 'white',
         }
-    const newModule = {
+    return {
       ...design,
       id:            design.id || ('CHAT-' + Date.now()),
       type:          design.type || configuration.moduleType || 'standard',
       configuration,
     }
+  }
+
+  // BLOQUE 2: pone el módulo propuesto en overlay translúcido. Sin saveHistory, sin Supabase.
+  const stageVolatileModule = (design) => {
+    if (!design) return
+    setVolatileOverlay(buildModuleFromDesign(design))
+  }
+
+  // BLOQUE 2: [Confirmar] overlay -> firme (undo gratis) + ÚNICO commit a Supabase.
+  const confirmVolatileModule = () => {
+    const mod = volatileOverlay
+    if (!mod) return
+    if (isFree && !canAddModule(modules.length)) {
+      setPlanAlert({
+        feature:     t('plan_module_limit_feature') || 'Módulos ilimitados',
+        message:     t('plan_module_limit')     || 'Límite de módulos alcanzado',
+        description: t('plan_module_limit_desc') || 'El plan Gratuito permite hasta 3 módulos. Haz upgrade.',
+      })
+      return
+    }
+    saveHistory([...modules, mod], 'Chat — módulo confirmado')
+    setSelectedModuleId(mod.id)
+    setActiveTab('params')
+    setVolatileOverlay(null)
+    try { api.saveProject(mod, 'Chat — ' + (mod.type || 'módulo')) }
+    catch (e) { if (import.meta.env.DEV) console.warn('[HITL] saveProject', e) }
+    handleSendMessage(t('hitl_confirm_next') || 'Módulo confirmado. Continuá con los muebles aéreos alineados.')
+  }
+
+  // BLOQUE 2: [Deshacer] limpia overlay + borra la última propuesta del log. DB intacta.
+  const discardVolatileModule = () => {
+    setVolatileOverlay(null)
+    setChatMessages(prev => prev.slice(0, -1))
+  }
+
+  // ★ FIX: handleChatDesign was called in handleSendMessage but never defined.
+  //   Converts a raw AI design object into a proper module and pushes it to history.
+  const handleChatDesign = ({ design }) => {
+    // ── PLAN RESTRICTION: Free plan max 3 modules via chat too ───────────
+    if (isFree && !canAddModule(modules.length)) {
+      setPlanAlert({
+        feature:     t('plan_module_limit_feature') || 'Módulos ilimitados',
+        message:     t('plan_module_limit')     || 'Límite de módulos alcanzado',
+        description: t('plan_module_limit_desc') || 'El plan Gratuito permite hasta 3 módulos. Haz upgrade.',
+      })
+      return
+    }
+    if (!design) return
+    // BLOQUE 2: normalización extraída a buildModuleFromDesign (misma salida).
+    const newModule = buildModuleFromDesign(design)
     saveHistory([...modules, newModule], 'Chat — ' + (newModule.type || 'módulo'))
     setSelectedModuleId(newModule.id)
     setActiveTab('params')
@@ -481,7 +523,11 @@ export default function App() {
         logPrompt(mem, text, data.reply, data.source || 'unknown', !!data.design)
         refreshMemory()
       } catch {}
-      if (data.design) handleChatDesign({ design: data.design })
+      if (data.design && data.status === 'pending_validation') {
+        stageVolatileModule(data.design)          // BLOQUE 2: previsualizar, NO persistir
+      } else if (data.design) {
+        handleChatDesign({ design: data.design }) // legacy: intacto (back-compat)
+      }
     } catch (err) {
       // Network error → switch to offline mode immediately for next message
       // FIX #8 (QA 2026-06-26): antes se detectaba "es un error de red" buscando
@@ -761,6 +807,9 @@ export default function App() {
                     lastPrompt={lastPrompt}
                     currentDesign={currentResult}
                     planLocked={!canUseChat}
+                    pendingValidation={!!volatileOverlay}
+                    onConfirmModule={confirmVolatileModule}
+                    onUndoModule={discardVolatileModule}
                   />
                 )}
                 {activeTab === 'vision' && <ImageToParametricPanel onApplyDesign={handleGenerateFromVision} />}
@@ -806,6 +855,7 @@ export default function App() {
                   }>
                   <Viewer3D
                     modules={modules}
+                    overlayModule={volatileOverlay}
                     selectedModuleId={selectedModuleId}
                     selectedPieceIds={selectedPieceIds}
                     onSelectModule={setSelectedModuleId}

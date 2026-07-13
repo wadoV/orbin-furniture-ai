@@ -107,6 +107,7 @@ export default function Viewer3D({
   onDeleteModule   = () => {},
   onUpdateModule   = () => {},
   onAddModule      = () => {},
+  overlayModule    = null,   // BLOQUE 2 (HITL): módulo volátil a previsualizar translúcido (no firme)
   onCaptureReady   = null,   // (fn) => void  — called once renderer is ready; fn() returns PNG dataURL
   onIsoCaptureReady = null,  // (fn) => void  — expone captura isométrica en gris CAD (PNG dataURL)
   onCadCaptureReady = null,  // (fn)=>void — fn(kind:'front'|'top'|'iso') captura gris CAD -> {url,fx,fy}
@@ -171,6 +172,9 @@ export default function Viewer3D({
   const dragPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0))
   // ★ Snap guide lines
   const snapLinesRef = useRef([])
+  // BLOQUE 2 (HITL): grupo del overlay translúcido. Vive en la escena, NUNCA en
+  // groupRef/meshesRef -> invisible a selección, raycasting, export y captura CAD.
+  const overlayGroupRef = useRef(null)
 
   // Keep reactive state in a ref for the animation loop
   const stateRef = useRef({ exploded, wireframe, selectedPieceIds, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints })
@@ -1521,6 +1525,102 @@ export default function Viewer3D({
     }
   }, [modules, hiddenModules])
 
+  // ── BLOQUE 2 (HITL): preview translúcido del módulo volátil ──────────────
+  // Effect autocontenido. Reusa los MISMOS campos paramétricos (cfg + SCALE) que
+  // el motor firme, pero pinta losas translúcidas en overlayGroupRef, adjunto a
+  // la escena. No toca meshesRef, raycaster, groupRef ni el auto-frame de cámara.
+  useEffect(() => {
+    const scene = sceneRef.current
+    if (!scene) return
+
+    // limpiar overlay anterior
+    if (overlayGroupRef.current) {
+      scene.remove(overlayGroupRef.current)
+      overlayGroupRef.current.traverse(obj => {
+        if (obj.geometry) obj.geometry.dispose()
+        if (obj.material) (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(m => m.dispose())
+      })
+      overlayGroupRef.current = null
+    }
+
+    const cfg = overlayModule?.configuration
+    if (!cfg) return
+
+    const W  = (cfg.width  || 600) * SCALE
+    const H  = (cfg.height || 720) * SCALE
+    const D  = (cfg.depth  || 580) * SCALE
+    const T  = (cfg.thickness || 18) * SCALE
+    const BH = (cfg.baseboard !== false ? (cfg.baseboardHeight || 100) : 0) * SCALE
+
+    const g = new THREE.Group()
+    g.userData._isOverlay = true   // marca propia; el rebuild firme sólo limpia _isEdge
+    const ghost = () => new THREE.MeshPhysicalMaterial({
+      color: 0x38bdf8, transparent: true, opacity: 0.36, roughness: 0.5,
+      metalness: 0, depthWrite: false, side: THREE.DoubleSide,
+    })
+    const slab = (w, h, d, x, y, z) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(Math.max(w, 0.001), Math.max(h, 0.001), Math.max(d, 0.001)), ghost())
+      m.position.set(x, y, z)
+      g.add(m)
+    }
+
+    // carcasa
+    slab(T, H, D, -W / 2 + T / 2, H / 2, 0)   // lateral izq
+    slab(T, H, D,  W / 2 - T / 2, H / 2, 0)   // lateral der
+    slab(W, T, D, 0, H - T / 2, 0)            // techo
+    slab(W, T, D, 0, BH + T / 2, 0)           // piso (sobre zócalo)
+    slab(W, H, T, 0, H / 2, -D / 2 + T / 2)   // fondo
+    if (BH > 0) slab(W - 2 * T, BH, D * 0.9, 0, BH / 2, 0)  // zócalo
+
+    // repisas
+    const ns = cfg.numShelves || 0
+    for (let i = 1; i <= ns; i++) {
+      const y = BH + (H - BH) * (i / (ns + 1))
+      slab(W - 2 * T, T, D - T, 0, y, T / 2)
+    }
+    // cajones (frentes) o puertas
+    const nd = cfg.numDrawers || 0
+    if (nd > 0) {
+      const dh = (cfg.drawerHeight || 180) * SCALE
+      for (let i = 0; i < nd; i++) slab(W - 2 * T, dh * 0.92, T, 0, BH + dh * (i + 0.5), D / 2 - T / 2)
+    } else if (cfg.hasDoors !== false) {
+      const ndoors = cfg.numDoors || 2
+      const dw = (W - 2 * T) / ndoors
+      for (let i = 0; i < ndoors; i++) slab(dw * 0.94, H - BH - 2 * T, T, -W / 2 + T + dw * (i + 0.5), BH + (H - BH) / 2, D / 2 - T / 2)
+    }
+
+    // posición: a la derecha de los módulos firmes (aparece como "el siguiente")
+    let totalW = 0
+    ;(modules || []).forEach(m => { const c = m?.configuration; if (c) totalW += (c.width || 600) * SCALE })
+    g.position.x = totalW + W / 2 + (modules && modules.length ? 5 : 0)
+    if (cfg.moduleType === 'aereo') g.position.y = (cfg.mountHeight || 1400) * SCALE
+
+    scene.add(g)
+    overlayGroupRef.current = g
+
+    return () => {
+      if (overlayGroupRef.current) {
+        scene.remove(overlayGroupRef.current)
+        overlayGroupRef.current.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose()
+          if (obj.material) (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(m => m.dispose())
+        })
+        overlayGroupRef.current = null
+      }
+    }
+  }, [overlayModule, modules])
+
+  // TAREA 1 (pulido): al entrar/salir del modo presentación, el layout Charcoal
+  // redimensiona el contenedor del canvas; forzamos un resize sincrónico para que
+  // renderer/composer recalculen el búfer y no quede hueco negro inferior en Chrome.
+  useEffect(() => {
+    const fire = () => window.dispatchEvent(new Event('resize'))
+    fire()                                   // inmediato
+    const raf = requestAnimationFrame(fire)  // siguiente frame
+    const id  = setTimeout(fire, 260)        // cubre la transición CSS de presentation-active
+    return () => { cancelAnimationFrame(raf); clearTimeout(id) }
+  }, [isPresentationMode])
+
   // --- Fallback: build from raw pieces array ---
   function buildFromPieces(design, dIdx, group, xOff) {
     const pieces = design.pieces || design.piezas || []
@@ -1664,7 +1764,7 @@ export default function Viewer3D({
   }, [arModelUrl])
 
   return (
-    <div className="relative w-full h-full group select-none overflow-hidden" style={{ minHeight: 'clamp(260px, 45vw, 600px)' }}>
+    <div className="orbin-viewer-root relative w-full h-full group select-none overflow-hidden" style={{ minHeight: 'clamp(260px, 45vw, 600px)' }}>
       <canvas ref={mountRef} className="absolute inset-0 w-full h-full block" style={{ minHeight: 'clamp(260px, 45vw, 600px)' }} />
 
       {/* ★ PROTECTED: Drag-to-move indicator */}

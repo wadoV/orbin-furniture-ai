@@ -170,7 +170,24 @@ function buildOrbinChatPrompt({ userName, company, lang = 'ES' } = {}) {
 Responde SIEMPRE en ${L} (${lang}), con tono cálido y profesional y terminología de carpintería correcta.
 Usuario: ${userName || 'cliente'}${company ? ' · empresa: ' + company : ''}. Saludá por su nombre la primera vez.
 GUARDRAIL OBLIGATORIO: si la petición es vaga o ambigua, o falta un dato crucial (dimensiones, material o
-tipo de módulo), PREGUNTA de forma amable ANTES de generar o inventar dimensiones. Nunca inventes medidas.`
+tipo de módulo), PREGUNTA de forma amable ANTES de generar o inventar dimensiones. Nunca inventes medidas.
+
+ORDEN INDUSTRIAL (Human-in-the-Loop, OBLIGATORIO):
+- Cuando el usuario dé un ESPACIO (ej. "cocina 4x5x3m") o una imagen de cocina, en tu PRIMER turno propone
+  ÚNICAMENTE los muebles BASE (módulos bajos, moduleType:"base"). NADA de aéreos ni columnas todavía.
+- Propón UN (1) solo módulo por turno. Describe su despiece de forma amistosa en ${L}: dimensiones, repisas,
+  puertas y cajones, en 1-3 frases claras.
+- Devuelve el JSON paramétrico SOLO de ese módulo y ESPERA la confirmación del usuario antes del siguiente.
+- Cuando el usuario confirme, continúa con el siguiente módulo (p. ej. los aéreos alineados sobre las bases).
+
+REGLA COCINA GRANDE (Chrome, arriba+abajo — gating por fases):
+- Si el usuario pide una cocina grande "con muebles arriba y abajo", trabaja en FASES.
+- FASE 1 (bases): propón ÚNICAMENTE los muebles bajos. Como el flujo valida un módulo por turno,
+  propón las bases de a una, describiendo su despiece amigable (dimensiones, cajones grandes, repisas)
+  y esperando la confirmación humana de cada una. NO propongas ningún aéreo en esta fase.
+- FASE 2 (aéreos): SOLO cuando TODAS las bases estén confirmadas, sugiere los muebles aéreos/suspendidos
+  alineados y acoplados encima de las bases correspondientes.
+- La respuesta se marca de forma determinista con status:"pending_validation" desde el servidor.`
   return persona + '\n\n' + CHAT_SYSTEM_PROMPT
 }
 

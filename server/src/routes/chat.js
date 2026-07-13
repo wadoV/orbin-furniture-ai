@@ -112,6 +112,11 @@ router.post('/design', async (req, res) => {
       response.params = normalizeDesignParams(result.params)
     }
 
+    // BLOQUE 2 (HITL): flag determinista. Si la IA propuso un módulo (hay params),
+    // se marca pending_validation y el cliente NO persiste nada hasta que el usuario
+    // confirme. No depende de que el modelo emita el flag por su cuenta.
+    if (result.params) response.status = 'pending_validation'
+
     res.json(response)
   } catch (err) {
     // FIX #8 (QA 2026-06-26): exponía err.message crudo (puede incluir detalle

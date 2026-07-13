@@ -59,16 +59,29 @@ export default function PresentationMode({ camera, controls, isEnabled, onToggle
     };
   }, [isPlaying, isEnabled, camera, controls]);
 
+  // CORRECCIÓN 1: al dar Play, sube al tope y fuerza resize para que el visor
+  // ocupe el marco de Chrome sin dejar hueco arriba ni romper la página abajo.
+  const togglePlay = () => {
+    const next = !isPlaying;
+    setIsPlaying(next);
+    if (next) {
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+      } catch {}
+    }
+  };
+
   if (!isEnabled) return null;
 
   return (
-    <div className="presentation-overlay z-50 absolute inset-0 pointer-events-none overflow-hidden rounded-xl">
+    <div className="presentation-overlay z-50 absolute inset-0 pointer-events-none overflow-hidden rounded-xl transition-all duration-500 ease-in-out">
       <div className="presentation-header absolute top-8 left-8 pointer-events-auto">
         <h2 className="premium-title text-3xl font-bold tracking-[0.2em] text-white/90 drop-shadow-md">ORBIN SHOWROOM</h2>
         <span className="premium-subtitle text-xs tracking-widest text-white/60 uppercase mt-2 block">Architectural Proportions &amp; PBR Visualization</span>
       </div>
       <div className="presentation-controls absolute bottom-12 left-1/2 -translate-x-1/2 flex gap-4 backdrop-blur-xl bg-black/40 p-2 rounded-2xl pointer-events-auto border border-white/10 shadow-2xl">
-        <button className="flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-all font-medium text-sm tracking-wide" onClick={() => setIsPlaying(!isPlaying)}>
+        <button className="flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-all font-medium text-sm tracking-wide" onClick={togglePlay}>
           {isPlaying ? <Pause size={18} /> : <Play size={18} />}
           <span>{isPlaying ? 'PAUSE CINEMATIC' : 'PLAY CINEMATIC'}</span>
         </button>

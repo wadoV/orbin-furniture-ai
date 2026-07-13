@@ -1,7 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Sparkles, Wand2, Hammer, Ruler, History, Zap, ChevronDown, ChevronUp, Lock, Crown } from 'lucide-react'
+import { Send, Bot, User, Sparkles, Wand2, Hammer, Ruler, History, Zap, ChevronDown, ChevronUp, Lock, Crown, Check, X } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
+
+// TAREA 2 (pulido): sanitiza SOLO títulos de pantalla — quita guiones/viñetas
+// colgantes al inicio/fin que no cumplen función gramatical. No toca cuerpos de
+// mensaje ni identificadores técnicos. El em-dash intermedio (—) se preserva.
+const cleanTitle = (s = '') =>
+  String(s).replace(/^[\s\-–—•*]+/, '').replace(/[\s\-–—•*]+$/, '').trim()
 
 // ★ PROTECTED: AI Model badge config — color-coded per provider
 const MODEL_BADGES = {
@@ -35,7 +41,7 @@ function savePromptHistory(list) {
   catch { /* quota exceeded */ }
 }
 
-export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, lastPrompt, currentDesign, planLocked = false }) {
+export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, lastPrompt, currentDesign, planLocked = false, pendingValidation = false, onConfirmModule = () => {}, onUndoModule = () => {} }) {
   const { t } = usePreferences()
   const { user } = useUser()
   const [input, setInput] = useState('')
@@ -188,7 +194,7 @@ export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, 
               <Sparkles size={32} className="text-primary/40" />
             </div>
             <div className="max-w-xs space-y-2">
-              <h4 className="text-sm font-black text-white uppercase tracking-widest">{user?.name ? t('ai_greeting_named').replace('{name}', user.name) : t('bot_welcome')}</h4>
+              <h4 className="text-sm font-black text-white uppercase tracking-widest">{cleanTitle(user?.name ? t('ai_greeting_named').replace('{name}', user.name) : t('bot_welcome'))}</h4>
               <p className="text-[11px] text-muted leading-relaxed font-medium">
                 {t('bot_greeting')}
               </p>
@@ -239,6 +245,36 @@ export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, 
           </div>
         )}
       </div>
+
+      {/* ── BLOQUE 2 (HITL): barra de validación del módulo propuesto ──── */}
+      {pendingValidation && (
+        <div className="px-6 pt-4 pb-3 border-t border-primary/20 bg-primary/[0.04]">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+            <p className="text-[10px] font-black uppercase tracking-widest text-primary/80">
+              {cleanTitle(t('hitl_pending_title') || 'Módulo propuesto — revisá el preview')}
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={onConfirmModule}
+              disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-primary hover:bg-primary/90 text-black font-black text-xs uppercase tracking-wide transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-primary/20"
+            >
+              <Check size={16} strokeWidth={3} />
+              <span>{t('btn_confirm_module') || 'Confirmar Módulo'}</span>
+            </button>
+            <button
+              onClick={onUndoModule}
+              disabled={loading}
+              className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-bold text-xs uppercase tracking-wide border border-white/10 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <X size={16} strokeWidth={2.5} />
+              <span>{t('btn_undo_module') || 'Deshacer'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Input Area ──────────────────────────────────────────────── */}
       <div className="p-6 bg-surface-3/30 border-t border-white/5">
