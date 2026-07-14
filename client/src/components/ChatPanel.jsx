@@ -24,6 +24,7 @@ const MODEL_BADGES = {
   'claude':                   { label: 'Claude Premium', color: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
   'regex-fallback':           { label: 'Offline Mode',   color: 'bg-orange-500/15 text-orange-400 border-orange-500/30' },
   'offline':                  { label: '⚡ Offline',     color: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+  'vision-fallback':          { label: 'Vision Fallback', color: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
   'error':                    { label: 'Error',          color: 'bg-red-500/15 text-red-400 border-red-500/30' },
   'unknown':                  { label: 'AI',             color: 'bg-white/10 text-white/60 border-white/10' },
 }
@@ -210,10 +211,18 @@ export default function ChatPanel({ messages, onSendMessage, loading, aiStatus, 
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${m.role === 'user' ? 'bg-surface-3 border-white/10' : 'bg-primary/10 border-primary/20'}`}>
               {m.role === 'user' ? <User size={14} className="text-white" /> : <Bot size={14} className="text-primary" />}
             </div>
-            <div className={`max-w-[85%] ${m.role === 'user' ? '' : 'space-y-2'}`}>
-              <div className={`p-4 rounded-2xl text-[12px] leading-relaxed font-medium ${m.role === 'user' ? 'bg-surface-3 text-white rounded-tr-none' : 'bg-white/5 text-white/90 border border-white/5 rounded-tl-none'}`}>
-                {m.content}
-              </div>
+            <div className={`max-w-[85%] ${m.role === 'user' ? '' : 'space-y-2'} w-full`}>
+              {m.source === 'vision-fallback' ? (
+                <div className="flex flex-row items-center justify-between gap-4 w-full border-b border-white/5 pb-2">
+                  <div className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 p-4 rounded-xl text-xs font-mono w-full">
+                    {m.content}
+                  </div>
+                </div>
+              ) : (
+                <div className={`p-4 rounded-2xl text-[12px] leading-relaxed font-medium ${m.role === 'user' ? 'bg-surface-3 text-white rounded-tr-none' : 'bg-white/5 text-white/90 border border-white/5 rounded-tl-none'}`}>
+                  {m.content}
+                </div>
+              )}
               {/* ★ PROTECTED: AI Model Badge — shows which model generated the response */}
               {m.role === 'assistant' && m.source && (
                 <div className="pl-1">

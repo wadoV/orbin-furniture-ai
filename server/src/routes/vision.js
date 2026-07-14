@@ -23,16 +23,32 @@ router.post('/analyze-space', async (req, res) => {
       base64Data = parts[1]
     }
 
-    const aiResult = await analyzeSpaceImage(base64Data, actualMimeType, userPrompt)
+    let aiResult
+    try {
+      aiResult = await analyzeSpaceImage(base64Data, actualMimeType, userPrompt)
+    } catch (err) {
+      console.error('[vision/analyze-space] Gemini Vision failed, using offline fallback. Error:', err.message || err)
+      // Clean fallback configuration (1200x2000x600 wardrobe with 2 default modules)
+      aiResult = {
+        width: 1200,
+        height: 2000,
+        depth: 600,
+        hasCountertop: false,
+        modules: [
+          { width: 600, numShelves: 3, numDrawers: 0, numDividers: 0 },
+          { width: 600, numShelves: 0, numDrawers: 3, numDividers: 0 }
+        ],
+        obstacles: ['Fallback: Gemini Vision is currently offline. Using default B2B layout.'],
+        source: 'vision-fallback'
+      }
+    }
 
     res.json({
       success: true,
       analysis: aiResult
     })
   } catch (err) {
-    // FIX #8 (QA 2026-06-26): se quitó `detail: err.message` de la respuesta —
-    // no debe llegar al cliente. El error completo queda logueado server-side.
-    console.error('[vision/analyze-space] Error:', err)
+    console.error('[vision/analyze-space] Critical Route Error:', err)
     res.status(500).json({ success: false, error: 'No pudimos analizar la imagen. Intentá de nuevo.' })
   }
 })

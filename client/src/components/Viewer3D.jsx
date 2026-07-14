@@ -1590,9 +1590,15 @@ export default function Viewer3D({
     }
 
     // posición: a la derecha de los módulos firmes (aparece como "el siguiente")
-    let totalW = 0
-    ;(modules || []).forEach(m => { const c = m?.configuration; if (c) totalW += (c.width || 600) * SCALE })
-    g.position.x = totalW + W / 2 + (modules && modules.length ? 5 : 0)
+    // BLOQUE 3: si el aéreo trae X heredada de su base, se apila encima (mismo centro);
+    // si no, cae al layout por defecto (a la derecha de los firmes).
+    if (typeof overlayModule.__overlayXmm === 'number') {
+      g.position.x = overlayModule.__overlayXmm * SCALE
+    } else {
+      let totalW = 0
+      ;(modules || []).forEach(m => { const c = m?.configuration; if (c) totalW += (c.width || 600) * SCALE })
+      g.position.x = totalW + W / 2 + (modules && modules.length ? 5 : 0)
+    }
     if (cfg.moduleType === 'aereo') g.position.y = (cfg.mountHeight || 1400) * SCALE
 
     scene.add(g)
@@ -1956,6 +1962,9 @@ export default function Viewer3D({
         <PresentationMode
           camera={camRef.current}
           controls={controlsRef.current}
+          renderer={rendererRef.current}
+          scene={sceneRef.current}
+          composer={composerRef.current}
           isEnabled={isPresentationMode}
           onToggle={() => setIsPresentationMode(false)}
         />

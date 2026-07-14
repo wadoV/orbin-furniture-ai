@@ -28,6 +28,7 @@ import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users
 
 import { usePreferences } from './context/PreferencesContext.jsx'
 import { useUser } from './context/UserContext.jsx'
+import { calculateAerialAlignment, findBaseForAerial, isAerialModule } from './lib/stackingMath.js'
 
 // ── Plan Upgrade Banner ────────────────────────────────────────────────────────
 // [2026-06-23] Inline PlanLimitAlert replaced by real UpgradePrompt component
@@ -359,7 +360,17 @@ export default function App() {
       }))
 
       saveHistory(newModules, 'Generado desde IA Vision')
-      setActiveTab('params')
+      
+      if (analysisResult.source === 'vision-fallback') {
+        setChatMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'Aviso: Conexión con Gemini Vision temporalmente no disponible. Cargando propuesta de diseño base Orbin para edición paramétrica.',
+          source: 'vision-fallback'
+        }])
+        setActiveTab('chat')
+      } else {
+        setActiveTab('params')
+      }
 
       if (analysisResult.obstacles && analysisResult.obstacles.length > 0) {
         setTimeout(() => alert(`AI Notó los siguientes obstáculos:\n\n- ${analysisResult.obstacles.join('\n- ')}`), 500)
@@ -424,7 +435,17 @@ export default function App() {
   // BLOQUE 2: pone el módulo propuesto en overlay translúcido. Sin saveHistory, sin Supabase.
   const stageVolatileModule = (design) => {
     if (!design) return
-    setVolatileOverlay(buildModuleFromDesign(design))
+    let mod = buildModuleFromDesign(design)
+    // BLOQUE 3: si el diseño es aéreo, se alinea sobre una base firme (herencia geométrica).
+    if (isAerialModule(mod)) {
+      const match = findBaseForAerial(modules, mod.configuration)
+      if (match) {
+        const baseWithX = { ...match.module, _centerXMM: match.centerXMM }
+        const aligned = calculateAerialAlignment(baseWithX, mod.configuration)
+        mod = { ...mod, configuration: aligned, __overlayXmm: aligned._centerXMM }
+      }
+    }
+    setVolatileOverlay(mod)
   }
 
   // BLOQUE 2: [Confirmar] overlay -> firme (undo gratis) + ÚNICO commit a Supabase.

@@ -6,7 +6,7 @@
 const { FURNITURE_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT } = require('./systemPrompts')
 
 async function callGemini(systemPrompt, userMessage) {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY is missing')
 
   // Using standard fetch for Node 18+
@@ -42,7 +42,7 @@ async function callGemini(systemPrompt, userMessage) {
 }
 
 async function callGeminiVision(systemPrompt, userPrompt, base64Image, mimeType) {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY is missing')
 
   const visionModel = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash'

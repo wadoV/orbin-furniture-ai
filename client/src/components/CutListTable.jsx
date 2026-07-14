@@ -27,8 +27,17 @@ const TYPE_COLOR = {
   drawer_bottom: 'text-purple-200',
 }
 
-function exportCSV(cutList, getTypeLabel) {
-  const headers = ['ID', 'Nombre / Nome', 'Tipo', 'Ancho/Largura (mm)', 'Alto/Altura (mm)', 'Esp.(mm)', 'Veta/Veio', 'Cantos/Bordos']
+function exportCSV(cutList, getTypeLabel, t, lang, unit) {
+  const headers = [
+    'ID',
+    t('piece_name') || (lang === 'EN' ? 'Name' : 'Nombre / Nome'),
+    t('cl_type') || (lang === 'EN' ? 'Type' : 'Tipo'),
+    unit === 'm' ? t('w_m') : t('w_mm'),
+    unit === 'm' ? t('h_m') : t('h_mm'),
+    t('cl_thickness') || (lang === 'EN' ? 'Thick.(mm)' : 'Esp.(mm)'),
+    t('cl_grain') || (lang === 'EN' ? 'Grain' : 'Veta/Veio'),
+    t('cl_edges') || (lang === 'EN' ? 'Edges' : 'Cantos/Bordos')
+  ]
   const rows = cutList.map(p => [
     p.id,
     p.name,
@@ -51,18 +60,29 @@ function exportCSV(cutList, getTypeLabel) {
   URL.revokeObjectURL(url)
 }
 
-function exportPDF(cutList, getTypeLabel) {
+function exportPDF(cutList, getTypeLabel, t, lang, unit) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
 
   doc.setFontSize(18)
   doc.setTextColor(245, 166, 35)
-  doc.text('Orbin AI — Lista de Corte', 14, 18)
+  doc.text(`Orbin AI — ${t('cut_list')}`, 14, 18)
 
   doc.setFontSize(9)
   doc.setTextColor(160, 160, 160)
-  doc.text(`Generado: ${new Date().toLocaleString()}  |  Total piezas: ${cutList.length}`, 14, 26)
+  const genLbl = lang === 'PT' ? 'Gerado' : lang === 'ES' ? 'Generado' : 'Generated'
+  const totPieces = lang === 'PT' ? 'Total de peças' : lang === 'ES' ? 'Total piezas' : 'Total pieces'
+  doc.text(`${genLbl}: ${new Date().toLocaleString()}  |  ${totPieces}: ${cutList.length}`, 14, 26)
 
-  const headers = [['ID', 'Nombre / Nome', 'Tipo', 'Ancho (mm)', 'Alto (mm)', 'Esp. (mm)', 'Veta', 'Cantos']]
+  const headers = [[
+    'ID',
+    t('piece_name') || (lang === 'EN' ? 'Name' : 'Nombre / Nome'),
+    t('cl_type') || (lang === 'EN' ? 'Type' : 'Tipo'),
+    unit === 'm' ? t('w_m') : t('w_mm'),
+    unit === 'm' ? t('h_m') : t('h_mm'),
+    t('cl_thickness') || (lang === 'EN' ? 'Thick.(mm)' : 'Esp.(mm)'),
+    t('cl_grain') || (lang === 'EN' ? 'Grain' : 'Veta/Veio'),
+    t('cl_edges') || (lang === 'EN' ? 'Edges' : 'Cantos/Bordos')
+  ]]
   const rows = cutList.map(p => [
     p.id,
     p.name,
@@ -105,7 +125,8 @@ function exportPDF(cutList, getTypeLabel) {
     doc.setPage(i)
     doc.setFontSize(7)
     doc.setTextColor(100, 100, 100)
-    doc.text(`Orbin AI v2.2 — Pág. ${i}/${pageCount}`, doc.internal.pageSize.getWidth() - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' })
+    const pagLbl = lang === 'PT' ? 'Pág.' : lang === 'ES' ? 'Pág.' : 'Page'
+    doc.text(`Orbin AI v2.2 — ${pagLbl} ${i}/${pageCount}`, doc.internal.pageSize.getWidth() - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' })
   }
 
   doc.save(`lista-de-corte-orbin-${Date.now()}.pdf`)
@@ -116,7 +137,7 @@ const makePieceKey = (moduleId, type, name) =>
   moduleId ? `${moduleId}::${type}::${name.replace(/\s+/g, '_')}` : null
 
 export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece, onDeletePiece, moduleId }) {
-  const { t, unit } = usePreferences()
+  const { t, unit, lang } = usePreferences()
   const [filter, setFilter] = useState('')
   const [sortKey, setSortKey] = useState('type')
   const [sortDir, setSortDir] = useState(1)
@@ -193,32 +214,32 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
             <button
               onClick={() => setHiddenPieceIds(new Set())}
               className="flex items-center gap-1 bg-yellow-500/10 text-yellow-400 text-xs px-2 py-0.5 rounded-full font-mono hover:bg-yellow-500/20 transition-all"
-              title="Mostrar todas las piezas ocultas"
+              title={t('cl_show_hidden')}
             >
-              <EyeOff size={10} /> {hiddenPieceIds.size} ocultas — mostrar todas
+              <EyeOff size={10} /> {hiddenPieceIds.size} {t('cl_hidden_suffix')}
             </button>
           )}
         </h3>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-none">
-            <label htmlFor={searchId} className="sr-only">Filtrar tabla</label>
+            <label htmlFor={searchId} className="sr-only">{t('cl_filter_table')}</label>
             <Filter size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
             <input
               id={searchId}
               className="input-field pl-7 py-1.5 text-xs w-full sm:w-40 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
-              placeholder="Filtrar..."
+              placeholder={t('cl_filter_ph')}
               value={filter}
               onChange={e => setFilter(e.target.value)}
             />
           </div>
           <button
-            onClick={() => exportPDF(cutList, typeLabel)}
+            onClick={() => exportPDF(cutList, typeLabel, t, lang, unit)}
             className="btn-secondary flex items-center justify-center gap-1.5 text-xs py-1.5 flex-1 sm:flex-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <FileText size={12} aria-hidden="true" /> {t('export_pdf')}
           </button>
           <button
-            onClick={() => exportCSV(cutList, typeLabel)}
+            onClick={() => exportCSV(cutList, typeLabel, t, lang, unit)}
             className="btn-secondary flex items-center justify-center gap-1.5 text-xs py-1.5 flex-1 sm:flex-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <Download size={12} aria-hidden="true" /> {t('export_csv')}
@@ -228,24 +249,24 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
 
       <div className="overflow-x-auto rounded-lg border border-border" tabIndex={0} role="region" aria-label="Tabla de lista de corte">
         <table className="w-full text-sm">
-          <caption className="sr-only">Lista de piezas requeridas para ensamblar el mueble</caption>
+          <caption className="sr-only">{t('cl_caption')}</caption>
           <thead className="bg-surface-3 border-b border-border">
             <tr>
               <Th k="id">ID</Th>
               <Th k="name">{t('piece_name')}</Th>
-              <Th k="type">Tipo</Th>
+              <Th k="type">{t('cl_type')}</Th>
               <Th k="cutWidth">{unit === 'm' ? t('w_m') : t('w_mm')}</Th>
               <Th k="cutHeight">{unit === 'm' ? t('h_m') : t('h_mm')}</Th>
-              <Th k="thickness">Esp.(mm)</Th>
-              <Th k="grainDirection">Veio</Th>
-              <th scope="col" className="px-3 py-2.5 text-left text-xs font-semibold text-muted uppercase tracking-wider">Bordos</th>
+              <Th k="thickness">{t('cl_thickness')}</Th>
+              <Th k="grainDirection">{t('cl_grain')}</Th>
+              <th scope="col" className="px-3 py-2.5 text-left text-xs font-semibold text-muted uppercase tracking-wider">{t('cl_edges')}</th>
               <th scope="col" className="px-3 py-2.5 w-8" aria-label="Visibilidad" />
               <th scope="col" className="px-3 py-2.5 w-10" aria-label="Eliminar" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {filtered.length === 0 ? (
-              <tr><td colSpan={10} className="px-3 py-6 text-center text-muted">No se encontraron piezas.</td></tr>
+              <tr><td colSpan={10} className="px-3 py-6 text-center text-muted">{t('cl_empty')}</td></tr>
             ) : filtered.map((p, i) => {
               const selected = isPieceSelected(p)
               const key = pieceKey(p)
@@ -258,7 +279,7 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
                     ? 'bg-primary/15 border-l-2 border-primary shadow-[inset_0_0_8px_rgba(245,166,35,0.08)]'
                     : 'hover:bg-surface-2 border-l-2 border-transparent'
                 }`}
-                title="Click para resaltar pieza en el visor 3D"
+                title={t('cl_row_title')}
               >
                 <td className={`px-3 py-2.5 font-mono text-xs ${selected ? 'text-primary font-bold' : 'text-muted'}`}>{p.id}</td>
                 <td className={`px-3 py-2.5 font-medium ${selected ? 'text-primary' : 'text-white'}`}>{p.name}</td>
@@ -273,7 +294,7 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
                   <button
                     onClick={e => { e.stopPropagation(); toggleHidden(p) }}
                     className="p-1 rounded text-muted hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                    title={isHidden(p) ? 'Mostrar pieza' : 'Ocultar pieza de la lista'}
+                    title={isHidden(p) ? t('cl_show_piece') : t('cl_hide_piece')}
                   >
                     <Eye size={12} />
                   </button>
@@ -284,7 +305,7 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
                     <button
                       onClick={e => { e.stopPropagation(); onDeletePiece(p.id) }}
                       className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted hover:text-red-400 hover:bg-red-400/10 transition-all"
-                      title="Eliminar pieza — Ctrl+Z para deshacer"
+                      title={t('cl_delete_piece')}
                     >
                       <X size={12} />
                     </button>
@@ -303,7 +324,7 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
         <span><span className="text-primary font-mono">T</span>=Topo</span>
         <span><span className="text-primary font-mono">B</span>=Base</span>
         <span><span className="text-primary font-mono">E/D</span>=Esq/Dir</span>
-        <span>Medidas em <span className="text-white font-mono">{unit.toUpperCase()}</span></span>
+        <span>{t('cl_measures_in')} <span className="text-white font-mono">{unit.toUpperCase()}</span></span>
       </div>
     </div>
   )

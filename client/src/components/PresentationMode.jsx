@@ -7,7 +7,7 @@ import './PresentationMode.css';
 // (controls.target = bounding-box center que fija Viewer3D), no del origen del
 // mundo. El radio se deriva de la distancia actual cámara↔centro, así el mueble
 // queda centrado y bien enmarcado sin importar su tamaño ni su offset.
-export default function PresentationMode({ camera, controls, isEnabled, onToggle }) {
+export default function PresentationMode({ camera, controls, renderer, scene, composer, isEnabled, onToggle }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const animationRef = useRef(null);
   const radiusRef = useRef(600);
@@ -66,9 +66,19 @@ export default function PresentationMode({ camera, controls, isEnabled, onToggle
     setIsPlaying(next);
     if (next) {
       try {
+        if (renderer && scene && camera) {
+          renderer.compile(scene, camera);
+          if (composer) {
+            composer.render();
+          } else {
+            renderer.render(scene, camera);
+          }
+        }
         window.scrollTo({ top: 0, behavior: 'smooth' });
         requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
-      } catch {}
+      } catch (e) {
+        console.warn('[PresentationMode] Pre-render compile failed:', e);
+      }
     }
   };
 
