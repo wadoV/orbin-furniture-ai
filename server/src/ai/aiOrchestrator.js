@@ -10,6 +10,7 @@
 
 const vertexClient  = require('./vertexClient')
 const geminiClient  = require('./geminiClient')
+const openrouterClient = require('./openrouterClient') // TAREA 3: OpenRouter integration
 const ollamaClient  = require('./ollamaClient')
 const { parseNaturalLanguage } = require('../engine/nlParser')
 const { FURNITURE_SYSTEM_PROMPT } = require('./systemPrompts')
@@ -60,7 +61,25 @@ async function parseDesignIntent(text) {
     console.warn('[Orchestrator] Tier 2 failed:', err2.message)
   }
 
-  // Tier 3 — Ollama (local LLM)
+  // Tier 3 — OpenRouter (deepseek models)
+  try {
+    console.log('[Orchestrator] Tier 3: OpenRouter (deepseek)...')
+    // Model switching: deepseek-r1 as default, fallback to deepseek-chat
+    let model = 'deepseek/deepseek-r1'
+    try {
+      const design = await openrouterClient.parseDesignIntent(text, model)
+      return { ...design, source: design.source || 'openrouter-r1' }
+    } catch (r1Err) {
+      console.warn('[Orchestrator] deepseek-r1 failed, trying deepseek-chat:', r1Err.message)
+      model = 'deepseek/deepseek-chat'
+      const design = await openrouterClient.parseDesignIntent(text, model)
+      return { ...design, source: design.source || 'openrouter-chat' }
+    }
+  } catch (err3) {
+    console.warn('[Orchestrator] Tier 3 failed:', err3.message)
+  }
+
+  // Tier 4 — Ollama (local LLM)
   try {
     console.log('[Orchestrator] Tier 3: Ollama (local LLM)…')
     return await ollamaClient.parseDesignIntent(text)
@@ -95,7 +114,25 @@ async function chatDesign(history, userMessage, options = {}) {
     console.warn('[Orchestrator] Chat Tier 2 failed:', err2.message)
   }
 
-  // Tier 3 — Ollama
+  // Tier 3 — OpenRouter (chat)
+  try {
+    console.log('[Orchestrator] Chat Tier 3: OpenRouter...')
+    // Model switching: deepseek-r1 as default, fallback to deepseek-chat
+    let model = 'deepseek/deepseek-r1'
+    try {
+      const result = await openrouterClient.chatDesign(history, userMessage, options, model)
+      return { ...result, source: result.source || 'openrouter-r1' }
+    } catch (r1Err) {
+      console.warn('[Orchestrator] deepseek-r1 failed, trying deepseek-chat:', r1Err.message)
+      model = 'deepseek/deepseek-chat'
+      const result = await openrouterClient.chatDesign(history, userMessage, options, model)
+      return { ...result, source: result.source || 'openrouter-chat' }
+    }
+  } catch (err3) {
+    console.warn('[Orchestrator] Chat Tier 3 failed:', err3.message)
+  }
+
+  // Tier 4 — Ollama
   try {
     console.log('[Orchestrator] Chat Tier 3: Ollama…')
     return await ollamaClient.chatDesign(history, userMessage, options)
@@ -103,8 +140,8 @@ async function chatDesign(history, userMessage, options = {}) {
     console.warn('[Orchestrator] Chat Tier 3 failed:', err3.message)
   }
 
-  // Tier 4 — Regex (offline)
-  console.warn('[Orchestrator] Chat Tier 4: Regex offline fallback')
+  // Tier 5 — Regex (offline)
+  console.warn('[Orchestrator] Chat Tier 5: Regex offline fallback')
   const parsed = parseNaturalLanguage(userMessage)
   return {
     message: `[Modo offline] Interpreté: ${parsed.interpreted}. (IA en la nube y local no disponibles)`,

@@ -288,20 +288,22 @@ function buildPlanta(cfg, box, P, cap, D) {
 // ── Cajetín (todos los campos editables vía options.company) ──
 function buildCajetin(company, cfg, pieceCount, P, D) {
   const co = company || {}
-  const f = (k, v) => `<text x="0" y="0" font-size="8.5" fill="${P.muted}" letter-spacing=".4">${esc(k)}</text><text x="0" y="13" font-size="11" font-weight="600" fill="${P.text}">${esc(v)}</text>`
+  const trunc = (str, len) => (str && str.length > len) ? str.substring(0, len - 1) + '…' : str;
+  const f = (k, v, maxL = 22) => `<text x="0" y="0" font-size="8.5" fill="${P.muted}" letter-spacing=".4">${esc(k)}</text><text x="0" y="13" font-size="11" font-weight="600" fill="${P.text}">${esc(trunc(v, maxL))}</text>`
   let g = ''
-  g += `<g transform="translate(708,26)">${f(D.cj_empresa, co.empresa || co.name || D.def_empresa)}</g>`
-  g += `<g transform="translate(708,58)">${f(D.cj_setor, co.setor || D.def_setor)}</g>`
-  g += `<g transform="translate(832,26)">${f(D.cj_material, co.material || `MDF ${cfg.thickness} mm`)}</g>`
-  g += `<g transform="translate(832,58)">${f(D.cj_desenhista, co.desenhista || '—')}</g>`
-  g += `<g transform="translate(924,26)">${f(D.cj_pecas, String(pieceCount))}</g>`
-  g += `<g transform="translate(924,58)">${f(D.cj_data, co.data || new Date().toLocaleDateString(D.locale))}</g>`
+  g += `<g transform="translate(708,26)">${f(D.cj_empresa, co.empresa || co.name || D.def_empresa, 18)}</g>`
+  g += `<g transform="translate(708,58)">${f(D.cj_setor, co.setor || D.def_setor, 18)}</g>`
+  g += `<g transform="translate(832,26)">${f(D.cj_material, co.material || `MDF ${cfg.thickness} mm`, 12)}</g>`
+  g += `<g transform="translate(832,58)">${f(D.cj_desenhista, co.desenhista || '—', 12)}</g>`
+  g += `<g transform="translate(924,26)">${f(D.cj_pecas, String(pieceCount), 8)}</g>`
+  g += `<g transform="translate(924,58)">${f(D.cj_data, co.data || new Date().toLocaleDateString(D.locale), 12)}</g>`
   return g
 }
 
 // ── Lista de cortes ──
 function buildCutlist(rows, P, y0, D) {
   const total = rows.reduce((a, r) => a + r.qty, 0)
+  const trunc = (str, len) => (str && str.length > len) ? str.substring(0, len - 1) + '…' : str;
   let g = `<line x1="16" y1="${y0}" x2="984" y2="${y0}" fill="none" stroke="${P.frame}" stroke-width="1.4"/>`
   g += `<text x="36" y="${y0 + 22}" font-size="11" font-weight="800" letter-spacing="1.5" fill="${P.vh}">${D.cutlist} — ${total} ${D.pieces}</text>`
   const tx = 36, ty = y0 + 40
@@ -309,18 +311,18 @@ function buildCutlist(rows, P, y0, D) {
   g += `<text x="0" y="0">${D.col_piece}</text><text x="300" y="0" text-anchor="middle">${D.col_qty}</text><text x="420" y="0">${D.col_dims}</text><text x="640" y="0" text-anchor="middle">${D.col_thick}</text><text x="730" y="0">${D.col_edge}</text></g>`
   g += `<line x1="${tx}" y1="${ty + 10}" x2="${tx + 912}" y2="${ty + 10}" stroke="${P.rule}" stroke-width="1"/>`
   const maxRows = 6
-  const trunc = rows.length > maxRows
-  const shown = trunc ? rows.slice(0, maxRows - 1) : rows.slice(0, maxRows)
+  const trunc_rows = rows.length > maxRows
+  const shown = trunc_rows ? rows.slice(0, maxRows - 1) : rows.slice(0, maxRows)
   const rowStep = 20, rowTop = ty + 28
   shown.forEach((r, i) => {
     const ry = rowTop + i * rowStep
     g += `<g transform="translate(${tx},${ry})" font-size="11" fill="${P.text}">`
-    g += `<text x="0" y="0">${esc(r.name)}</text><text x="300" y="0" text-anchor="middle">${r.qty}</text>`
+    g += `<text x="0" y="0">${esc(trunc(r.name, 40))}</text><text x="300" y="0" text-anchor="middle">${r.qty}</text>`
     g += `<text x="420" y="0">${r.largo} × ${r.ancho}</text><text x="640" y="0" text-anchor="middle">${r.t}</text>`
-    g += `<text x="730" y="0" fill="${P.muted}">${esc(grainLabel(r.type, D))}</text></g>`
+    g += `<text x="730" y="0" fill="${P.muted}">${esc(trunc(grainLabel(r.type, D), 25))}</text></g>`
     if (i < shown.length - 1) g += `<line x1="${tx}" y1="${ry + 10}" x2="${tx + 912}" y2="${ry + 10}" stroke="${P.rule}" stroke-width="1"/>`
   })
-  if (trunc) g += `<text x="${tx}" y="${rowTop + (maxRows - 1) * rowStep}" font-size="10" fill="${P.muted}">${D.more_pieces.replace('{n}', rows.length - (maxRows - 1))}</text>`
+  if (trunc_rows) g += `<text x="${tx}" y="${rowTop + (maxRows - 1) * rowStep}" font-size="10" fill="${P.muted}">${D.more_pieces.replace('{n}', rows.length - (maxRows - 1))}</text>`
   return g
 }
 
@@ -350,6 +352,12 @@ export function generateModulePlanSVG(module, options = {}) {
   let s = `<svg viewBox="0 0 1000 740" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, system-ui, sans-serif">`
   s += sheetHeader(`${D.title_module} — ${label}`, D.subtitle.replace('{t}', cfg.thickness), P)
   s += buildCajetin(options.company, cfg, pieceCount, P, D)
+
+  // GRID DE DELIMITACIÓN: Separaciones geométricas sutiles para los diferentes tipos de diseño
+  s += `<rect x="22" y="100" width="518" height="270" fill="none" stroke="${P.rule}" stroke-width="0.8" rx="4"/>`
+  s += `<rect x="22" y="380" width="518" height="150" fill="none" stroke="${P.rule}" stroke-width="0.8" rx="4"/>`
+  s += `<rect x="550" y="100" width="426" height="430" fill="none" stroke="${P.rule}" stroke-width="0.8" rx="4"/>`
+
   s += `<text x="36" y="116" font-size="11" font-weight="800" letter-spacing="1.5" fill="${P.vh}">1 · ${D.view_alzado}</text>`
   const caps = options.captures || {}
   s += buildAlzado(cfg, { x: 78, y: 138, w: 440, h: 168 }, P, caps.front, D)

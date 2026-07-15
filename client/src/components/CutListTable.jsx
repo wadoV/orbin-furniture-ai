@@ -62,16 +62,36 @@ function exportCSV(cutList, getTypeLabel, t, lang, unit) {
 
 function exportPDF(cutList, getTypeLabel, t, lang, unit) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  
+  // TAREA 1: Implement geometric separation and containment boxes
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const sectionHeight = pageHeight / 3;
+  const margin = 10; // TAREA 2: Minimum 10mm margin protection
+  
+  // Draw containment boxes with subtle lines (RGB 200)
+  doc.setDrawColor(200);
+  doc.setLineWidth(0.2);
+  
+  // Front Elevation section
+  doc.rect(margin, margin, pageWidth - 2*margin, sectionHeight - margin);
+  // Top Plan section
+  doc.rect(margin, sectionHeight, pageWidth - 2*margin, sectionHeight - margin);
+  // Isometric section
+  doc.rect(margin, 2*sectionHeight, pageWidth - 2*margin, sectionHeight - margin);
 
-  doc.setFontSize(18)
-  doc.setTextColor(245, 166, 35)
-  doc.text(`Orbin AI — ${t('cut_list')}`, 14, 18)
+  // TAREA 2: Ensure text elements respect minimum margins
+  const safeTextY = margin + 8; // 10mm margin + 8mm offset for first text
+  
+  doc.setFontSize(18);
+  doc.setTextColor(245, 166, 35);
+  doc.text(`Orbin AI — ${t('cut_list')}`, margin + 4, safeTextY);
 
-  doc.setFontSize(9)
-  doc.setTextColor(160, 160, 160)
-  const genLbl = lang === 'PT' ? 'Gerado' : lang === 'ES' ? 'Generado' : 'Generated'
-  const totPieces = lang === 'PT' ? 'Total de peças' : lang === 'ES' ? 'Total piezas' : 'Total pieces'
-  doc.text(`${genLbl}: ${new Date().toLocaleString()}  |  ${totPieces}: ${cutList.length}`, 14, 26)
+  doc.setFontSize(9);
+  doc.setTextColor(160, 160, 160);
+  const genLbl = lang === 'PT' ? 'Gerado' : lang === 'ES' ? 'Generado' : 'Generated';
+  const totPieces = lang === 'PT' ? 'Total de peças' : lang === 'ES' ? 'Total piezas' : 'Total pieces';
+  doc.text(`${genLbl}: ${new Date().toLocaleString()}  |  ${totPieces}: ${cutList.length}`, margin + 4, safeTextY + 8);
 
   const headers = [[
     'ID',
@@ -97,7 +117,13 @@ function exportPDF(cutList, getTypeLabel, t, lang, unit) {
   autoTable(doc, {
     startY: 32,
     head: headers,
-    body: rows,
+    body: rows.map(row => row.map(cell => {
+      // TAREA 2: Text truncation for overflow protection
+      if (typeof cell === 'string' && cell.length > 25) {
+        return cell.substring(0, 22) + '...';
+      }
+      return cell;
+    })),
     theme: 'grid',
     headStyles: {
       fillColor: [20, 20, 20],
