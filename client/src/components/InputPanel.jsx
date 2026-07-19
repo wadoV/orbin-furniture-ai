@@ -395,7 +395,7 @@ const DEFAULTS = {
 
 // ─── InputPanel ───────────────────────────────────────────────────────────────
 
-export default function InputPanel({ onGenerate, loading, currentConfig, onUpdateConfig }) {
+export default function InputPanel({ onGenerate, loading, currentConfig, onUpdateConfig, formSeed = null }) {
   const { t, unit, convert } = usePreferences()
   const { isFree, allowedThicknesses } = useUser()
   const [mode,   setMode]   = useState('manual')
@@ -424,6 +424,27 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
   useEffect(() => {
     setEditMode(false)
   }, [currentConfig?.id || currentConfig])
+
+  // ★ FIX [form-sync]: hidrata el formulario con la config del módulo RECIÉN CREADO.
+  //   Corre solo cuando cambia el token (una generación nueva), NO en cada selección
+  //   de módulo — así se preserva la protección de editMode. Filtra por las claves de
+  //   DEFAULTS: la config del engine trae campos internos (specAdjustments, etc.) que
+  //   no pertenecen al formulario y contaminarían el próximo payload.
+  //   materialId no viene del server (verificado): se deriva del espesor.
+  const seedTokenRef = useRef(null)
+  useEffect(() => {
+    if (!formSeed?.config || formSeed.token === seedTokenRef.current) return
+    seedTokenRef.current = formSeed.token
+    const cfg = formSeed.config
+    const clean = {}
+    for (const k of Object.keys(DEFAULTS)) {
+      if (cfg[k] !== undefined) clean[k] = cfg[k]
+    }
+    const byThickness = { 15: 'mdf_15', 18: 'mdf_18', 25: 'mdf_25' }
+    if (cfg.materialId) clean.materialId = cfg.materialId
+    else if (byThickness[cfg.thickness]) clean.materialId = byThickness[cfg.thickness]
+    setParams(prev => ({ ...prev, ...clean }))
+  }, [formSeed])
 
   // ★ PROTECTED: Only propagates to parent when editMode is active
   const setParam = useCallback((k, v) => {
@@ -562,6 +583,33 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                   options={thicknessOptions}
                 />
               )}
+
+              {/* ── ARMADO (topStyle / doorStyle) ──────────────────────────────
+                  Cambian MEDIDAS DE CORTE reales, así que el marcenario debe poder
+                  elegirlas. 'auto' decide por tipo de módulo (base → sobrepuesto),
+                  de modo que quien no sepa qué es no tiene que tocar nada. */}
+              <SELECT
+                label={t('top_style') || 'Armado de tapa'}
+                name="topStyle"
+                value={params.topStyle || 'auto'}
+                onChange={setParam}
+                options={[
+                  { value: 'auto',    label: t('auto_by_type') || 'Automático por tipo' },
+                  { value: 'overlay', label: t('top_overlay') || 'Apoyada encima (lateral = alto − espesor)' },
+                  { value: 'inset',   label: t('top_inset')   || 'Encajada entre laterales' },
+                ]}
+              />
+              <SELECT
+                label={t('door_style') || 'Montaje de puerta'}
+                name="doorStyle"
+                value={params.doorStyle || 'auto'}
+                onChange={setParam}
+                options={[
+                  { value: 'auto',    label: t('auto_by_type') || 'Automático por tipo' },
+                  { value: 'overlay', label: t('door_overlay') || 'Sobrepuesta (la profundidad pedida es la final)' },
+                  { value: 'legacy',  label: t('door_legacy')  || 'Sobrepuesta sumando espesor' },
+                ]}
+              />
             </div>
             {/* ★ v2.6: Material Selector — free plan locked to MDF 18mm */}
             <SELECT

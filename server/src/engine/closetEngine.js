@@ -211,7 +211,8 @@ function generateFurniture(params) {
   //     fuera SUMANDO su espesor ⇒ profundidad real = D + T (580 pedido → 598 real).
   // Default: 'overlay' en módulos base (igual criterio que topStyle), 'legacy' en
   // el resto para no alterar diseños ya guardados.
-  const doorStyle = cfg.doorStyle || (moduleType === 'base' ? 'overlay' : 'legacy')
+  const doorStyle = (cfg.doorStyle && cfg.doorStyle !== 'auto')
+    ? cfg.doorStyle : (moduleType === 'base' ? 'overlay' : 'legacy')
   const doorT = (doorStyle === 'overlay' && hasDoors) ? T : 0
   const CD = D - doorT   // profundidad de la CARCASA (sin la puerta sobrepuesta)
 
@@ -248,7 +249,8 @@ function generateFurniture(params) {
   //     Armado de roperos y columnas (canto del lateral visto en todo el alto).
   // Ambos son correctos: cambian el despiece, no la calidad. Por eso es un
   // parámetro y no una constante — ver PROJECT_SNAPSHOT 2026-07-19.
-  const topStyle = cfg.topStyle || (moduleType === 'base' ? 'overlay' : 'inset')
+  const topStyle = (cfg.topStyle && cfg.topStyle !== 'auto')
+    ? cfg.topStyle : (moduleType === 'base' ? 'overlay' : 'inset')
   // Con travesaños (base + cubierta comprada aparte) no hay tapa de MDF que
   // apoyar: el lateral llega arriba y la encimera va sobre él.
   const hasTopPanel = !(isBase && hasCountertop && moduleType !== 'standard')

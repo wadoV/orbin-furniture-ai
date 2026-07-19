@@ -118,6 +118,14 @@ export default function App() {
   const [redoStack, setRedoStack] = useState([])
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [selectedModuleId, setSelectedModuleId] = useState(null)
+  // ★ FIX [form-sync]: el formulario de InputPanel mantiene su propio estado local y
+  //   solo se sincroniza con el módulo seleccionado si editMode está activo (protección
+  //   deliberada contra edición accidental). Efecto colateral: tras generar un módulo
+  //   el panel seguía mostrando params viejos (ej. 15mm de un preset de cocina previo)
+  //   aunque el módulo real fuera de 18mm — parecía que "se perdía" la config.
+  //   Este seed hidrata el formulario SOLO al crear un módulo, sin activar editMode
+  //   ni propagar cambios al módulo existente.
+  const [formSeed, setFormSeed] = useState(null)   // { config, token }
   const [selectedPieceIds, setSelectedPieceIds] = useState(new Set())
   const [error,     setError]     = useState(null)
   const [show3D,    setShow3D]    = useState(true)
@@ -324,6 +332,11 @@ export default function App() {
         const nextModules = payload?.replace ? [newModule] : [...modulesRef.current, newModule]
         saveHistory(nextModules, (payload?.replace ? 'Preset ' : 'Generated ') + (design.type || 'module'))
         setSelectedModuleId(newModule.id)
+        // ★ FIX [form-sync]: refleja en el formulario la config REAL del módulo recién
+        //   creado (el server es la fuente de verdad, ya aplicó defaults y clamps).
+        if (newModule.configuration) {
+          setFormSeed({ config: newModule.configuration, token: newModule.id + ':' + Date.now() })
+        }
         try {
           const mem = loadMemory()
           logAction(mem, 'generate', {
@@ -846,6 +859,7 @@ export default function App() {
                       onGenerate={handleGenerate}
                       loading={loading}
                       currentConfig={currentResult && currentResult.configuration}
+                      formSeed={formSeed}
                       onUpdateConfig={(newConfig) => handleUpdateModule(selectedModuleId, newConfig)}
                     />
                     {error && (
