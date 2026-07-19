@@ -222,7 +222,8 @@ const FURNITURE_PRESETS = [
         <line x1="15" y1="12" x2="15" y2="15" />
       </svg>
     ),
-    params: { moduleType: 'base', materialId: 'mdf_18', width: 600, height: 870, depth: 580, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true }
+    // ★ TRENDS 2026: handleless (perfil gola) — frentes limpios sin tirador
+    params: { moduleType: 'base', materialId: 'mdf_18', width: 600, height: 870, depth: 580, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true, handleType: 'gola' }
   },
   {
     id: 'kitchen_island',
@@ -239,7 +240,8 @@ const FURNITURE_PRESETS = [
     // ★ AUDIT 2026-07-19 (carpinteria_fina): 1500 de ancho generaba vano de 1464mm (>900 = pandeo),
     // gavetas de 1460mm (corrediças no soportan ese ancho) y puertas batientes de 748mm (torque excesivo).
     // Módulo compacto 900mm: vano 864 ✓, gavetas 860 ✓, puertas 448 ✓. Isla grande = apilar 2 módulos.
-    params: { moduleType: 'base', materialId: 'mdf_18', width: 900, height: 870, depth: 650, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true, drawerLayout: 'vertical', drawerHeight: 180 }
+    // ★ TRENDS 2026: gola handleless; bancada externa ya consta en BOM
+    params: { moduleType: 'base', materialId: 'mdf_18', width: 900, height: 870, depth: 650, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true, drawerLayout: 'vertical', drawerHeight: 180, handleType: 'gola' }
   },
   {
     id: 'wardrobe',
@@ -256,7 +258,8 @@ const FURNITURE_PRESETS = [
     // ★ AUDIT 2026-07-19 (carpinteria_fina): numDividers:1 + estantes generaba colisión geométrica
     // (DIV en x=450 atravesado por PRAT de ancho completo 862, verificado con posiciones del engine).
     // Sin divisor: 3 estantes de vano 864 ✓ VALIDADO sin colisión.
-    params: { moduleType: 'standard', materialId: 'mdf_18', width: 900, height: 2100, depth: 600, thickness: 18, backThickness: 6, numShelves: 3, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: false, drawerLayout: 'vertical', drawerHeight: 180 }
+    // ★ TRENDS 2026: armario hasta el techo (2400mm), cabideiro en BOM, apertura push
+    params: { moduleType: 'standard', materialId: 'mdf_18', width: 900, height: 2400, depth: 600, thickness: 18, backThickness: 6, numShelves: 3, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: false, drawerLayout: 'vertical', drawerHeight: 180, hasHangingRod: true, handleType: 'push' }
   },
   {
     id: 'bathroom_cabinet',
@@ -270,7 +273,8 @@ const FURNITURE_PRESETS = [
         <circle cx="14.5" cy="13.5" r="0.75" fill="currentColor" />
       </svg>
     ),
-    params: { moduleType: 'base', materialId: 'mdf_15', width: 500, height: 600, depth: 400, thickness: 15, backThickness: 6, numShelves: 1, numDrawers: 1, numDividers: 0, hasDoors: true, numDoors: 1, doorType: 'hinged', baseboard: true, baseboardHeight: 80, hasCountertop: true, drawerHeight: 150 }
+    // ★ TRENDS 2026: apertura push (baño minimalista)
+    params: { moduleType: 'base', materialId: 'mdf_15', width: 500, height: 600, depth: 400, thickness: 15, backThickness: 6, numShelves: 1, numDrawers: 1, numDividers: 0, hasDoors: true, numDoors: 1, doorType: 'hinged', baseboard: true, baseboardHeight: 80, hasCountertop: true, drawerHeight: 150, handleType: 'push' }
   },
   {
     id: 'office_desk',
@@ -285,7 +289,10 @@ const FURNITURE_PRESETS = [
         <line x1="15.5" y1="16.5" x2="17.5" y2="16.5" />
       </svg>
     ),
-    params: { moduleType: 'standard', materialId: 'mdf_25', width: 1200, height: 750, depth: 600, thickness: 25, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, drawerLayout: 'vertical', drawerHeight: 150 }
+    // ★ AUDIT 2026-07-19: moduleType 'desk' (topología nueva del engine) — antes esto
+    // generaba un aparador cerrado sin vano para piernas y gavetas de 1146mm.
+    // Ahora: tampo 25mm, vano libre de ~775mm, pedestal de 3 gavetas, faldón trasero.
+    params: { moduleType: 'desk', materialId: 'mdf_25', width: 1200, height: 750, depth: 600, thickness: 25, backThickness: 6, numShelves: 0, numDrawers: 3, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, drawerHeight: 150, pedestalWidth: 400, handleType: 'push' }
   },
   {
     id: 'floating_shelf',
@@ -298,7 +305,8 @@ const FURNITURE_PRESETS = [
         <path d="M13 15l3-9 2.5 1-3 8z" />
       </svg>
     ),
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 800, height: 350, depth: 300, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1600 }
+    // ★ TRENDS 2026: nicho flotante con LED indirecto
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 800, height: 350, depth: 300, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1600, hasLed: true }
   },
   // ★ AEREO PRESETS — Módulos aéreos para cocina, baño y sala
   {
@@ -315,7 +323,8 @@ const FURNITURE_PRESETS = [
     ),
     // ★ AUDIT 2026-07-19 (carpinteria_fina): 400mm de alto desperdicia pared útil; estándar moderno
     // de aéreo de cocina: 700mm con 2 estantes (vanos ~209mm). Puertas 298x696 ✓ VALIDADO sin warnings.
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 600, height: 700, depth: 320, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1450 }
+    // ★ TRENDS 2026: gola handleless en aéreos de cocina
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 600, height: 700, depth: 320, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1450, handleType: 'gola' }
   },
   {
     id: 'aereo_cocina_aberto',
@@ -330,7 +339,8 @@ const FURNITURE_PRESETS = [
     ),
     // ★ AUDIT 2026-07-19 (carpinteria_fina): 350mm de alto con 2 estantes daba vanos útiles de ~87mm
     // (no cabe ni un vaso). 800x600 con 2 estantes: vanos ~176mm ✓, vano horizontal 764 < 900 ✓.
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 800, height: 600, depth: 300, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1450 }
+    // ★ TRENDS 2026: open shelving con LED (hornacina iluminada)
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 800, height: 600, depth: 300, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1450, hasLed: true }
   },
   {
     id: 'aereo_banheiro_espelho',
@@ -343,7 +353,9 @@ const FURNITURE_PRESETS = [
         <line x1="15" y1="18" x2="15" y2="21" />
       </svg>
     ),
-    params: { moduleType: 'aereo', materialId: 'mdf_15', width: 600, height: 700, depth: 150, thickness: 15, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 1, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1000 }
+    // ★ AUDIT 2026-07-19: el "espejo" ahora existe — doorFinish:'mirror' agrega
+    // espejo 4mm + fita VHB al BOM (antes la puerta salía como MDF liso).
+    params: { moduleType: 'aereo', materialId: 'mdf_15', width: 600, height: 700, depth: 150, thickness: 15, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 1, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1000, doorFinish: 'mirror', handleType: 'push' }
   },
   {
     id: 'aereo_sala_tv',
@@ -360,7 +372,9 @@ const FURNITURE_PRESETS = [
     // ★ AUDIT 2026-07-19 (carpinteria_fina): numShelves:1 + 2 divisores generaba colisión geométrica
     // (PRAT 1562 de ancho atravesando DIV en x=539 y x=1061, verificado con posiciones del engine).
     // Sin estante: panel de 3 nichos de ~509mm, tampo/base soportados por los divisores ✓.
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1600, height: 450, depth: 350, thickness: 18, backThickness: 6, numShelves: 0, numDrawers: 0, numDividers: 2, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1200 }
+    // ★ TRENDS 2026: panel TV con nichos iluminados (LED). El engine ahora genera
+    // estantes POR COMPARTIMENTO, así que numShelves>0 con divisores ya es seguro.
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1600, height: 450, depth: 350, thickness: 18, backThickness: 6, numShelves: 0, numDrawers: 0, numDividers: 2, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1200, hasLed: true }
   },
 ]
 
