@@ -42,7 +42,10 @@ const DEFAULTS = {
   doorFinish: null,          // 'mirror' → espejo 4mm sobre puerta en BOM
   hasLed: false,             // fita LED + fonte en BOM (nichos/aéreos)
   countertopMaterial: null,  // 'mdf' → genera pieza BANCADA 25mm; null → BOM externo
-  pedestalWidth: 400         // solo moduleType 'desk': ancho del gavetero
+  pedestalWidth: 400,        // solo moduleType 'desk': ancho del gavetero
+  // ── ADITIVO 2026-07-19 (work item topologías): defaults neutros = output idéntico
+  nicheHeight: 0,            // >0: nicho abierto bajo las puertas (ref. gabinete c/nicho)
+  drawerColumns: null        // 2..4: N columnas de gavetas con montantes DIV-GAV
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -222,8 +225,10 @@ function generateFurniture(params) {
       - (cfg.baseboard ? (cfg.baseboardHeight || 100) : 0)
       - (2 * cfg.thickness)
     if (availableHeight > 0) {
-      const isH = cfg.drawerLayout === 'horizontal' && cfg.numDrawers > 1
-      const cols = isH ? 2 : 1
+      // ADITIVO 2026-07-19: drawerColumns también aplica al auto-fit de la pila
+      const afCols = (cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) ? Math.floor(cfg.drawerColumns) : null
+      const isH = (cfg.drawerLayout === 'horizontal' && cfg.numDrawers > 1) || (afCols !== null && cfg.numDrawers > 1)
+      const cols = (afCols !== null && cfg.numDrawers > 1) ? afCols : (isH ? 2 : 1)
       let rows = Math.ceil(cfg.numDrawers / cols)
       // ¿Cómoda pura? (solo gavetas: sin estantes ni puertas) → las gavetas LLENAN
       //   el interior, sin dejar hueco abierto arriba. CLEAR (16mm) es la holgura de
@@ -394,30 +399,35 @@ function generateFurniture(params) {
   const SLIDE_GAP = HARDWARE.SLIDE_CLEARANCE
 
   const numDivs = cfg.numDividers || 0
-  const isHorizontal = drawerLayout === 'horizontal' && numDrawers > 1
-  const cols = isHorizontal ? 2 : 1
+  // ★ ADITIVO 2026-07-19 (work item N columnas): drawerColumns (2..4) generaliza el
+  //   layout horizontal. Sin el parámetro, cols = 2 en 'horizontal' → drawerW
+  //   (internal−T)/2 ≡ internal/2 − T/2: fórmula idéntica a la histórica.
+  const explicitCols = (cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) ? Math.floor(cfg.drawerColumns) : null
+  const isHorizontal = (drawerLayout === 'horizontal' && numDrawers > 1) || (explicitCols !== null && numDrawers > 1)
+  const cols = (explicitCols !== null && numDrawers > 1) ? explicitCols : (isHorizontal ? 2 : 1)
   const drawersPerCol = Math.ceil(numDrawers / cols)
-  const drawerW = isHorizontal ? (internalWidth / 2) - T/2 : internalWidth
+  const drawerW = cols > 1 ? (internalWidth - (cols - 1) * T) / cols : internalWidth
 
-  // ★ AUDIT FIX 2026-07-19 (aditivo — solo rama horizontal): con 2 columnas de
-  // gavetas no existía montante central: las corredicas interiores no tenían
-  // superficie de fijación (mueble no montable). Genera un montante que ocupa
-  // exactamente el gap de T entre columnas, a la altura de la zona de gavetas.
-  if (isHorizontal) {
+  // ★ AUDIT FIX 2026-07-19 (aditivo): con columnas de gavetas no existía montante:
+  // las corredicas interiores no tenían superficie de fijación (mueble no montable).
+  // Genera cols−1 montantes que ocupan el gap de T entre columnas.
+  if (cols > 1) {
     const gavZoneH = drawersPerCol * safeDrawerHeight
     if (gavZoneH > 0) {
-      pieces.push(makePiece(
-        nextId('DIV-GAV'), 'Montante Central Gavetas', 'divider',
-        internalDepth, gavZoneH, T, 1,
-        T + drawerW + T/2, drawerYStart + gavZoneH/2, D/2,
-        'vertical', { front: true }, 'Fijación de corredicas interiores — obligatorio en 2 columnas'
-      ))
+      for (let c = 1; c < cols; c++) {
+        pieces.push(makePiece(
+          nextId('DIV-GAV'), `Montante Gavetas ${cols > 2 ? c : 'Central'}`, 'divider',
+          internalDepth, gavZoneH, T, 1,
+          T + c * (drawerW + T) - T/2, drawerYStart + gavZoneH/2, D/2,
+          'vertical', { front: true }, 'Fijación de corredicas — obligatorio entre columnas'
+        ))
+      }
     }
   }
 
   for (let i = 0; i < numDrawers; i++) {
-    const colIdx = isHorizontal ? (i % 2) : 0
-    const rowIdx = isHorizontal ? Math.floor(i / 2) : i
+    const colIdx = isHorizontal ? (i % cols) : 0
+    const rowIdx = isHorizontal ? Math.floor(i / cols) : i
     const xPos = isHorizontal ? (T + (colIdx * (drawerW + T)) + drawerW/2) : W/2
     const yPos = drawerYStart + (rowIdx * safeDrawerHeight) + safeDrawerHeight/2
 
@@ -465,6 +475,8 @@ function generateFurniture(params) {
   }
 
   let shelfYStart = drawerYStart + (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight + T/2
+  // ★ ADITIVO 2026-07-19 (nicho): estantes interiores arrancan sobre el nicho abierto
+  if (hasDoors && (cfg.nicheHeight || 0) > 0) shelfYStart += (cfg.nicheHeight || 0) + T
 
   // HARD_CONSTRAINT: Structural closure required for all drawer modules
   // ★ PROTECTED: Separator shelf on top of drawer zone (closes gap visually)
@@ -525,12 +537,14 @@ function generateFurniture(params) {
   if (numDivs > 0) {
     const totalDrawerH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0)
     let divStartY, divHeight
+    // ★ ADITIVO 2026-07-19 (nicho): los divisores arrancan sobre el nicho abierto
+    const divNicheOffset = ((cfg.nicheHeight || 0) > 0 && hasDoors) ? (cfg.nicheHeight || 0) + T : 0
     if (numDrawers > 0) {
-      divStartY = BH3 + T + totalDrawerH + T
+      divStartY = BH3 + T + totalDrawerH + T + divNicheOffset
       divHeight = H - divStartY - T
     } else {
-      divStartY = BH3 + T
-      divHeight = structuralHeight - 2 * T
+      divStartY = BH3 + T + divNicheOffset
+      divHeight = structuralHeight - 2 * T - divNicheOffset
     }
     if (divHeight > T) {
       const divSpacing = internalWidth / (numDivs + 1)
@@ -546,13 +560,29 @@ function generateFurniture(params) {
     }
   }
 
+  // ★ ADITIVO 2026-07-19 (work item nicho): nicheHeight > 0 reserva un nicho ABIERTO
+  //   bajo las puertas (ref. gabinete c/nicho inferior). Se genera una repisa fija de
+  //   cierre del nicho (PRAT-NICHO) sobre la que arrancan las puertas. Default 0 →
+  //   comportamiento byte-idéntico al histórico.
+  const nicheH = Math.max(0, cfg.nicheHeight || 0)  // desk nunca llega aquí (rama propia)
+  if (hasDoors && nicheH > 0) {
+    const nicheTopY = BH3 + (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0) + nicheH
+    pieces.push(makePiece(
+      nextId('PRAT-NICHO'), 'Repisa Cierre Nicho', 'repisa',
+      internalWidth - 2, internalDepth, T, 1,
+      W/2, nicheTopY + T/2, internalDepth/2 + BT, 'horizontal', { front: true },
+      'Cierre superior del nicho abierto — fija, soporta las puertas'
+    ))
+  }
+
   if (hasDoors) {
     const totalDrawerH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0)
-    const doorH = H - BH3 - totalDrawerH - (isBase ? T : 0)
+    const nicheOffset = nicheH > 0 ? nicheH + T : 0
+    const doorH = H - BH3 - totalDrawerH - (isBase ? T : 0) - nicheOffset
     if (doorH > 150) {
       const n = Math.min(4, Math.max(1, numDoors || 1))
       const leafW = (W / n) - HARDWARE.DOOR_GAP_W
-      const doorY = BH3 + totalDrawerH + doorH/2
+      const doorY = BH3 + totalDrawerH + nicheOffset + doorH/2
 
       for (let i = 0; i < n; i++) {
         const xPos = (W/n)/2 + i*(W/n)

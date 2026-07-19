@@ -85,11 +85,14 @@ function validateDesign(design) {
     const isDeskKneeSpace = cfg.moduleType === 'desk'
     // ADITIVO 2026-07-19: 2 columnas de gavetas llevan montante central (DIV-GAV,
     // generado por el engine) → el vao efectivo del tampo/base se reduce a la mitad.
-    const hasDrawerMontante = cfg.drawerLayout === 'horizontal' && (cfg.numDrawers || 0) > 1
+    // ADITIVO 2026-07-19: drawerColumns (N columnas) genera cols−1 montantes DIV-GAV
+    const dCols = (cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4 && (cfg.numDrawers || 0) > 1)
+      ? Math.floor(cfg.drawerColumns)
+      : ((cfg.drawerLayout === 'horizontal' && (cfg.numDrawers || 0) > 1) ? 2 : 1)
     let effectiveSpan = isDeskKneeSpace ? 0 : (nDivs > 0
       ? Math.round((internalWidth - nDivs * cfg.thickness) / (nDivs + 1))
       : internalWidth)
-    if (hasDrawerMontante) effectiveSpan = Math.min(effectiveSpan, Math.round((internalWidth - cfg.thickness) / 2))
+    if (dCols > 1) effectiveSpan = Math.min(effectiveSpan, Math.round((internalWidth - (dCols - 1) * cfg.thickness) / dCols))
     if (effectiveSpan > STRUCTURAL_LIMITS.MAX_SHELF_SPAN) {
       warnings.push(
         'Vao interno (' + effectiveSpan + 'mm' + (nDivs > 0 ? ' por compartimento' : '') + ') supera ' +
@@ -114,8 +117,10 @@ function validateDesign(design) {
     if (cfg.drawerHeight < 80) {
       errors.push('Altura da gaveta (' + cfg.drawerHeight + 'mm) muito pequena. Minimo: 80mm.')
     }
-    const isHorizontal = cfg.drawerLayout === 'horizontal' && cfg.numDrawers > 1
-    const cols = isHorizontal ? 2 : 1
+    // ADITIVO 2026-07-19: drawerColumns también aplica al cálculo de pila
+    const vCols = (cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) ? Math.floor(cfg.drawerColumns) : null
+    const isHorizontal = (cfg.drawerLayout === 'horizontal' && cfg.numDrawers > 1) || (vCols !== null && cfg.numDrawers > 1)
+    const cols = (vCols !== null && cfg.numDrawers > 1) ? vCols : (isHorizontal ? 2 : 1)
     const drawersPerCol = Math.ceil(cfg.numDrawers / cols)
     // BUG FIX: Each drawer needs its nominal height PLUS top clearance for the slide
     // mechanism (DRAWER_TOP_CLEARANCE = 16mm). Without this, 20×100mm drawers in

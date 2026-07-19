@@ -327,7 +327,9 @@ const FURNITURE_PRESETS = [
     // ★ REDESIGN 2026-07-19 (ref. usuario: gabinete nogal 3 puertas · evaluador exigió
     // numDividers:2 — sin ellos la puerta central no tiene sustrato de bisagras):
     // 1200×600×350, 3 puertas de 398, estante por vano (~377mm), gola handleless.
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1200, height: 600, depth: 350, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 2, hasDoors: true, numDoors: 3, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1450, handleType: 'gola' }
+    // ★ v2 2026-07-19: nicheHeight 200 (motor nuevo) — nicho abierto bajo las puertas,
+    // fidelidad total con la referencia (gabinete nogal con hornacina inferior).
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1200, height: 600, depth: 350, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 2, hasDoors: true, numDoors: 3, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1450, handleType: 'gola', nicheHeight: 200 }
   },
   {
     id: 'aereo_cocina_aberto',
@@ -382,7 +384,9 @@ const FURNITURE_PRESETS = [
     // 1600×300×400, 2 gavetas horizontales de 769mm (holgura corredera 26mm exacta),
     // montante central DIV-GAV generado por el engine (fix corredicas interiores),
     // push handleless + LED. mountHeight 400 (altura decoder).
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1600, height: 300, depth: 400, thickness: 18, backThickness: 6, numShelves: 0, numDrawers: 2, numDividers: 0, drawerLayout: 'horizontal', drawerHeight: 240, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 400, handleType: 'push', hasLed: true }
+    // ★ v2 2026-07-19: drawerColumns 3 (motor nuevo) — 3 gavetas en fila como la
+    // referencia, frentes de 505mm, 2 montantes DIV-GAV, holgura corredera 26mm.
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1600, height: 300, depth: 400, thickness: 18, backThickness: 6, numShelves: 0, numDrawers: 3, numDividers: 0, drawerColumns: 3, drawerHeight: 240, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 400, handleType: 'push', hasLed: true }
   },
 ]
 
