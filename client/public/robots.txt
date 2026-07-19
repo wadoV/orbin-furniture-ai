@@ -5,4 +5,21 @@ Disallow: /app/*
 Disallow: /login
 Disallow: /register
 
+# AI crawlers (P2 2026-07-19, append-only)
+User-agent: GPTBot
+Allow: /
+Disallow: /app
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /app
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /app
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /app
+
 Sitemap: https://orbin.app/sitemap.xml

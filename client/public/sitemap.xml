@@ -22,20 +22,8 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://orbin.app/blog/software-marcenaria-lista-corte-automatica</loc>
-    <lastmod>2026-05-31</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://orbin.app/blog/calculo-armario-embutido-mdf-18mm</loc>
-    <lastmod>2026-05-31</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://orbin.app/blog/diseño-parametrico-muebles-cocina</loc>
-    <lastmod>2026-05-31</lastmod>
+    <loc>https://orbin.app/blog/diseno-parametrico-muebles-cocina</loc>
+    <lastmod>2026-07-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -45,11 +33,15 @@
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
-  <url>
-    <loc>https://orbin.app/blog/normas-chapa-mdf-brasil-2750x1840</loc>
-    <lastmod>2026-05-31</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
+
+  <!-- CONTENT BACKLOG (P2 2026-07-19): slugs removed from sitemap because the
+       routes do not exist yet in main.jsx (they fell through to the catch-all
+       redirect). Re-add each <url> when its page ships:
+         /blog/software-marcenaria-lista-corte-automatica
+         /blog/calculo-armario-embutido-mdf-18mm
+         /blog/normas-chapa-mdf-brasil-2750x1840
+       Note: /blog/diseño-parametrico-muebles-cocina was replaced above by its
+       ASCII equivalent /blog/diseno-parametrico-muebles-cocina (old URL still
+       works via redirect). -->
 
 </urlset>

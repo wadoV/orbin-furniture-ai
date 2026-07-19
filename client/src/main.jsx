@@ -65,7 +65,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/app"      element={<ProtectedRoute><App /></ProtectedRoute>} />
           <Route path="/blog/como-fazer-lista-de-corte-mdf"              element={<ComoFazerListaCorte />} />
           <Route path="/blog/corredicas-telescopicas-caixa-tecnica-13mm" element={<CaixaTecnica13mm />} />
-          <Route path="/blog/diseño-parametrico-muebles-cocina"          element={<DisenoParametricoMuebles />} />
+          {/* P2 2026-07-19: canonical ASCII slug; legacy ñ URL kept alive via redirect */}
+          <Route path="/blog/diseno-parametrico-muebles-cocina"          element={<DisenoParametricoMuebles />} />
+          <Route path="/blog/diseño-parametrico-muebles-cocina"          element={<Navigate to="/blog/diseno-parametrico-muebles-cocina" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </UserProvider>
