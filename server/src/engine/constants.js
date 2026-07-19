@@ -1,16 +1,18 @@
 /**
  * Orbin AI — Material & Hardware Constants
  * Source: rules/parametric_constraints.md
+ * ★ SINGLE SOURCE OF TRUTH — generador (closetEngine.js) y validador (validator.js)
+ *   leen ESTE archivo. No debe existir una segunda definición de MATERIAL en el motor.
  */
 
 const MATERIAL = {
   THICKNESS_STANDARD: 18,
   THICKNESS_THIN: 15,
   THICKNESS_BACK: 6,
-  PLATE_WIDTH: 2750,
-  PLATE_HEIGHT: 1840,
-  SAW_KERF: 4,
-  NESTING_MARGIN: 10,
+  PLATE_WIDTH: 2750,   // regla dura CLAUDE.md (chapa MDF/MDP)
+  PLATE_HEIGHT: 1840,  // regla dura CLAUDE.md
+  SAW_KERF: 3.2,       // kerf de sierra fina (unificado con el motor de nesting)
+  NESTING_MARGIN: 50,  // margen de aprovechamiento por lado (preserva umbral de split del motor)
 }
 
 const EDGE_BANDING = {
@@ -20,15 +22,25 @@ const EDGE_BANDING = {
 }
 
 const HARDWARE = {
-  DRAWER_SLIDE_PER_SIDE: 13,
-  DRAWER_SLIDE_TOTAL: 26,
+  // ── Corrediças telescópicas ──────────────────────────────────────────────
+  DRAWER_SLIDE_PER_SIDE: 13,   // usado por validator.js (folga por lado)
+  DRAWER_SLIDE_TOTAL: 26,      // usado por validator.js (13mm × 2 lados)
+  SLIDE_CLEARANCE: 13,         // alias usado por closetEngine.js (= DRAWER_SLIDE_PER_SIDE)
+  // ── Fondos ranurados ─────────────────────────────────────────────────────
   BACK_GROOVE_DEPTH: 6,
   BACK_GROOVE_FROM_EDGE: 20,
+  // ── Estantes ─────────────────────────────────────────────────────────────
   SHELF_CLEARANCE_PER_SIDE: 1,
   SHELF_FRONT_SETBACK: 5,
-  DRAWER_FRONT_GAP_PERIMETER: 2,
-  DOOR_GAP_W_TOTAL: 5,
-  DOOR_GAP_H: 4,
+  // ── Gavetas (frente) ─────────────────────────────────────────────────────
+  DRAWER_FRONT_GAP_PERIMETER: 2, // folga perimetral total (validator / referencia)
+  DRAWER_FRONT_GAP: 2,           // folga por lado del frente de gaveta (usado por closetEngine.js)
+  // ── Puertas ──────────────────────────────────────────────────────────────
+  DOOR_GAP_W_TOTAL: 5,         // folga horizontal TOTAL del vano de puerta (referencia)
+  DOOR_GAP_W: 2.5,             // folga por HOJA de puerta (usado por closetEngine.js) — NO es el total
+  DOOR_GAP_H: 4,               // folga vertical de puerta (compartida engine/validator)
+  // ── Otros ────────────────────────────────────────────────────────────────
+  RECESO_TECNICO: 50,          // receso técnico del motor (actualmente sin uso, conservado)
 }
 
 const STRUCTURAL_LIMITS = {

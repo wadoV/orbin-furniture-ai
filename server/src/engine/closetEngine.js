@@ -13,22 +13,12 @@
 const { v4: uuidv4 } = require('uuid')
 // ── Manifiesto matemático (Single Source of Truth) — DeepSeek R1 specs ──
 const FurnitureMath = require('../ai/furnitureMathSpecs')
+// ★ Ley física (chapa + herrajes): FUENTE ÚNICA en ./constants.
+//   Generador y validador leen el MISMO MATERIAL y el MISMO HARDWARE para evitar
+//   que el motor genere piezas que su propio validador rechaza (P0 resuelto 2026-07-19).
+const { MATERIAL, HARDWARE } = require('./constants')
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const HARDWARE = {
-  DRAWER_FRONT_GAP: 2,
-  DOOR_GAP_W: 2.5,
-  DOOR_GAP_H: 4,
-  SLIDE_CLEARANCE: 13,
-  RECESO_TECNICO: 50
-}
-
-const MATERIAL = {
-  PLATE_WIDTH: 2800,
-  PLATE_HEIGHT: 2070,
-  SAW_KERF: 3.2,
-  NESTING_MARGIN: 50
-}
 
 const DEFAULTS = {
   moduleType: 'standard',
@@ -65,17 +55,41 @@ function makePiece(id, name, type, w, h, t, qty, x, y, z, grainDir, edgeBanding,
   }
 }
 
-function generateCutList(pieces) {
+function generateCutList(pieces, defaultEdgeThickness = 1.0) {
   const list = []
   for (const piece of pieces) {
+    const eb = piece.edgeBanding || {}
+    const tEdge = typeof eb.thickness === 'number' ? eb.thickness : defaultEdgeThickness
+
+    let countW = 0
+    if (eb.all) {
+      countW = 2
+    } else {
+      if (eb.left) countW++
+      if (eb.right) countW++
+    }
+
+    let countH = 0
+    if (eb.all) {
+      countH = 2
+    } else {
+      if (eb.top || eb.front) countH++
+      if (eb.bottom || eb.back) countH++
+    }
+
+    const netCutWidth  = Math.max(2, Math.round((piece.width - (countW * tEdge)) * 10) / 10)
+    const netCutHeight = Math.max(2, Math.round((piece.height - (countH * tEdge)) * 10) / 10)
+
     for (let q = 0; q < piece.quantity; q++) {
       list.push({
-        id:        piece.quantity > 1 ? piece.id + '-' + (q + 1) : piece.id,
-        name:      piece.quantity > 1 ? piece.name + ' (' + (q + 1) + '/' + piece.quantity + ')' : piece.name,
-        type:      piece.type,
-        cutWidth:  piece.width,
-        cutHeight: piece.height,
-        thickness: piece.thickness,
+        id:             piece.quantity > 1 ? piece.id + '-' + (q + 1) : piece.id,
+        name:           piece.quantity > 1 ? piece.name + ' (' + (q + 1) + '/' + piece.quantity + ')' : piece.name,
+        type:           piece.type,
+        nominalWidth:   piece.width,
+        nominalHeight:  piece.height,
+        cutWidth:       netCutWidth,
+        cutHeight:      netCutHeight,
+        thickness:      piece.thickness,
         grainDirection: piece.grainDirection,
         edgeBanding:    piece.edgeBanding
       })
@@ -140,7 +154,7 @@ function generateFurniture(params) {
   }
   const { moduleType, width: W, height: H, depth: D, thickness: T, backThickness: BT,
           numShelves, numDrawers, drawerHeight, drawerLayout, baseboard, baseboardHeight,
-          hasDoors, numDoors, hasCountertop } = cfg
+          hasDoors, numDoors, hasCountertop, topShelf } = cfg
 
   const pieces = []
   let pieceCounter = 1
@@ -193,18 +207,18 @@ function generateFurniture(params) {
 
   pieces.push(makePiece(nextId('BASE'), 'Base Inferior', 'piso', internalWidth, D, T, 1, W/2, BH3 + T/2, D/2, 'horizontal', { front: true }))
 
-  // BUG FIX #5: base+countertop has traversaños (70mm) at top, not a techo (T).
-  // Standard/aereo use 2*T (bottom base + top techo). Base+countertop uses T+70.
+  // BUG FIX #5 & VULN-05: base+countertop has traversaños (70mm) at top, not a techo (T).
   const topDeduction = (isBase && hasCountertop && moduleType !== 'standard') ? 70 : T
-  const backH = H - BH3 - T - topDeduction
-  // ── Fondo: ancho según método (manifiesto = SSOT). Default = vano interno (sin cambios).
-  //   'grooved' (ranurado) = internalSpan + 2·grooveDepth ; 'nailed' (clavado) = W − 2mm.
+  const baseBackH = H - BH3 - T - topDeduction
+  const grooveDepth = cfg.grooveDepth || 8
+  const backH = (cfg.backStyle === 'grooved') ? baseBackH + (2 * grooveDepth) : baseBackH
+  // ── Fondo: ancho según método (manifiesto = SSOT).
   const backWidth = (cfg.backStyle === 'grooved')
-    ? FurnitureMath.backPanels.groovedWidth(internalWidth, cfg.grooveDepth || 8)
+    ? FurnitureMath.backPanels.groovedWidth(internalWidth, grooveDepth)
     : (cfg.backStyle === 'nailed')
       ? FurnitureMath.backPanels.nailedWidth(W)
       : internalWidth
-  pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', backWidth, backH, BT, 1, W/2, BH3 + T + backH/2, D - BT/2, 'none'))
+  pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', backWidth, backH, BT, 1, W/2, BH3 + T + baseBackH/2, D - BT/2, 'none'))
 
   if (baseType === 'recessed' && BH3 > 0) {
     pieces.push(makePiece(nextId('RDPE-F'), 'Zócalo Frontal', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, D - T/2 - 50, 'vertical', { front: true }))
@@ -242,7 +256,9 @@ function generateFurniture(params) {
 
       const boxOuterW = FurnitureMath.drawerBox.netWidth(drawerW)
       const boxInnerW = FurnitureMath.drawerBox.headerWidth(boxOuterW, T)
-      const boxD = D - 50
+      // VULN-03 FIX: Profundidad comercial basada en espacio útil con 20mm de holgura trasera
+      const maxAvailableD = D - BT - 20
+      const boxD = Math.max(250, Math.floor(maxAvailableD / 50) * 50)
       const boxH = safeDrawerHeight - 40
       const boxZ = D/2 + BT/2
 
@@ -270,6 +286,7 @@ function generateFurniture(params) {
 
   let shelfYStart = drawerYStart + (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight + T/2
 
+  // HARD_CONSTRAINT: Structural closure required for all drawer modules
   // ★ PROTECTED: Separator shelf on top of drawer zone (closes gap visually)
   if (numDrawers > 0) {
     const sepY = shelfYStart
@@ -286,7 +303,6 @@ function generateFurniture(params) {
   }
 
   // BUG FIX #9: dynamic shelf spacing — distribute evenly in available zone.
-  // Available zone: from shelfYStart to H - T (below techo), minus 50mm headroom.
   const shelfZoneTop = H - T - 50
   const shelfZoneH   = Math.max(0, shelfZoneTop - shelfYStart)
   const shelfSpacing = numShelves > 0 ? Math.floor(shelfZoneH / (numShelves + 1)) : 0
@@ -304,15 +320,14 @@ function generateFurniture(params) {
   }
 
   // ★ PROTECTED: Central Dividers — stop at drawer zone, not full height
+  // VULN-04 FIX: divStartY arranca SOBRE la repisa separadora (+T) para no colisionar 18mm con SEP
   if (numDivs > 0) {
     const totalDrawerH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0)
     let divStartY, divHeight
     if (numDrawers > 0) {
-      // Divider only above drawer zone
-      divStartY = BH3 + T + totalDrawerH
-      divHeight = H - BH3 - totalDrawerH - 2 * T
+      divStartY = BH3 + T + totalDrawerH + T
+      divHeight = H - divStartY - T
     } else {
-      // No drawers — full internal height
       divStartY = BH3 + T
       divHeight = structuralHeight - 2 * T
     }
@@ -324,7 +339,7 @@ function generateFurniture(params) {
           nextId('DIV'), `Lateral Central ${i}`, 'divider',
           internalDepth, divHeight, T, 1,
           xPos, divStartY + divHeight / 2, D / 2,
-          'vertical', { front: true }, 'Divisor vertical — para en zona gavetas'
+          'vertical', { front: true }, 'Divisor vertical — para encima de separadora'
         ))
       }
     }
@@ -485,7 +500,7 @@ function generateProject(params) {
 // La pieza horizontal más ancha (techo/piso/fondo/zócalo ≈ ancho del módulo) debe caber
 // en la chapa. Si el ancho total supera el aprovechable, se parte en N módulos iguales
 // fabricables. Distribuye cajones/divisores; estantes y puertas por módulo según su ancho.
-const MAX_MODULE_WIDTH = MATERIAL.PLATE_WIDTH - 2 * MATERIAL.NESTING_MARGIN  // 2800 - 100 = 2700mm
+const MAX_MODULE_WIDTH = MATERIAL.PLATE_WIDTH - 2 * MATERIAL.NESTING_MARGIN  // 2750 - 100 = 2650mm
 
 function distributeCount(total, n, i) {
   const q = Math.floor(total / n), r = total % n
