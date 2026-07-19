@@ -360,6 +360,12 @@ export default function App() {
     } catch (err) {
       console.error('[App/Generate] Connection Error:', err)
       setError(err.message || 'Error connecting to server.')
+      // ★ FIX [presets-silenciosos] 2026-07-19: el banner de error vive debajo del
+      //   formulario; sin este scroll el fallo era invisible al clicar un preset.
+      setTimeout(() => {
+        const el = document.getElementById('generate-error')
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
     } finally {
       setLoading(false)
     }
@@ -855,6 +861,15 @@ export default function App() {
               <div id={'panel-' + activeTab}>
                 {activeTab === 'params' && (
                   <>
+                    {/* ★ FIX [presets-silenciosos] 2026-07-19: con el server caído, el clic en un
+                        preset moría en un banner renderizado DEBAJO del formulario (fuera de
+                        pantalla) → "los presets no funcionan". Aviso visible ARRIBA, aditivo. */}
+                    {!serverOnline && (
+                      <div className="mb-4 bg-warning/10 border border-warning/30 rounded-xl px-4 py-3 text-sm text-warning" role="alert">
+                        <p className="font-bold uppercase text-[10px] tracking-widest mb-1">{t('server_offline_title', 'Servidor sin conexión')}</p>
+                        <p className="text-[11px] opacity-80">{t('server_offline_desc', 'Los presets y el generador necesitan el servidor. Verifica que esté encendido e inténtalo de nuevo.')}</p>
+                      </div>
+                    )}
                     <InputPanel
                       onGenerate={handleGenerate}
                       loading={loading}
@@ -863,7 +878,7 @@ export default function App() {
                       onUpdateConfig={(newConfig) => handleUpdateModule(selectedModuleId, newConfig)}
                     />
                     {error && (
-                      <div className="mt-4 bg-danger/10 border border-danger/30 rounded-xl px-4 py-3 text-sm text-danger" role="alert">
+                      <div id="generate-error" className="mt-4 bg-danger/10 border border-danger/30 rounded-xl px-4 py-3 text-sm text-danger" role="alert">
                         {error}
                       </div>
                     )}
