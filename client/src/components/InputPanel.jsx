@@ -417,7 +417,15 @@ const DEFAULTS = {
   hasDoors: true, numDoors: 2, doorType: 'hinged',
   edgeBandingType: 'thin', baseboard: true, baseboardHeight: 100,
   baseType: 'recessed', legHeight: 100, tamponado: 'none',
-  hasCountertop: true
+  hasCountertop: true,
+  // ★ F1 2026-07-19 (PLAN_UI_PARAMS_2026): params nuevos con defaults neutros —
+  //   mismos valores que el engine; con ellos el output es idéntico al histórico.
+  handleType: 'standard',
+  hasLed: false,
+  hasHangingRod: false,
+  doorFinish: null,
+  countertopMaterial: null,
+  pedestalWidth: 400
 }
 
 // ─── InputPanel ───────────────────────────────────────────────────────────────
@@ -508,6 +516,8 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
 
   const isAereo = params.moduleType === 'aereo'
   const isBase  = params.moduleType === 'base'
+  // ★ F1 2026-07-19: topología escritorio (vano de piernas + pedestal de gavetas)
+  const isDesk  = params.moduleType === 'desk'
 
   return (
     <div className="bg-zinc-900/60 backdrop-blur-lg border-r border-zinc-800/50 rounded-2xl p-5 space-y-6">
@@ -580,6 +590,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                   { value: 'standard', label: t('standard') },
                   { value: 'base',     label: t('base') },
                   { value: 'aereo',    label: t('aereo') },
+                  { value: 'desk',     label: t('desk', 'Escritorio') },
                 ]}
               />
               {/* ── PLAN RESTRICTION: thickness locked on free ─────────── */}
@@ -693,6 +704,27 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                 </div>
               </div>
             )}
+            {/* ★ F1 2026-07-19: DESK — ancho del pedestal de gavetas (vano restante = piernas) */}
+            {isDesk && (
+              <div className="animate-in zoom-in-95 duration-200 space-y-2">
+                <FIELD
+                  label={t('pedestal_width', 'Ancho del gavetero (pedestal)')}
+                  name="pedestalWidth"
+                  value={convert(params.pedestalWidth || 400)}
+                  onChange={setDimParam}
+                  min={convert(300)}
+                  max={convert(Math.max(300, params.width - 600))}
+                  step={unit === 'cm' ? 0.1 : 1}
+                  suffix={unit}
+                />
+                <div className="p-3 bg-sky-500/5 rounded-xl border border-sky-500/20 flex gap-3">
+                  <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-sky-300/80 font-medium leading-relaxed">
+                    {t('desk_tip', 'Vano libre para piernas = ancho − pedestal. Mínimo recomendado: 600mm.')}
+                  </p>
+                </div>
+              </div>
+            )}
           </fieldset>
 
           {/* Acabamiento y Base (tamponado / mueble independiente) */}
@@ -730,6 +762,36 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
             )}
           </fieldset>
 
+          {/* ★ F1 2026-07-19: Extras (tendencias 2026) — fieldset NUEVO, todo opcional.
+              Con los toggles apagados el payload es idéntico al histórico. */}
+          <fieldset className="space-y-4">
+            <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4">{t('extras_2026', 'Extras')}</legend>
+            <TOGGLE label={t('has_led', 'Iluminación LED')} name="hasLed" value={!!params.hasLed} onChange={setParam} />
+            {params.moduleType === 'standard' && (
+              <TOGGLE label={t('has_hanging_rod', 'Cabideiro (barra de colgar)')} name="hasHangingRod" value={!!params.hasHangingRod} onChange={setParam} />
+            )}
+            {params.hasDoors && !isDesk && (
+              <TOGGLE
+                label={t('mirror_door', 'Puerta con espejo')}
+                name="doorFinish"
+                value={params.doorFinish === 'mirror'}
+                onChange={(k, v) => setParam('doorFinish', v ? 'mirror' : null)}
+              />
+            )}
+            {isBase && params.hasCountertop && (
+              <SELECT
+                label={t('countertop_material', 'Bancada / encimera')}
+                name="countertopMaterial"
+                value={params.countertopMaterial || 'external'}
+                onChange={(k, v) => setParam('countertopMaterial', v === 'external' ? null : v)}
+                options={[
+                  { value: 'external', label: t('countertop_external', 'Piedra/porcelanato (externa)') },
+                  { value: 'mdf',      label: t('countertop_mdf', 'MDF 25mm (incluida en cortes)') },
+                ]}
+              />
+            )}
+          </fieldset>
+
           {/* ── Dimensions ────────────────────────────────────────────────── */}
           <fieldset className="space-y-4">
             <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4">{t('external_dimensions')}</legend>
@@ -749,8 +811,10 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
           <fieldset className="space-y-4">
             <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4">{t('interior')}</legend>
             <div className="grid grid-cols-2 gap-4">
-              <FIELD label={t('fixed_shelves')} name="numShelves"  value={params.numShelves}  onChange={setParam} type="number" min={0} max={10} />
-              <FIELD label={t('num_dividers')}  name="numDividers" value={params.numDividers} onChange={setParam} type="number" min={0} max={10} />
+              {/* ★ F1 2026-07-19: en desk se OCULTAN estantes/divisores (sin sentido en
+                  esa topología) — renderizado condicional, el estado no se toca. */}
+              {!isDesk && <FIELD label={t('fixed_shelves')} name="numShelves"  value={params.numShelves}  onChange={setParam} type="number" min={0} max={10} />}
+              {!isDesk && <FIELD label={t('num_dividers')}  name="numDividers" value={params.numDividers} onChange={setParam} type="number" min={0} max={10} />}
               <FIELD label={t('drawers')}        name="numDrawers"  value={params.numDrawers}  onChange={setParam} type="number" min={0} max={10} />
             </div>
 
@@ -824,24 +888,31 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
           {/* ── Doors & Baseboard ─────────────────────────────────────────── */}
           <fieldset className="space-y-4">
             <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4">{t('doors_and_baseboard')}</legend>
-            <TOGGLE label={t('with_doors')} name="hasDoors" value={params.hasDoors} onChange={setParam} />
-            {params.hasDoors && (
+            {/* ★ F1 2026-07-19: puertas ocultas en desk (topología sin puertas) */}
+            {!isDesk && <TOGGLE label={t('with_doors')} name="hasDoors" value={params.hasDoors} onChange={setParam} />}
+            {params.hasDoors && !isDesk && (
               <div className="space-y-4 animate-in zoom-in-95 duration-200">
                 <div className="grid grid-cols-2 gap-4">
                   <FIELD label={t('num_doors')} name="numDoors" value={params.numDoors} onChange={setParam} type="number" min={1} max={4} />
-                  <SELECT
-                    label={t('handle_type')}
-                    name="handleType"
-                    value={params.handleType}
-                    onChange={setParam}
-                    options={[
-                      { value: 'standard', label: t('standard_handle') },
-                      { value: 'gola',     label: t('gola_handle') },
-                      { value: 'push',     label: t('push_handle') },
-                    ]}
-                  />
                 </div>
               </div>
+            )}
+            {/* ★ F1 2026-07-19 (ux_ui_critic APROBADO como cofundador): handleType fuera del
+                guard hasDoors — un módulo solo-gavetas (desk, cómoda) también lleva tirador.
+                Mismo SELECT existente; solo cambia la condición de visibilidad + opción 'bar'. */}
+            {((params.hasDoors && !isDesk) || params.numDrawers > 0) && (
+              <SELECT
+                label={t('handle_type')}
+                name="handleType"
+                value={params.handleType}
+                onChange={setParam}
+                options={[
+                  { value: 'standard', label: t('standard_handle') },
+                  { value: 'gola',     label: t('gola_handle') },
+                  { value: 'push',     label: t('push_handle') },
+                  { value: 'bar',      label: t('bar_handle', 'Puxador barra') },
+                ]}
+              />
             )}
 
             {!isAereo && (

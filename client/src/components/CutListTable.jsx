@@ -25,6 +25,8 @@ const TYPE_COLOR = {
   standard_door: 'text-rose-400',
   drawer_box:    'text-purple-300',
   drawer_bottom: 'text-purple-200',
+  // ★ F4 2026-07-19 (aditivo): pieza nueva del engine (tampo desk / bancada MDF)
+  bancada:       'text-amber-300',
 }
 
 function exportCSV(cutList, getTypeLabel, t, lang, unit) {
@@ -195,6 +197,7 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
   const typeLabel = (type) => {
     if (type === 'drawer_front')  return t('drawer_front_label')
     if (type === 'standard_door') return t('standard_door_label')
+    if (type === 'bancada')       return t('bancada_label', 'Bancada')  // ★ F4 2026-07-19
     return type
   }
 

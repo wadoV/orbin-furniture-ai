@@ -568,6 +568,20 @@ export const translations = {
     onboard_size_custom_hint:   'Defina largura, altura e profundidade',
     onboard_size_recommended:   'Tamanho recomendado',
     plan_module_limit_feature:  'Módulos ilimitados',
+
+    // ── F2 2026-07-19: UI params 2026 (append-only) ────────────────────────
+    desk:                 'Escrivaninha',
+    desk_tip:             'Vão livre para pernas = largura − gaveteiro. Mínimo recomendado: 600mm.',
+    pedestal_width:       'Largura do gaveteiro (pedestal)',
+    bar_handle:           'Puxador barra',
+    extras_2026:          'Extras',
+    has_led:              'Iluminação LED',
+    has_hanging_rod:      'Cabideiro (tubo de pendurar)',
+    mirror_door:          'Porta com espelho',
+    countertop_material:  'Bancada',
+    countertop_external:  'Pedra/porcelanato (fornecimento externo)',
+    countertop_mdf:       'MDF 25mm (incluída na lista de corte)',
+    bancada_label:        'Bancada / Tampo',
   },
 
   ES: {
@@ -1128,6 +1142,20 @@ export const translations = {
     onboard_size_custom_hint:   'Define ancho, alto y profundidad',
     onboard_size_recommended:   'Tamaño recomendado',
     plan_module_limit_feature:  'Módulos ilimitados',
+
+    // ── F2 2026-07-19: UI params 2026 (append-only) ────────────────────────
+    desk:                 'Escritorio',
+    desk_tip:             'Vano libre para piernas = ancho − gavetero. Mínimo recomendado: 600mm.',
+    pedestal_width:       'Ancho del gavetero (pedestal)',
+    bar_handle:           'Tirador barra',
+    extras_2026:          'Extras',
+    has_led:              'Iluminación LED',
+    has_hanging_rod:      'Barra de colgar',
+    mirror_door:          'Puerta con espejo',
+    countertop_material:  'Encimera',
+    countertop_external:  'Piedra/porcelanato (suministro externo)',
+    countertop_mdf:       'MDF 25mm (incluida en lista de corte)',
+    bancada_label:        'Bancada / Encimera',
   },
 
   EN: {
@@ -1689,6 +1717,20 @@ export const translations = {
     onboard_size_custom_hint:   'Set width, height and depth',
     onboard_size_recommended:   'Recommended size',
     plan_module_limit_feature:  'Unlimited modules',
+
+    // ── F2 2026-07-19: UI params 2026 (append-only) ────────────────────────
+    desk:                 'Desk',
+    desk_tip:             'Knee space = width − pedestal. Recommended minimum: 600mm.',
+    pedestal_width:       'Pedestal (drawer bank) width',
+    bar_handle:           'Bar pull',
+    extras_2026:          'Extras',
+    has_led:              'LED lighting',
+    has_hanging_rod:      'Hanging rod',
+    mirror_door:          'Mirror door',
+    countertop_material:  'Countertop',
+    countertop_external:  'Stone/porcelain (external supply)',
+    countertop_mdf:       'MDF 25mm (included in cut list)',
+    bancada_label:        'Countertop / Worktop',
   },
 }
 

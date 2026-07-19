@@ -90,6 +90,9 @@ const TYPE_COLORS = {
   drawer_bottom: 0xF0E0C0,
   feet:          0x222222,
   countertop:    0xeeeeee,
+  // ★ F3 2026-07-19 (aditivo): tipos nuevos del engine. El fallback a
+  // 'structural' sigue cubriendo cualquier tipo futuro no mapeado.
+  bancada:       0xF0EAE0,
 }
 
 const SELECTION_COLOR = 0xFFD700
