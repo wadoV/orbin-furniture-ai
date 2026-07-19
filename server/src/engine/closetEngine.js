@@ -708,8 +708,16 @@ function generateHardwareBOM(cfg) {
   }
 
   if (hasDoors && doorType === 'hinged') {
-    const numDoors = Math.ceil(cfg.width / 600)
-    bom.push({ type: 'Dobradica', description: 'Dobradica clip 35mm 110°', quantity: numDoors * 2, unit: 'un' })
+    // ★ AUDIT FIX 2026-07-19 (aditivo-compatible): antes ignoraba cfg.numDoors
+    // (ceil(width/600) daba 2 dobradiças para 2 puertas). Regla de taller:
+    // puerta ≤900mm → 2 bisagras · ≤1600 → 3 · >1600 → 4. Fallback al cálculo
+    // histórico si numDoors no viene.
+    const nDoors = (cfg.numDoors && cfg.numDoors > 0) ? cfg.numDoors : Math.ceil(cfg.width / 600)
+    const doorH = (cfg.height || 720)
+      - ((cfg.baseboard && cfg.moduleType !== 'aereo') ? (cfg.baseboardHeight || 100) : 0)
+      - ((cfg.numDrawers || 0) > 0 ? (cfg.numDrawers * (cfg.drawerHeight || 180)) : 0)
+    const perDoor = doorH > 1600 ? 4 : doorH > 900 ? 3 : 2
+    bom.push({ type: 'Dobradica', description: 'Dobradica clip 35mm 110°', quantity: nDoors * perDoor, unit: 'un' })
   }
 
   bom.push({ type: 'Parafuso Confirmat', description: 'Confirmat o7x50mm fixacao estrutural', quantity: 24, unit: 'un' })
