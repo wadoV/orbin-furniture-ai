@@ -27,9 +27,13 @@ export function PreferencesProvider({ children }) {
   }, [clipboardModule]);
 
   const t = useMemo(() => {
-    return (key) => {
+    return (key, fallback) => {
       try {
-        return translations[lang]?.[key] || key;
+        const hit = translations[lang]?.[key];
+        if (hit) return hit;
+        if (fallback) return fallback;
+        if (import.meta.env.DEV) console.warn('[i18n] missing key:', key, lang);
+        return key;
       } catch (e) {
         console.warn('Translation error:', e);
         return key;
