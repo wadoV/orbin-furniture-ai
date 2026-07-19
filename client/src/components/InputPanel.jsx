@@ -305,8 +305,9 @@ const FURNITURE_PRESETS = [
         <path d="M13 15l3-9 2.5 1-3 8z" />
       </svg>
     ),
-    // ★ TRENDS 2026: nicho flotante con LED indirecto
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 800, height: 350, depth: 300, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1600, hasLed: true }
+    // ★ REDESIGN 2026-07-19 (ref. usuario: consola nicho oak · evaluador APROBADO):
+    // vano único bajo y alargado 900×250×250, sin estante, LED. Consola de recibidor.
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 900, height: 250, depth: 250, thickness: 18, backThickness: 6, numShelves: 0, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 900, hasLed: true }
   },
   // ★ AEREO PRESETS — Módulos aéreos para cocina, baño y sala
   {
@@ -323,8 +324,10 @@ const FURNITURE_PRESETS = [
     ),
     // ★ AUDIT 2026-07-19 (carpinteria_fina): 400mm de alto desperdicia pared útil; estándar moderno
     // de aéreo de cocina: 700mm con 2 estantes (vanos ~209mm). Puertas 298x696 ✓ VALIDADO sin warnings.
-    // ★ TRENDS 2026: gola handleless en aéreos de cocina
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 600, height: 700, depth: 320, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1450, handleType: 'gola' }
+    // ★ REDESIGN 2026-07-19 (ref. usuario: gabinete nogal 3 puertas · evaluador exigió
+    // numDividers:2 — sin ellos la puerta central no tiene sustrato de bisagras):
+    // 1200×600×350, 3 puertas de 398, estante por vano (~377mm), gola handleless.
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1200, height: 600, depth: 350, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 2, hasDoors: true, numDoors: 3, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1450, handleType: 'gola' }
   },
   {
     id: 'aereo_cocina_aberto',
@@ -339,8 +342,10 @@ const FURNITURE_PRESETS = [
     ),
     // ★ AUDIT 2026-07-19 (carpinteria_fina): 350mm de alto con 2 estantes daba vanos útiles de ~87mm
     // (no cabe ni un vaso). 800x600 con 2 estantes: vanos ~176mm ✓, vano horizontal 764 < 900 ✓.
-    // ★ TRENDS 2026: open shelving con LED (hornacina iluminada)
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 800, height: 600, depth: 300, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1450, hasLed: true }
+    // ★ REDESIGN 2026-07-19 (ref. usuario: caja blanca horizontal 1 estante · APROBADO):
+    // 900×500×300, 2 vanos de ~223mm. Nota evaluador: vano 862mm al 96% del límite —
+    // apto para vajilla ligera, no pila de platos pesados.
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 900, height: 500, depth: 300, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1450, hasLed: true }
   },
   {
     id: 'aereo_banheiro_espelho',
@@ -353,9 +358,10 @@ const FURNITURE_PRESETS = [
         <line x1="15" y1="18" x2="15" y2="21" />
       </svg>
     ),
-    // ★ AUDIT 2026-07-19: el "espejo" ahora existe — doorFinish:'mirror' agrega
-    // espejo 4mm + fita VHB al BOM (antes la puerta salía como MDF liso).
-    params: { moduleType: 'aereo', materialId: 'mdf_15', width: 600, height: 700, depth: 150, thickness: 15, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 1, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1000, doorFinish: 'mirror', handleType: 'push' }
+    // ★ REDESIGN 2026-07-19 (ref. usuario: espejero de baño · evaluador exigió 2 hojas:
+    // 1 puerta-espejo de 698mm ≈ 11.6kg sobre 2 bisagras = descuelgue; regla width≥600
+    // → numDoors≥2). 700×800×150, 2 hojas espejo de 348mm, 4 bisagras, push.
+    params: { moduleType: 'aereo', materialId: 'mdf_15', width: 700, height: 800, depth: 150, thickness: 15, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1000, doorFinish: 'mirror', handleType: 'push' }
   },
   {
     id: 'aereo_sala_tv',
@@ -372,9 +378,11 @@ const FURNITURE_PRESETS = [
     // ★ AUDIT 2026-07-19 (carpinteria_fina): numShelves:1 + 2 divisores generaba colisión geométrica
     // (PRAT 1562 de ancho atravesando DIV en x=539 y x=1061, verificado con posiciones del engine).
     // Sin estante: panel de 3 nichos de ~509mm, tampo/base soportados por los divisores ✓.
-    // ★ TRENDS 2026: panel TV con nichos iluminados (LED). El engine ahora genera
-    // estantes POR COMPARTIMENTO, así que numShelves>0 con divisores ya es seguro.
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1600, height: 450, depth: 350, thickness: 18, backThickness: 6, numShelves: 0, numDrawers: 0, numDividers: 2, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1200, hasLed: true }
+    // ★ REDESIGN 2026-07-19 (ref. usuario: consola TV flotante blanco brillo · APROBADO):
+    // 1600×300×400, 2 gavetas horizontales de 769mm (holgura corredera 26mm exacta),
+    // montante central DIV-GAV generado por el engine (fix corredicas interiores),
+    // push handleless + LED. mountHeight 400 (altura decoder).
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1600, height: 300, depth: 400, thickness: 18, backThickness: 6, numShelves: 0, numDrawers: 2, numDividers: 0, drawerLayout: 'horizontal', drawerHeight: 240, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 400, handleType: 'push', hasLed: true }
   },
 ]
 

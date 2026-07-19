@@ -399,6 +399,22 @@ function generateFurniture(params) {
   const drawersPerCol = Math.ceil(numDrawers / cols)
   const drawerW = isHorizontal ? (internalWidth / 2) - T/2 : internalWidth
 
+  // ★ AUDIT FIX 2026-07-19 (aditivo — solo rama horizontal): con 2 columnas de
+  // gavetas no existía montante central: las corredicas interiores no tenían
+  // superficie de fijación (mueble no montable). Genera un montante que ocupa
+  // exactamente el gap de T entre columnas, a la altura de la zona de gavetas.
+  if (isHorizontal) {
+    const gavZoneH = drawersPerCol * safeDrawerHeight
+    if (gavZoneH > 0) {
+      pieces.push(makePiece(
+        nextId('DIV-GAV'), 'Montante Central Gavetas', 'divider',
+        internalDepth, gavZoneH, T, 1,
+        T + drawerW + T/2, drawerYStart + gavZoneH/2, D/2,
+        'vertical', { front: true }, 'Fijación de corredicas interiores — obligatorio en 2 columnas'
+      ))
+    }
+  }
+
   for (let i = 0; i < numDrawers; i++) {
     const colIdx = isHorizontal ? (i % 2) : 0
     const rowIdx = isHorizontal ? Math.floor(i / 2) : i

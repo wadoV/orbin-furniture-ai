@@ -83,9 +83,13 @@ function validateDesign(design) {
     // ADITIVO 2026-07-19: en 'desk' el vano central es espacio de piernas por diseño
     // (sin estantes cargados); el tampo de 25mm apoya en 3 puntos (2 laterales + pedestal).
     const isDeskKneeSpace = cfg.moduleType === 'desk'
-    const effectiveSpan = isDeskKneeSpace ? 0 : (nDivs > 0
+    // ADITIVO 2026-07-19: 2 columnas de gavetas llevan montante central (DIV-GAV,
+    // generado por el engine) → el vao efectivo del tampo/base se reduce a la mitad.
+    const hasDrawerMontante = cfg.drawerLayout === 'horizontal' && (cfg.numDrawers || 0) > 1
+    let effectiveSpan = isDeskKneeSpace ? 0 : (nDivs > 0
       ? Math.round((internalWidth - nDivs * cfg.thickness) / (nDivs + 1))
       : internalWidth)
+    if (hasDrawerMontante) effectiveSpan = Math.min(effectiveSpan, Math.round((internalWidth - cfg.thickness) / 2))
     if (effectiveSpan > STRUCTURAL_LIMITS.MAX_SHELF_SPAN) {
       warnings.push(
         'Vao interno (' + effectiveSpan + 'mm' + (nDivs > 0 ? ' por compartimento' : '') + ') supera ' +
