@@ -236,7 +236,10 @@ const FURNITURE_PRESETS = [
         <circle cx="18" cy="20.5" r="0.9" fill="currentColor" />
       </svg>
     ),
-    params: { moduleType: 'base', materialId: 'mdf_18', width: 1500, height: 870, depth: 900, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true }
+    // ★ AUDIT 2026-07-19 (carpinteria_fina): 1500 de ancho generaba vano de 1464mm (>900 = pandeo),
+    // gavetas de 1460mm (corrediças no soportan ese ancho) y puertas batientes de 748mm (torque excesivo).
+    // Módulo compacto 900mm: vano 864 ✓, gavetas 860 ✓, puertas 448 ✓. Isla grande = apilar 2 módulos.
+    params: { moduleType: 'base', materialId: 'mdf_18', width: 900, height: 870, depth: 650, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true, drawerLayout: 'vertical', drawerHeight: 180 }
   },
   {
     id: 'wardrobe',
@@ -250,7 +253,10 @@ const FURNITURE_PRESETS = [
         <line x1="10" y1="18" x2="14" y2="18" strokeWidth={1.5} />
       </svg>
     ),
-    params: { moduleType: 'standard', materialId: 'mdf_18', width: 900, height: 2100, depth: 600, thickness: 18, backThickness: 6, numShelves: 3, numDrawers: 2, numDividers: 1, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: false, drawerLayout: 'vertical', drawerHeight: 180 }
+    // ★ AUDIT 2026-07-19 (carpinteria_fina): numDividers:1 + estantes generaba colisión geométrica
+    // (DIV en x=450 atravesado por PRAT de ancho completo 862, verificado con posiciones del engine).
+    // Sin divisor: 3 estantes de vano 864 ✓ VALIDADO sin colisión.
+    params: { moduleType: 'standard', materialId: 'mdf_18', width: 900, height: 2100, depth: 600, thickness: 18, backThickness: 6, numShelves: 3, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: false, drawerLayout: 'vertical', drawerHeight: 180 }
   },
   {
     id: 'bathroom_cabinet',
@@ -307,7 +313,9 @@ const FURNITURE_PRESETS = [
         <line x1="17" y1="16" x2="17" y2="19" strokeDasharray="2 1" />
       </svg>
     ),
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 600, height: 400, depth: 320, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1450 }
+    // ★ AUDIT 2026-07-19 (carpinteria_fina): 400mm de alto desperdicia pared útil; estándar moderno
+    // de aéreo de cocina: 700mm con 2 estantes (vanos ~209mm). Puertas 298x696 ✓ VALIDADO sin warnings.
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 600, height: 700, depth: 320, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: false, hasCountertop: false, mountHeight: 1450 }
   },
   {
     id: 'aereo_cocina_aberto',
@@ -320,7 +328,9 @@ const FURNITURE_PRESETS = [
         <line x1="17" y1="16" x2="17" y2="19" strokeDasharray="2 1" />
       </svg>
     ),
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 900, height: 350, depth: 300, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1500 }
+    // ★ AUDIT 2026-07-19 (carpinteria_fina): 350mm de alto con 2 estantes daba vanos útiles de ~87mm
+    // (no cabe ni un vaso). 800x600 con 2 estantes: vanos ~176mm ✓, vano horizontal 764 < 900 ✓.
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 800, height: 600, depth: 300, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1450 }
   },
   {
     id: 'aereo_banheiro_espelho',
@@ -347,7 +357,10 @@ const FURNITURE_PRESETS = [
         <circle cx="18.5" cy="14" r="0.7" fill="currentColor" />
       </svg>
     ),
-    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1600, height: 450, depth: 350, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 2, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1200 }
+    // ★ AUDIT 2026-07-19 (carpinteria_fina): numShelves:1 + 2 divisores generaba colisión geométrica
+    // (PRAT 1562 de ancho atravesando DIV en x=539 y x=1061, verificado con posiciones del engine).
+    // Sin estante: panel de 3 nichos de ~509mm, tampo/base soportados por los divisores ✓.
+    params: { moduleType: 'aereo', materialId: 'mdf_18', width: 1600, height: 450, depth: 350, thickness: 18, backThickness: 6, numShelves: 0, numDrawers: 0, numDividers: 2, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, mountHeight: 1200 }
   },
 ]
 
