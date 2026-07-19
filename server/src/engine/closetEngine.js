@@ -35,7 +35,14 @@ const DEFAULTS = {
   doorStyle: null,  // null = auto por moduleType ('base'→overlay, resto→legacy)
   tamponado: 'none',
   hasCountertop: true,
-  handleType: 'standard'
+  handleType: 'standard',
+  // ── ADITIVO 2026-07-19 (tendencias 2026 + BOM completo). Defaults neutros:
+  //    con estos valores el output es IDÉNTICO al histórico (golden master).
+  hasHangingRod: false,      // wardrobe: cabideiro + suportes en BOM
+  doorFinish: null,          // 'mirror' → espejo 4mm sobre puerta en BOM
+  hasLed: false,             // fita LED + fonte en BOM (nichos/aéreos)
+  countertopMaterial: null,  // 'mdf' → genera pieza BANCADA 25mm; null → BOM externo
+  pedestalWidth: 400         // solo moduleType 'desk': ancho del gavetero
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -100,10 +107,92 @@ function generateCutList(pieces, defaultEdgeThickness = 1.0) {
   return list
 }
 
+// ─── Desk Topology (ADITIVO 2026-07-19) ─────────────────────────────────────
+// moduleType 'desk': escritorio real — tampo sobrepuesto, vano libre para
+// piernas y pedestal de gavetas a la derecha. Rama independiente: no toca
+// ningún path existente. El preset "Escritorio" generaba antes un aparador
+// cerrado (sin vano, gavetas de ancho completo) — topología incorrecta.
+function generateDeskFurniture(cfg) {
+  const { width: W, height: H, depth: D, thickness: T, backThickness: BT } = cfg
+  const pedW = Math.min(Math.max(cfg.pedestalWidth || 400, 300), W - 600 > 300 ? W - 600 : W * 0.4)
+  const pieces = []
+  let pieceCounter = 1
+  const nextId = (prefix) => prefix + '-' + String(pieceCounter++).padStart(3, '0')
+
+  // Tampo sobrepuesto: ancho completo, apoya sobre laterales y pedestal
+  pieces.push(makePiece(nextId('TAMPO'), 'Tampo Escritorio', 'bancada', W, D, T, 1, W/2, H - T/2, D/2, 'horizontal', { all: true }, 'Tampo de trabajo — canto ABS 2mm'))
+
+  const latH = H - T
+  pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', D, latH, T, 1, T/2, latH/2, D/2, 'vertical', { front: true }))
+  pieces.push(makePiece(nextId('LAT-R'), 'Lateral Derecho', 'lateral', D, latH, T, 1, W - T/2, latH/2, D/2, 'vertical', { front: true }))
+
+  // Pedestal: costado interno que cierra el gavetero (lado derecho)
+  const divX = W - pedW + T/2
+  pieces.push(makePiece(nextId('PED-DIV'), 'Costado Pedestal', 'divider', D, latH, T, 1, divX, latH/2, D/2, 'vertical', { front: true }, 'Cierra el gavetero — vano libre a la izquierda'))
+
+  const pedInterior = pedW - 2 * T          // entre PED-DIV y LAT-R
+  const kneeSpan = W - pedW - T             // vano libre para piernas
+
+  // Piso del pedestal
+  pieces.push(makePiece(nextId('PED-BASE'), 'Base Pedestal', 'piso', pedInterior, D - BT, T, 1, W - pedW/2 - T/2 + T/2, T/2, (D - BT)/2, 'horizontal', { front: true }))
+
+  // Fondo solo detrás del pedestal (el vano queda abierto para cables)
+  pieces.push(makePiece(nextId('PED-FUNDO'), 'Fondo Pedestal', 'fondo', pedInterior, latH - T, BT, 1, W - pedW/2, (latH + T)/2, D - BT/2, 'none'))
+
+  // Faldón trasero (modesty panel) en el vano — rigidiza y oculta cables
+  const apronH = Math.min(300, Math.max(150, Math.round(latH * 0.35)))
+  pieces.push(makePiece(nextId('TRAV-FALDON'), 'Faldon Trasero', 'tie_strip', kneeSpan, apronH, T, 1, (W - pedW - T)/2 + T/2, latH - apronH/2, D - BT - T/2, 'horizontal', { front: true }, 'Modesty panel — rigidez del vano'))
+
+  // Gavetas del pedestal (pila desde abajo, holgura corredera 26mm)
+  const CLEAR = 16, MINH = 80
+  const availH = latH - 2 * T
+  const reqDrawers = cfg.numDrawers || 0
+  const dh = Math.max(MINH, cfg.drawerHeight || 150)
+  const maxRows = Math.max(0, Math.floor(availH / (dh + CLEAR)))
+  const n = Math.min(reqDrawers, maxRows)
+  const pedCenterX = W - pedW + T + pedInterior/2
+  for (let i = 0; i < n; i++) {
+    const yPos = T + i * (dh + CLEAR) + dh/2
+    const drawerId = `DRW-${i + 1}`
+    pieces.push({ ...makePiece(nextId('GAV-FF'), `Frente Gaveta ${i + 1}`, 'drawer_front',
+      pedInterior - 2*HARDWARE.DRAWER_FRONT_GAP, dh - 2*HARDWARE.DRAWER_FRONT_GAP, T, 1,
+      pedCenterX, yPos, D - T/2, 'horizontal', { all: true }, 'Holgura 2mm/lado', 'drawer_front'), drawerGroupId: drawerId })
+    const boxOuterW = FurnitureMath.drawerBox.netWidth(pedInterior)
+    const boxInnerW = FurnitureMath.drawerBox.headerWidth(boxOuterW, T)
+    const boxD = Math.max(250, Math.floor((D - BT - 20) / 50) * 50)
+    const boxH = dh - 40
+    if (boxOuterW > 2 * T && boxInnerW > 10 && boxH > 20) {
+      pieces.push({ ...makePiece(nextId('GAV-LAT'), `Lateral Cajon ${i+1}`, 'drawer_box', boxD, boxH, T, 2, pedCenterX, yPos, D/2, 'horizontal', { front: true }), drawerGroupId: drawerId })
+      pieces.push({ ...makePiece(nextId('GAV-EST'), `Frente/Trasera Cajon ${i+1}`, 'drawer_box', boxInnerW, boxH, T, 2, pedCenterX, yPos, D/2, 'horizontal', { front: true }), drawerGroupId: drawerId })
+      pieces.push({ ...makePiece(nextId('GAV-FUNDO'), `Fondo Cajon ${i+1}`, 'drawer_bottom', boxOuterW, boxD, 6, 1, pedCenterX, yPos - boxH/2 + 3, D/2, 'horizontal', { none: true }), drawerGroupId: drawerId })
+    }
+  }
+
+  const specAdjustments = []
+  if (n < reqDrawers) {
+    specAdjustments.push({
+      code: 'DRAWER_COUNT_REDUCED', severity: 'critical', field: 'numDrawers',
+      requested: reqDrawers, applied: n,
+      message: `Se solicitaron ${reqDrawers} gavetas pero solo caben ${n} en el pedestal (${availH}mm útiles).`
+    })
+  }
+  cfg.numDrawers = n
+  cfg.specAdjustments = specAdjustments
+
+  return {
+    pieces,
+    config: cfg,
+    internalDimensions: { width: kneeSpan, height: latH, depth: D - BT }
+  }
+}
+
 // ─── Main Engine ─────────────────────────────────────────────────────────────
 
 function generateFurniture(params) {
   const cfg = { ...DEFAULTS, ...params }
+
+  // ── ADITIVO 2026-07-19: topología escritorio — rama dedicada, path viejo intacto
+  if (cfg.moduleType === 'desk') return generateDeskFurniture(cfg)
 
   // ── Base independiente / patas (compat: baseboard:false legacy → 'none') ──
   const legHeight = cfg.legHeight || 100
@@ -382,15 +471,36 @@ function generateFurniture(params) {
   const shelfZoneH   = Math.max(0, shelfZoneTop - shelfYStart)
   const shelfSpacing = numShelves > 0 ? Math.floor(shelfZoneH / (numShelves + 1)) : 0
 
+  // ── ADITIVO 2026-07-19: con divisores, los estantes se generan POR COMPARTIMENTO.
+  //    Antes: estante de ancho completo atravesaba los divisores (colisión física
+  //    verificada con posiciones — mueble no ensamblable). Sin divisores (numDivs=0)
+  //    el despiece es byte-idéntico al histórico.
+  const shelfCompartments = []
+  if (numDivs > 0) {
+    const divSpacingS = internalWidth / (numDivs + 1)
+    for (let c = 0; c <= numDivs; c++) {
+      const leftEdge  = c === 0       ? T       : T + divSpacingS * c + T / 2
+      const rightEdge = c === numDivs ? W - T   : T + divSpacingS * (c + 1) - T / 2
+      shelfCompartments.push({ center: (leftEdge + rightEdge) / 2, span: rightEdge - leftEdge })
+    }
+  } else {
+    shelfCompartments.push({ center: W / 2, span: internalWidth })
+  }
+
   for (let i = 0; i < numShelves; i++) {
     const yPos = shelfYStart + (i + 1) * shelfSpacing
     if (yPos > shelfYStart && yPos < shelfZoneTop) {
       const technicalDepth = hasDoors ? (internalDepth - 20) : internalDepth
-      pieces.push(makePiece(
-        nextId('PRAT'), `Estante ${i + 1}`, 'repisa',
-        internalWidth - 2, technicalDepth, T, 1,
-        W/2, yPos, internalDepth/2 + BT, 'horizontal', { front: true }
-      ))
+      for (let c = 0; c < shelfCompartments.length; c++) {
+        const comp = shelfCompartments[c]
+        pieces.push(makePiece(
+          nextId('PRAT'),
+          shelfCompartments.length > 1 ? `Estante ${i + 1} (vano ${c + 1})` : `Estante ${i + 1}`,
+          'repisa',
+          comp.span - 2, technicalDepth, T, 1,
+          comp.center, yPos, internalDepth/2 + BT, 'horizontal', { front: true }
+        ))
+      }
     }
   }
 
@@ -438,6 +548,18 @@ function generateFurniture(params) {
         ))
       }
     }
+  }
+
+  // ── ADITIVO 2026-07-19: bancada de MDF 25mm opcional (countertopMaterial:'mdf').
+  //    Default null → sin pieza (bancada de piedra/porcelanato va como ítem de BOM).
+  if (isBase && hasCountertop && moduleType !== 'standard' && cfg.countertopMaterial === 'mdf') {
+    const ctT = 25, ctOverhang = 20
+    pieces.push(makePiece(
+      nextId('BANCADA'), 'Bancada MDF 25mm', 'bancada',
+      W + 2 * ctOverhang, D + ctOverhang, ctT, 1,
+      W/2, H + ctT/2, D/2, 'horizontal', { all: true },
+      'Sobrepasa 20mm frontal/lateral — canto ABS 2mm'
+    ))
   }
 
   return { pieces, config: cfg, internalDimensions: { width: internalWidth, height: structuralHeight, depth: internalDepth } }
@@ -594,6 +716,62 @@ function generateHardwareBOM(cfg) {
 
   if (cfg.baseType === 'legs') {
     bom.push({ type: 'Pe Nivelador', description: 'Pata regulable ' + (cfg.legHeight || 100) + 'mm', quantity: 4, unit: 'un' })
+  }
+
+  // ── ADITIVO 2026-07-19: BOM completo (auditoría carpinteria_fina + tendencias 2026).
+  //    Todos los bloques son APPEND condicionales; con params históricos el único cambio
+  //    intencional es que aéreos y módulos base con bancada dejan de tener BOM incompleto.
+
+  // Aéreos: sistema de suspensión (regla: ceil(width/600) × 2 puntos de anclaje)
+  if (cfg.moduleType === 'aereo') {
+    const anchorPoints = Math.ceil((cfg.width || 600) / 600) * 2
+    bom.push({ type: 'Riel Oculto Cabfix', description: 'Riel de fixacao oculto p/ aereo (60kg/riel)', quantity: Math.max(1, Math.ceil((cfg.width || 600) / 900)), unit: 'un' })
+    bom.push({ type: 'Taco + Tirafondo', description: 'Taco 6x60 + tirafondo 6x60mm (alvenaria)', quantity: anchorPoints, unit: 'un' })
+  }
+
+  // Wardrobe: cabideiro (barra de colgar) + soportes
+  if (cfg.hasHangingRod) {
+    const rodLen = (cfg.width || 600) - 2 * (cfg.thickness || 18)
+    const supports = rodLen > 900 ? 3 : 2
+    bom.push({ type: 'Cabideiro Oval', description: 'Tubo oval 30x15mm x ' + rodLen + 'mm', quantity: 1, unit: 'un' })
+    bom.push({ type: 'Suporte Cabideiro', description: 'Suporte lateral p/ tubo oval', quantity: supports, unit: 'un' })
+  }
+
+  // Puerta con espejo (preset espejo de baño)
+  if (cfg.doorFinish === 'mirror' && hasDoors) {
+    const nMirror = Math.max(1, cfg.numDoors || 1)
+    bom.push({ type: 'Espelho 4mm', description: 'Espelho prata 4mm colado sobre porta (corte sob medida)', quantity: nMirror, unit: 'un' })
+    bom.push({ type: 'Fita VHB', description: 'Fita dupla-face VHB 19mm p/ espelho', quantity: 1, unit: 'rolo' })
+  }
+
+  // Tendencia handleless 2026: perfil gola / push / barra
+  const nFronts = (cfg.hasDoors ? (cfg.numDoors || 0) : 0) + (cfg.numDrawers || 0)
+  if (cfg.handleType === 'gola') {
+    bom.push({ type: 'Perfil Gola', description: 'Perfil gola J aluminio anodizado x ' + (cfg.width || 600) + 'mm', quantity: 1, unit: 'un' })
+  } else if (cfg.handleType === 'push' && nFronts > 0) {
+    bom.push({ type: 'Tip-On Push', description: 'Mecanismo push-to-open magnetico', quantity: nFronts, unit: 'un' })
+  } else if (cfg.handleType === 'bar' && nFronts > 0) {
+    bom.push({ type: 'Puxador Barra', description: 'Puxador barra inox 128mm', quantity: nFronts, unit: 'un' })
+  }
+
+  // Bancada: si no se genera en MDF, es suministro externo — debe constar en el BOM
+  if (cfg.moduleType === 'base' && cfg.hasCountertop) {
+    if (cfg.countertopMaterial === 'mdf') {
+      bom.push({ type: 'Canto ABS 2mm', description: 'Fita ABS 2mm p/ bancada MDF (perimetro)', quantity: 1, unit: 'rolo' })
+    } else {
+      bom.push({ type: 'Bancada (externa)', description: 'Bancada pedra/porcelanato — fornecimento e instalacao externos', quantity: 1, unit: 'un' })
+    }
+  }
+
+  // Tendencia 2026: iluminación LED en nichos/aéreos
+  if (cfg.hasLed) {
+    bom.push({ type: 'Fita LED 24V', description: 'Fita LED 24V 4000K x ' + (cfg.width || 600) + 'mm + perfil difusor', quantity: 1, unit: 'un' })
+    bom.push({ type: 'Fonte LED', description: 'Fonte 24V 30W c/ sensor de porta', quantity: 1, unit: 'un' })
+  }
+
+  // Desk: niveladores
+  if (cfg.moduleType === 'desk') {
+    bom.push({ type: 'Pe Nivelador', description: 'Nivelador embutido M8', quantity: 4, unit: 'un' })
   }
 
   return bom

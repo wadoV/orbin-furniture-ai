@@ -74,18 +74,36 @@ function validateDesign(design) {
     errors.push('Ancho interno (' + internalWidth + 'mm) negativo ou zero. Espessura maior que a metade da largura — geometria impossivel.')
   } else if (internalWidth < 100) {
     errors.push('Ancho interno (' + internalWidth + 'mm) insuficiente. Minimo estrutural: 100mm (largura atual ' + cfg.width + 'mm com espessura ' + cfg.thickness + 'mm).')
-  } else if (internalWidth > STRUCTURAL_LIMITS.MAX_SHELF_SPAN) {
-    warnings.push(
-      'Vao interno (' + internalWidth + 'mm) supera ' + STRUCTURAL_LIMITS.MAX_SHELF_SPAN + 'mm. ' +
-      'Adicione um montante central divisorio.'
-    )
-  } else if (internalWidth > 800) {
-    warnings.push('Vao interno (' + internalWidth + 'mm) proximo do limite. Monitore deformacao em prateleiras com carga.')
+  } else {
+    // ADITIVO 2026-07-19: el vao efectivo descuenta los divisores (cada montante
+    // central divide la luz). Antes un modulo de 1600mm con 2 divisores (vaos
+    // reales de ~509mm) recibia un falso "supera 900mm". Con numDividers=0 el
+    // comportamiento y los mensajes son identicos a los historicos.
+    const nDivs = cfg.numDividers || 0
+    // ADITIVO 2026-07-19: en 'desk' el vano central es espacio de piernas por diseño
+    // (sin estantes cargados); el tampo de 25mm apoya en 3 puntos (2 laterales + pedestal).
+    const isDeskKneeSpace = cfg.moduleType === 'desk'
+    const effectiveSpan = isDeskKneeSpace ? 0 : (nDivs > 0
+      ? Math.round((internalWidth - nDivs * cfg.thickness) / (nDivs + 1))
+      : internalWidth)
+    if (effectiveSpan > STRUCTURAL_LIMITS.MAX_SHELF_SPAN) {
+      warnings.push(
+        'Vao interno (' + effectiveSpan + 'mm' + (nDivs > 0 ? ' por compartimento' : '') + ') supera ' +
+        STRUCTURAL_LIMITS.MAX_SHELF_SPAN + 'mm. Adicione um montante central divisorio.'
+      )
+    } else if (effectiveSpan > 800) {
+      warnings.push('Vao interno (' + effectiveSpan + 'mm' + (nDivs > 0 ? ' por compartimento' : '') + ') proximo do limite. Monitore deformacao em prateleiras com carga.')
+    }
   }
 
   // 4. Drawers
+  // ADITIVO 2026-07-19: en 'desk' las gavetas viven en el pedestal (pedestalWidth),
+  // no en el ancho interno total; el engine ya hace auto-fit de la pila.
+  const drawerZoneWidth = cfg.moduleType === 'desk'
+    ? (cfg.pedestalWidth || 400) - 2 * cfg.thickness
+    : internalWidth
   if (cfg.numDrawers > 0) {
-    const boxWidth = internalWidth - HARDWARE.DRAWER_SLIDE_TOTAL  // 13mm per side × 2
+    const boxWidth = drawerZoneWidth - HARDWARE.DRAWER_SLIDE_TOTAL  // 13mm per side × 2
     if (boxWidth < 100) {
       errors.push('Caixa de gaveta muito estreita (' + boxWidth + 'mm) apos desconto das corredicas. Minimo: 100mm.')
     }
@@ -156,6 +174,29 @@ function validateDesign(design) {
     }
     if (bh > STRUCTURAL_LIMITS.BASEBOARD_MAX_HEIGHT) {
       warnings.push('Rodape (' + bh + 'mm) acima de ' + STRUCTURAL_LIMITS.BASEBOARD_MAX_HEIGHT + 'mm.')
+    }
+  }
+
+  // 5b. ADITIVO 2026-07-19 — Deteccion de colisiones geometricas entre piezas
+  // estructurales (divisores vs estantes/separadores). El caso que motiva esto:
+  // el engine generaba estantes de ancho completo atravesando divisores y este
+  // validador lo aprobaba. Interseccion AABB en los ejes X (ancho) e Y (altura).
+  if (pieces && pieces.length > 1) {
+    const dividers = pieces.filter(p => p.type === 'divider')
+    const horizontals = pieces.filter(p => p.type === 'repisa' || p.type === 'shelf')
+    for (const d of dividers) {
+      for (const s of horizontals) {
+        const sHalfW = Math.max(s.width, s.height) / 2
+        const dHalfH = d.height / 2
+        const overlapX = Math.abs((d.x || 0) - (s.x || 0)) < (sHalfW - 1)   // -1mm tolerancia
+        const overlapY = Math.abs((d.y || 0) - (s.y || 0)) < (dHalfH - 1)
+        if (overlapX && overlapY) {
+          errors.push(
+            'COLISION: "' + s.name + '" atravessa "' + d.name + '" (x=' + d.x + ', y=' + s.y + '). ' +
+            'Peca horizontal deve ser gerada por compartimento. Design nao montavel.'
+          )
+        }
+      }
     }
   }
 
