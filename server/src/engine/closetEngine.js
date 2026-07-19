@@ -564,7 +564,24 @@ function generateFurniture(params) {
   //   bajo las puertas (ref. gabinete c/nicho inferior). Se genera una repisa fija de
   //   cierre del nicho (PRAT-NICHO) sobre la que arrancan las puertas. Default 0 →
   //   comportamiento byte-idéntico al histórico.
-  const nicheH = Math.max(0, cfg.nicheHeight || 0)  // desk nunca llega aquí (rama propia)
+  let nicheH = Math.max(0, cfg.nicheHeight || 0)  // desk nunca llega aquí (rama propia)
+  // ★ TRANSPARENCIA 2026-07-19: si el nicho no deja sitio para puertas (mín. 150mm),
+  //   se recorta y se REGISTRA — el motor nunca altera el pedido en silencio.
+  if (hasDoors && nicheH > 0) {
+    const drawersH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0)
+    const availForNiche = H - BH3 - drawersH - (isBase ? T : 0) - T - 150
+    if (nicheH > availForNiche) {
+      const applied = Math.max(0, Math.floor(availForNiche))
+      cfg.specAdjustments = cfg.specAdjustments || []
+      cfg.specAdjustments.push({
+        code: 'NICHE_HEIGHT_ADJUSTED', severity: 'warning', field: 'nicheHeight',
+        requested: nicheH, applied,
+        message: `Nicho de ${nicheH}mm no deja altura mínima de puerta (150mm): ajustado a ${applied}mm.`
+      })
+      nicheH = applied
+      cfg.nicheHeight = applied
+    }
+  }
   if (hasDoors && nicheH > 0) {
     const nicheTopY = BH3 + (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0) + nicheH
     pieces.push(makePiece(
