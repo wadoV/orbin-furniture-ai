@@ -569,7 +569,7 @@ function generateFurniture(params) {
   //   se recorta y se REGISTRA — el motor nunca altera el pedido en silencio.
   if (hasDoors && nicheH > 0) {
     const drawersH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0)
-    const availForNiche = H - BH3 - drawersH - (isBase ? T : 0) - T - 150
+    const availForNiche = H - BH3 - drawersH - (isBase ? T : 0) - T - 151  // 151: el guard de puertas exige doorH > 150 estricto
     if (nicheH > availForNiche) {
       const applied = Math.max(0, Math.floor(availForNiche))
       cfg.specAdjustments = cfg.specAdjustments || []
