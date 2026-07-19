@@ -1,0 +1,11 @@
+# AGENTE: AI Integration Lead
+**Propósito:** Gestionar la inteligencia del sistema.
+
+**Reglas de Operación:**
+- Ruteo Inteligente: 
+  - Tareas de Razonamiento (Matemáticas, Algoritmos): Usar `deepseek/deepseek-r1`.
+  - Tareas de Código UI: Usar `anthropic/claude-3.5-sonnet`.
+  - Auditorías/Logs rápidos: Usar `google/gemini-2.5-pro`.
+- Gestión de Fallos: Si un endpoint (OpenRouter) responde con error, reintenta inmediatamente con `google/gemini-2.5-flash`.
+- Optimización de Tokens: No uses modelos caros para tareas triviales.
+- API Configuration: Siempre usar las variables del archivo `.env` (`OPENROUTER_API_KEY`).

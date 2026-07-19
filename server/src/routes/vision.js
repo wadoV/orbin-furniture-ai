@@ -1,10 +1,15 @@
 const express = require('express')
 const router = express.Router()
 const { analyzeSpaceImage } = require('../ai/geminiClient')
+const { requireAuth } = require('../middleware/auth')
 
 // ─── POST /api/vision/analyze-space ──────────────────────────────────────────
 
-router.post('/analyze-space', async (req, res) => {
+router.post('/analyze-space', requireAuth, async (req, res) => {
+  // Funcionalidad deshabilitada para la V1.0
+  return res.status(503).json({ message: 'Funcionalidad en desarrollo para la V2.0', status: 'disabled' });
+
+  /* 
   try {
     const { imageBase64, mimeType, userPrompt } = req.body
 
@@ -35,8 +40,16 @@ router.post('/analyze-space', async (req, res) => {
         depth: 600,
         hasCountertop: false,
         modules: [
-          { width: 600, numShelves: 3, numDrawers: 0, numDividers: 0 },
-          { width: 600, numShelves: 0, numDrawers: 3, numDividers: 0 }
+          {
+            id: require('crypto').randomUUID(),
+            type: 'standard',
+            configuration: { width: 600, height: 2000, depth: 600, numShelves: 3, numDrawers: 0, numDividers: 0, moduleType: 'standard' }
+          },
+          {
+            id: require('crypto').randomUUID(),
+            type: 'standard',
+            configuration: { width: 600, height: 2000, depth: 600, numShelves: 0, numDrawers: 3, numDividers: 0, moduleType: 'standard' }
+          }
         ],
         obstacles: ['Fallback: Gemini Vision is currently offline. Using default B2B layout.'],
         source: 'vision-fallback'
@@ -51,6 +64,7 @@ router.post('/analyze-space', async (req, res) => {
     console.error('[vision/analyze-space] Critical Route Error:', err)
     res.status(500).json({ success: false, error: 'No pudimos analizar la imagen. Intentá de nuevo.' })
   }
+  */
 })
 
 module.exports = router

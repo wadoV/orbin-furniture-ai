@@ -10,15 +10,15 @@
  */
 
 import { useState } from 'react'
-import { jsPDF } from 'jspdf'
+import { jsPDF, AcroFormTextField } from 'jspdf'
 import {
   Download, FileType, Box, Cpu, Scissors, Loader2, Check,
   AlertCircle, FileSpreadsheet, Lock, Crown, Ruler, Tag as TagIcon
 } from 'lucide-react'
 import { exportDesign, nestPieces, downloadBlob } from '../engine/exportAdapters.js'
-import { drawElevation } from '../engine/planRenderer.js'
+import { drawElevation, elevationBox } from '../engine/planRenderer.js'
 import { generateFactoryCutlist } from '../engine/CutlistGenerator.js'
-import { generateModulePlanSVG, generateConjuntoPlanSVG } from '../engine/planGenerator.js'
+import { generateModulePlanSVG, generateConjuntoPlanSVG, CAJETIN_FIELDS, PLAN_VIEWBOX } from '../engine/planGenerator.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { trackEvent, EVENTS } from '../lib/analytics.js'
@@ -234,7 +234,9 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
     modulePaperH = imgH * 0.85
     modulePaperW = modulePaperH * modAspect
   }
-  const scaleFactor = dims.W / modulePaperW
+  // Escala REAL del alzado (misma fuente que el dibujo y las cotas), no la del
+  // marco recalculado: antes el rótulo "E 1:N" no correspondía al dibujo impreso.
+  const scaleFactor = 1 / elevationBox(mod, 0, 0, imgW, imgH).scale
   const scaleText = `E 1:${Math.round(scaleFactor)}`
 
   // Block 6: FECHA & ESCALA (25mm height)
@@ -270,23 +272,37 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   const imgY = MARGIN + (A4_H - 2 * MARGIN - imgH) / 2
 
   // Alzado técnico 2D (reemplaza el screenshot del wireframe)
-  drawElevation(doc, mod, imgX, imgY, imgW, imgH)
+  // overallDims:false → las cotas generales de ancho/alto las dibuja ESTE plano más
+  // abajo con su propio estilo de flechas. Dejarlas también en drawElevation producía
+  // el duplicado "600" + "600 mm" y "720" + "720 mm" sobre el mismo dibujo.
+  const elevTitle = lang === 'PT' ? 'Alçado frontal' : lang === 'EN' ? 'Front elevation' : 'Alzado frontal'
+  // Niveles de cota del lado derecho (convención de dibujo técnico: cada sistema
+  // en su propia línea, nunca a 2mm uno de otro):
+  //   nivel 1 → +10mm : cadena interna de alturas (la dibuja drawElevation)
+  //   nivel 2 → +26mm : altura del rodapié (la dibuja este plano, más abajo)
+  const DIM_L1 = 10, DIM_L2 = 26
+  const elevOpts = { overallDims: false, title: elevTitle, internalDimOffset: DIM_L1 }
+  const elevBox = drawElevation(doc, mod, imgX, imgY, imgW, imgH, elevOpts)
 
   // MULTI-MÓDULO: tras dibujar el módulo 0, si modules.length > 1, añade una página por cada módulo extra con su propio alzado
   if (modules.length > 1) {
     for (let i = 1; i < modules.length; i++) {
       doc.addPage()
-      drawElevation(doc, modules[i], imgX, imgY, imgW, imgH)
+      drawElevation(doc, modules[i], imgX, imgY, imgW, imgH, elevOpts)
     }
   }
 
   // ── LINES OF COTA (DIMENSIONING SYSTEM) ──────────────────────────────────────
-  const centerX = imgX + imgW / 2
-  const centerY = imgY + imgH / 2
-  const xMin = centerX - modulePaperW / 2
-  const xMax = centerX + modulePaperW / 2
-  const yMin = centerY - modulePaperH / 2
-  const yMax = centerY + modulePaperH / 2
+  // La caja viene de drawElevation (fuente única). Antes se recalculaba aquí con
+  // modulePaperW/H = img*0.85, que NO coincide con la escala real del dibujo
+  // (pad de 20mm): el marco salía ~20% mayor, las cotas cruzaban el mueble y la
+  // cota del rodapié caía por debajo del zócalo.
+  const xMin = elevBox.x
+  const xMax = elevBox.x + elevBox.w
+  const yMin = elevBox.y
+  const yMax = elevBox.y + elevBox.h
+  const centerX = xMin + elevBox.w / 2
+  const centerY = yMin + elevBox.h / 2
 
   doc.setDrawColor(40, 40, 40)
   doc.setLineWidth(0.2) // Thin cota lines
@@ -307,34 +323,27 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   doc.setTextColor(30, 30, 30)
   doc.text(`${dims.W} mm`, centerX, cotaY - 2.5, { align: 'center' })
 
-  // 2. Vertical Izquierda: Height (H)
-  const cotaX = xMin - 10
-  doc.line(cotaX, yMin, cotaX, yMax)
-  // Top extension line
-  doc.line(xMin - 3, yMin, cotaX - 2, yMin)
-  // Bottom extension line
-  doc.line(xMin - 3, yMax, cotaX - 2, yMax)
-  // 45 degrees oblique ticks
-  doc.line(cotaX - 1.5, yMin - 1.5, cotaX + 1.5, yMin + 1.5)
-  doc.line(cotaX - 1.5, yMax - 1.5, cotaX + 1.5, yMax + 1.5)
-  // Text (H mm)
-  doc.text(`${dims.H} mm`, cotaX - 3, centerY + 1.5, { align: 'right' })
+  // 2. Vertical Izquierda — en niveles:
+  //    nivel 1 = altura de la CARCASA (hasta donde llegan los laterales)
+  //    nivel 2 = altura TOTAL del mueble, solo si difiere de la carcasa
+  //              (p. ej. cuando una cubierta se apoya encima)
+  const vDim = (x, yTop, yBot, label, extFrom) => {
+    doc.line(x, yTop, x, yBot)
+    doc.line(extFrom, yTop, x - 2, yTop)
+    doc.line(extFrom, yBot, x - 2, yBot)
+    doc.line(x - 1.5, yTop - 1.5, x + 1.5, yTop + 1.5)
+    doc.line(x - 1.5, yBot - 1.5, x + 1.5, yBot + 1.5)
+    doc.text(label, x - 3, (yTop + yBot) / 2 + 1.5, { align: 'right' })
+  }
+  const carcassPaper = elevBox.carcassH * elevBox.scale
+  vDim(xMin - DIM_L1, yMax - carcassPaper, yMax, `${Math.round(elevBox.carcassH)} mm`, xMin - 3)
+  if (Math.abs(elevBox.H - elevBox.carcassH) > 1) {
+    vDim(xMin - DIM_L2, yMin, yMax, `${dims.H} mm`, xMin - DIM_L1 - 4)
+  }
 
-  // 3. Vertical Derecha: Baseboard / Zócalo height (BH)
-  const cfg = mod.configuration || {}
-  const BH = cfg.baseboardHeight || 100
-  const bhPaper = BH * (modulePaperH / (cfg.height || 720))
-  const cotaRightX = xMax + 10
-  doc.line(cotaRightX, yMax - bhPaper, cotaRightX, yMax)
-  // Top extension
-  doc.line(xMax + 3, yMax - bhPaper, cotaRightX + 2, yMax - bhPaper)
-  // Bottom extension
-  doc.line(xMax + 3, yMax, cotaRightX + 2, yMax)
-  // 45 degrees ticks
-  doc.line(cotaRightX - 1.5, yMax - bhPaper - 1.5, cotaRightX + 1.5, yMax - bhPaper + 1.5)
-  doc.line(cotaRightX - 1.5, yMax - 1.5, cotaRightX + 1.5, yMax + 1.5)
-  // Text
-  doc.text(`${BH} mm`, cotaRightX + 3, yMax - bhPaper / 2 + 1.5, { align: 'left' })
+  // 3. Cota de rodapié ELIMINADA: la cadena interna del lado derecho ya descompone
+  //    toda la altura (sus tramos suman H), así que era información duplicada y
+  //    obligaba a un segundo nivel de cota en el mismo lado. Plano más limpio.
 
   // Save/Download Blob URL
   const blob = doc.output('blob')
@@ -585,16 +594,42 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
       const company = companyForPlan()
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
       const PW = pdf.internal.pageSize.getWidth(), PH = pdf.internal.pageSize.getHeight()
+
+      // El plano se rasteriza a PNG, así que TODO su texto es imagen. Para que el
+      // cajetín siga siendo editable (cambiar diseñador/empresa sin regenerar el
+      // proyecto), el SVG deja esos campos en blanco y aquí se superponen campos
+      // AcroForm reales, rellenados con los datos de emisión actuales.
+      const sx = PW / PLAN_VIEWBOX.w, sy = PH / PLAN_VIEWBOX.h
+      const fieldValues = {
+        empresa:    company.empresa || '',
+        setor:      company.setor || '',
+        desenhista: company.desenhista || '',
+        data:       company.data || new Date().toLocaleDateString(),
+      }
+      const addEditableCajetin = () => {
+        const page = pdf.getNumberOfPages()
+        Object.entries(CAJETIN_FIELDS).forEach(([key, box]) => {
+          const tf = new AcroFormTextField()
+          tf.fieldName = `${key}_p${page}`
+          tf.Rect = [box.x * sx, box.y * sy, box.w * sx, box.h * sy]
+          tf.value = String(fieldValues[key] ?? '')
+          tf.fontSize = 9
+          tf.maxFontSize = 11
+          pdf.addField(tf)
+        })
+      }
       const addSVG = async (svg, first) => {
         const png = await svgToPngDataURL(svg, 2.5)
         if (!first) pdf.addPage('a4', 'landscape')
         pdf.addImage(png, 'PNG', 0, 0, PW, PH)
+        addEditableCajetin()
       }
+      const planOpts = { theme: 'print', lang, company, captures, isoDataURL: iso, editableFields: true }
       if (mode === 'conjunto') {
-        await addSVG(generateConjuntoPlanSVG(modules, { theme: 'print', lang, company, captures, isoDataURL: iso }), true)
+        await addSVG(generateConjuntoPlanSVG(modules, planOpts), true)
       } else {
         for (let i = 0; i < modules.length; i++) {
-          await addSVG(generateModulePlanSVG(modules[i], { theme: 'print', lang, company, captures, isoDataURL: iso }), i === 0)
+          await addSVG(generateModulePlanSVG(modules[i], planOpts), i === 0)
         }
       }
       pdf.save(`orbin-plano-${mode}-${Date.now()}.pdf`)

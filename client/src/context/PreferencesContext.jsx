@@ -15,8 +15,16 @@ export function PreferencesProvider({ children }) {
   const [lang, setLang] = useState(() => localStorage.getItem('orbin_lang') || 'PT');
   const [unit, setUnit] = useState(() => localStorage.getItem('orbin_unit') || 'mm');
 
+  const [clipboardModule, setClipboardModule] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('orbin_clipboard')); } catch { return null; }
+  });
+
   useEffect(() => { localStorage.setItem('orbin_lang', lang); }, [lang]);
   useEffect(() => { localStorage.setItem('orbin_unit', unit); }, [unit]);
+  useEffect(() => {
+    if (clipboardModule) localStorage.setItem('orbin_clipboard', JSON.stringify(clipboardModule));
+    else localStorage.removeItem('orbin_clipboard');
+  }, [clipboardModule]);
 
   const t = useMemo(() => {
     return (key) => {
@@ -46,7 +54,12 @@ export function PreferencesProvider({ children }) {
     };
   }, [unit, convert]);
 
-  const value = useMemo(() => ({ lang, setLang, unit, setUnit, t, convert, format }), [lang, unit, t, convert, format]);
+  const value = useMemo(() => ({
+    lang, setLang,
+    unit, setUnit,
+    clipboardModule, setClipboardModule,
+    t, convert, format
+  }), [lang, unit, clipboardModule, t, convert, format]);
 
   return (
     <PreferencesContext.Provider value={value}>
@@ -63,6 +76,8 @@ export const usePreferences = () => {
       setLang: () => {},
       unit: 'mm',
       setUnit: () => {},
+      clipboardModule: null,
+      setClipboardModule: () => {},
       t: (k) => k,
       convert: (v) => v,
       format: (v) => v

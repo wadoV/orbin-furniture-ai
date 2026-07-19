@@ -4,7 +4,7 @@
  */
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Ruler, Crown, LogOut, Settings, Zap, ChevronDown, Tag, Check, X, Globe, ArrowLeft, Loader2 } from 'lucide-react'
+import { Ruler, Crown, LogOut, Settings, Zap, ChevronDown, Tag, Check, X, Globe, ArrowLeft, Loader2, Clipboard, Lock, Unlock } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser, PLANS } from '../context/UserContext.jsx'
 import PricingDisplay from './PricingDisplay.jsx'
@@ -182,6 +182,14 @@ function UserDropdown({ onClose, onUpgrade, onSettings }) {
     onClose()
   }
 
+  const [keepSession, setKeepSession] = useState(() => localStorage.getItem('orbin_keep_session') !== 'false')
+
+  const toggleSession = () => {
+    const next = !keepSession
+    setKeepSession(next)
+    localStorage.setItem('orbin_keep_session', String(next))
+  }
+
   return (
     <div className="absolute right-0 top-full mt-2 w-[220px] bg-[#1A1A1A] border border-white/10 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden z-[200]">
       <div className="px-4 py-3 border-b border-white/5">
@@ -193,6 +201,11 @@ function UserDropdown({ onClose, onUpgrade, onSettings }) {
       <div className="py-1">
         <MenuItem icon={Settings} label="Configuracion" onClick={() => { onClose(); onSettings() }} />
         <MenuItem icon={Globe}    label={"Idioma: " + lang} onClick={cycleLang} />
+        <MenuItem 
+          icon={keepSession ? Lock : Unlock} 
+          label={keepSession ? "Mantener sesión abierta" : "Cerrar sesión al salir"} 
+          onClick={toggleSession} 
+        />
         <div className="h-px bg-white/5 my-1" />
         <MenuItem icon={Crown}  label="Mejorar Plan"   accent  onClick={() => { onClose(); onUpgrade() }} />
         <div className="h-px bg-white/5 my-1" />
@@ -385,8 +398,8 @@ function SettingsModal({ onClose }) {
   )
 }
 
-export default function Header({ modules, serverOnline = true }) {
-  const { unit, setUnit, t } = usePreferences()
+export default function Header({ modules, serverOnline = true, onPasteModule }) {
+  const { unit, setUnit, t, clipboardModule } = usePreferences()
   const { user, plan, logout, isLoading } = useUser()
   const navigate = useNavigate()
   const location = useLocation()
@@ -442,6 +455,16 @@ export default function Header({ modules, serverOnline = true }) {
                 <option value="cm">CM</option>
               </select>
             </label>
+
+            {clipboardModule && typeof onPasteModule === 'function' && (
+              <button 
+                onClick={() => onPasteModule({ ...clipboardModule, id: crypto.randomUUID() })}
+                className="flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 hover:border-primary/40 hover:bg-primary/20 px-3 py-1.5 rounded-lg transition-all text-[9px] font-black uppercase tracking-widest shadow-lg"
+                title="Pegar módulo del portapapeles"
+              >
+                <Clipboard size={12} /> Pegar
+              </button>
+            )}
 
             {/* ★ Server status badge — switches between online/offline mode */}
             <div

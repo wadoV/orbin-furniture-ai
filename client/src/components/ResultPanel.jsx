@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileText, Download, Save, Trash2, Box, Wrench, DollarSign, Layers, Package, X } from 'lucide-react'
+import { FileText, Download, Save, Trash2, Box, Wrench, DollarSign, Layers, Package, X, Copy } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import CutListTable from './CutListTable.jsx'
 import ValidationReport from './ValidationReport.jsx'
@@ -135,7 +135,7 @@ const TAB_ITEMS = [
 
 // ─── Main ResultPanel ───────────────────────────────────────────────────────
 export default function ResultPanel({ design, onSave, loadingSave, onDeleteModule, onDeletePiece, selectedPieceIds, onSelectPieces }) {
-  const { t, format, convert, unit } = usePreferences()
+  const { lang, unit, format, t, convert, setClipboardModule } = usePreferences()
   const [activeTab, setActiveTab] = useState('summary')
 
   if (!design) return null
@@ -158,13 +158,25 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
           </div>
           <p className="text-[10px] text-muted font-bold tracking-tight opacity-60">ID: {design.id}</p>
         </div>
-        <button
-          onClick={() => onDeleteModule(design.id)}
-          className="p-2.5 text-muted hover:text-error bg-surface-3/50 hover:bg-error/10 rounded-xl transition-all border border-white/5"
-          title={t('delete_module')}
-        >
-          <Trash2 size={16} />
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              const { id, ...cleanModule } = design;
+              setClipboardModule(cleanModule);
+            }}
+            className="p-2.5 text-muted hover:text-white bg-surface-3/50 hover:bg-surface-4 rounded-xl transition-all border border-white/5"
+            title={t('copy') || 'Copiar Configuración'}
+          >
+            <Copy size={16} />
+          </button>
+          <button
+            onClick={() => onDeleteModule(design.id)}
+            className="p-2.5 text-muted hover:text-error bg-surface-3/50 hover:bg-error/10 rounded-xl transition-all border border-white/5"
+            title={t('delete_module')}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
 
       {/* ── Tab Bar ─────────────────────────────────────────────────────── */}
@@ -200,6 +212,44 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
               </div>
             ))}
           </div>
+
+          {/* Desviaciones del pedido — va ANTES de la validación estructural: si el
+              motor tuvo que alterar lo que pidió el cliente (p. ej. menos gavetas de
+              las solicitadas), esa es la información más urgente de toda la pantalla.
+              Nunca debe corregirse en silencio. */}
+          {Array.isArray(design.specAdjustments) && design.specAdjustments.length > 0 && (
+            <div className="space-y-2">
+              {design.specAdjustments.map((a, i) => {
+                const critical = a.severity === 'critical'
+                const warning  = a.severity === 'warning'
+                const tone = critical
+                  ? 'bg-red-500/10 border-red-500/40'
+                  : warning ? 'bg-amber-500/10 border-amber-500/40'
+                            : 'bg-sky-500/10 border-sky-500/30'
+                const dot = critical ? 'bg-red-400' : warning ? 'bg-amber-400' : 'bg-sky-400'
+                const title = critical
+                  ? (t('spec_changed') || 'Se modificó tu pedido')
+                  : warning ? (t('spec_notice') || 'Aviso de fabricación')
+                            : (t('spec_adjusted') || 'Ajuste aplicado')
+                return (
+                  <div key={i} className={`p-4 rounded-2xl border flex items-start gap-3 ${tone}`}>
+                    <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${dot}`} />
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-white uppercase tracking-widest leading-none mb-1">
+                        {title}
+                        {a.requested !== undefined && a.applied !== undefined && (
+                          <span className="ml-2 font-mono text-[10px] text-white/70 tracking-normal">
+                            {String(a.requested)} → {String(a.applied)}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-white/75 font-medium leading-snug">{a.message}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
           {/* Validation — BUG FIX (Recovery item a): real structural validator output
               from the server, replacing the previous hardcoded "all checks passed" message. */}

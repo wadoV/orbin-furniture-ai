@@ -31,6 +31,8 @@ const DEFAULTS = {
   edgeBandingType: 'thin',
   baseboard: true, baseboardHeight: 100,
   baseType: 'recessed', legHeight: 100,
+  topStyle: null,   // null = auto por moduleType ('base'→overlay, resto→inset)
+  doorStyle: null,  // null = auto por moduleType ('base'→overlay, resto→legacy)
   tamponado: 'none',
   hasCountertop: true,
   handleType: 'standard'
@@ -116,6 +118,15 @@ function generateFurniture(params) {
   // ★ AUTO-FIT de cajones: la pila no puede exceder la altura interna útil (misma fórmula
   //   que el validador). Primero baja la altura del cajón; si ni al mínimo (80mm) caben,
   //   reduce la cantidad. Corrige el config que se devuelve y, por ende, la geometría.
+  //
+  // ⚠️ REGLA DE TRANSPARENCIA (2026-07-19): el motor NUNCA altera el pedido del cliente
+  //    en silencio. Toda corrección se registra en cfg.specAdjustments y se propaga hasta
+  //    el proyecto (y de ahí a UI/PDF). Un marcenario que pide 5 gavetas y recibe 4 sin
+  //    aviso pierde la confianza en la herramienta de forma irreversible.
+  const specAdjustments = []
+  const requestedDrawers      = cfg.numDrawers
+  const requestedDrawerHeight = cfg.drawerHeight
+
   if ((cfg.numDrawers || 0) > 0) {
     const CLEAR = 16, MINH = 80
     const availableHeight = cfg.height
@@ -152,6 +163,33 @@ function generateFurniture(params) {
       }
     }
   }
+
+  // ── Registro de correcciones al spec del cliente (transparencia obligatoria) ──
+  if (cfg.numDrawers !== requestedDrawers) {
+    specAdjustments.push({
+      code: 'DRAWER_COUNT_REDUCED',
+      severity: 'critical',
+      field: 'numDrawers',
+      requested: requestedDrawers,
+      applied: cfg.numDrawers,
+      message: `Se solicitaron ${requestedDrawers} gavetas pero solo caben ${cfg.numDrawers} ` +
+               `en la altura interna útil (mínimo ${80}mm por gaveta + 16mm de corredera). ` +
+               `Aumente la altura del módulo o reduzca el pedido.`
+    })
+  }
+  if (cfg.drawerHeight !== requestedDrawerHeight) {
+    specAdjustments.push({
+      code: 'DRAWER_HEIGHT_ADJUSTED',
+      severity: 'info',
+      field: 'drawerHeight',
+      requested: requestedDrawerHeight,
+      applied: cfg.drawerHeight,
+      message: `Altura de gaveta ajustada de ${requestedDrawerHeight}mm a ${cfg.drawerHeight}mm ` +
+               `para que la pila entre en la altura interna útil.`
+    })
+  }
+  cfg.specAdjustments = specAdjustments
+
   const { moduleType, width: W, height: H, depth: D, thickness: T, backThickness: BT,
           numShelves, numDrawers, drawerHeight, drawerLayout, baseboard, baseboardHeight,
           hasDoors, numDoors, hasCountertop, topShelf } = cfg
@@ -164,8 +202,21 @@ function generateFurniture(params) {
   const isBase = moduleType === 'base' || moduleType === 'standard'
   const BH3 = (baseboard && !isAereo) ? (baseboardHeight || 100) : 0
   const structuralHeight = H - BH3
+
+  // ── MÉTODO DE MONTAJE DE PUERTA (cfg.doorStyle) ─────────────────────────────
+  // Simétrico a topStyle, pero en el eje de la PROFUNDIDAD.
+  // 'overlay': la puerta va por FUERA y la profundidad pedida es la ACABADA ⇒
+  //     carcasa = D − T, la puerta ocupa los últimos T ⇒ total = D exacto.
+  // 'legacy': comportamiento histórico — carcasa = D y la puerta se monta por
+  //     fuera SUMANDO su espesor ⇒ profundidad real = D + T (580 pedido → 598 real).
+  // Default: 'overlay' en módulos base (igual criterio que topStyle), 'legacy' en
+  // el resto para no alterar diseños ya guardados.
+  const doorStyle = cfg.doorStyle || (moduleType === 'base' ? 'overlay' : 'legacy')
+  const doorT = (doorStyle === 'overlay' && hasDoors) ? T : 0
+  const CD = D - doorT   // profundidad de la CARCASA (sin la puerta sobrepuesta)
+
   const internalWidth = FurnitureMath.internalSpan(W, T)
-  const internalDepth = D - BT
+  const internalDepth = CD - BT
 
   // BUG FIX T06/T09/T10/T12/T15/T23/T29: Descriptive guard before any calculation
   if (internalWidth <= 0) {
@@ -186,26 +237,48 @@ function generateFurniture(params) {
   }
 
   const onLegs = baseType === 'legs'
-  const latH = onLegs ? (H - BH3) : H
-  const latY = onLegs ? (BH3 + latH/2) : H/2
-  pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', D, latH, T, 1, T/2, latY, D/2, 'vertical', { front: true }))
-  pieces.push(makePiece(nextId('LAT-R'), 'Lateral Derecho', 'lateral', D, latH, T, 1, W - T/2, latY, D/2, 'vertical', { front: true }))
+
+  // ── MÉTODO DE ARMADO DE LA TAPA (cfg.topStyle) ──────────────────────────────
+  // 'overlay' (tapa sobrepuesta): la tapa se apoya ENCIMA de los laterales.
+  //     lateral = H − T   ·   tapa = ancho COMPLETO (W)
+  //     Cliente pide 700mm con 18mm ⇒ lateral 682mm. Armado de módulos base /
+  //     superficie de uso. La altura pedida es la ALTURA ACABADA.
+  // 'inset' (DNA V1 histórico): el lateral corre de piso a techo y la tapa encaja
+  //     ENTRE los laterales.  lateral = H   ·   tapa = W − 2T
+  //     Armado de roperos y columnas (canto del lateral visto en todo el alto).
+  // Ambos son correctos: cambian el despiece, no la calidad. Por eso es un
+  // parámetro y no una constante — ver PROJECT_SNAPSHOT 2026-07-19.
+  const topStyle = cfg.topStyle || (moduleType === 'base' ? 'overlay' : 'inset')
+  // Con travesaños (base + cubierta comprada aparte) no hay tapa de MDF que
+  // apoyar: el lateral llega arriba y la encimera va sobre él.
+  const hasTopPanel = !(isBase && hasCountertop && moduleType !== 'standard')
+  const topT = (topStyle === 'overlay' && hasTopPanel && !isAereo) ? T : 0
+
+  const latBottom = onLegs ? BH3 : 0
+  const latH = H - latBottom - topT
+  const latY = latBottom + latH/2
+  pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', CD, latH, T, 1, T/2, latY, CD/2, 'vertical', { front: true }))
+  pieces.push(makePiece(nextId('LAT-R'), 'Lateral Derecho', 'lateral', CD, latH, T, 1, W - T/2, latY, CD/2, 'vertical', { front: true }))
 
   // ── TAMPONADO: panel de acabamiento que tapa tornillos en el costado visible ──
   const tamp = cfg.tamponado || 'none'
   if (tamp === 'left' || tamp === 'both')
-    pieces.push(makePiece(nextId('TAMP-L'), 'Tampão Lateral Izq', 'tamponado', D, latH, T, 1, -T/2, latY, D/2, 'vertical', { front: true }, 'Cubre tornillos costado izquierdo'))
+    pieces.push(makePiece(nextId('TAMP-L'), 'Tampão Lateral Izq', 'tamponado', CD, latH, T, 1, -T/2, latY, CD/2, 'vertical', { front: true }, 'Cubre tornillos costado izquierdo'))
   if (tamp === 'right' || tamp === 'both')
-    pieces.push(makePiece(nextId('TAMP-R'), 'Tampão Lateral Der', 'tamponado', D, latH, T, 1, W + T/2, latY, D/2, 'vertical', { front: true }, 'Cubre tornillos costado derecho'))
+    pieces.push(makePiece(nextId('TAMP-R'), 'Tampão Lateral Der', 'tamponado', CD, latH, T, 1, W + T/2, latY, CD/2, 'vertical', { front: true }, 'Cubre tornillos costado derecho'))
 
   if (isBase && hasCountertop && moduleType !== 'standard') {
     pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal', 'tie_strip', internalWidth, 70, T, 1, W/2, H - 70/2, T/2 + 20, 'horizontal', { front: true }, 'Refuerzo Estructural'))
     pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero', 'tie_strip', internalWidth, 70, T, 1, W/2, H - 70/2, D - BT - T/2, 'horizontal', { front: true }, 'Refuerzo Estructural'))
   } else {
-    pieces.push(makePiece(nextId('TAMPO'), 'Techo', 'techo', internalWidth, D, T, 1, W/2, H - T/2, D/2, 'horizontal', { front: true }))
+    // COHERENCIA OBLIGATORIA: si el lateral se acortó (overlay), la tapa se apoya
+    // encima y debe cubrir el ancho COMPLETO. Con W−2T quedaría flotando dejando
+    // un hueco de T a cada lado sobre el canto del lateral.
+    const topWidth = topT > 0 ? W : internalWidth
+    pieces.push(makePiece(nextId('TAMPO'), 'Techo', 'techo', topWidth, CD, T, 1, W/2, H - T/2, CD/2, 'horizontal', { front: true }))
   }
 
-  pieces.push(makePiece(nextId('BASE'), 'Base Inferior', 'piso', internalWidth, D, T, 1, W/2, BH3 + T/2, D/2, 'horizontal', { front: true }))
+  pieces.push(makePiece(nextId('BASE'), 'Base Inferior', 'piso', internalWidth, CD, T, 1, W/2, BH3 + T/2, CD/2, 'horizontal', { front: true }))
 
   // BUG FIX #5 & VULN-05: base+countertop has traversaños (70mm) at top, not a techo (T).
   const topDeduction = (isBase && hasCountertop && moduleType !== 'standard') ? 70 : T
@@ -218,7 +291,7 @@ function generateFurniture(params) {
     : (cfg.backStyle === 'nailed')
       ? FurnitureMath.backPanels.nailedWidth(W)
       : internalWidth
-  pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', backWidth, backH, BT, 1, W/2, BH3 + T + baseBackH/2, D - BT/2, 'none'))
+  pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', backWidth, backH, BT, 1, W/2, BH3 + T + baseBackH/2, CD - BT/2, 'none'))
 
   if (baseType === 'recessed' && BH3 > 0) {
     pieces.push(makePiece(nextId('RDPE-F'), 'Zócalo Frontal', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, D - T/2 - 50, 'vertical', { front: true }))
@@ -358,7 +431,7 @@ function generateFurniture(params) {
         pieces.push(makePiece(
           nextId('PORTA'), `Puerta ${i + 1}`, 'standard_door',
           leafW, doorH - HARDWARE.DOOR_GAP_H, T, 1,
-          xPos, doorY, D + T/2,
+          xPos, doorY, CD + T/2,   // cara frontal en CD+T: con overlay = D exacto; en legacy = D+T
           'vertical', { all: true }, 'Bisagra Reforzada', 'standard_door'
         ))
       }
@@ -377,54 +450,117 @@ function estimateNesting(cutList) {
   for (const piece of cutList) {
     const t = piece.thickness
     if (!groups[t]) groups[t] = []
-    groups[t].push({ w: piece.cutWidth, h: piece.cutHeight, id: piece.id })
+    groups[t].push({ w: piece.cutWidth, h: piece.cutHeight, id: piece.id, type: piece.type, grainDirection: piece.grainDirection })
   }
 
   const result = []
 
   for (const [thickness, pieces] of Object.entries(groups)) {
-    const sorted    = [...pieces].sort((a, b) => b.w * b.h - a.w * a.h)
+    // ── Normalización de orientación ─────────────────────────────────────────
+    // El packer no rota dentro del bucle: se acuesta cada pieza con su lado LARGO
+    // sobre el largo de la chapa (práctica de taller). Sin esto, un lateral de
+    // 600×2400 nunca entra en el alto aprovechable (1740) y caía en una rama que
+    // lo colocaba igual → layout imposible y conteo de chapas no confiable.
+    //
+    // Además: un FONDO que no cabe no es un error de diseño — el taller lo corta en
+    // 2 partes y las une con regla de MDF (es lo que ya recomienda el validador).
+    // Se parte por el eje que viola la chapa para que el material SÍ se contabilice;
+    // descartarlo haría que el motor pidiera 0 chapas de 6mm para un ropero con fondo.
+    const SPLITTABLE = new Set(['fondo'])
+    const expand = (p) => {
+      const long = Math.max(p.w, p.h), short = Math.min(p.w, p.h)
+      const fits = long <= MATERIAL.PLATE_WIDTH && short <= MATERIAL.PLATE_HEIGHT
+      if (fits) return [{ ...p, long, short, rotated: long !== p.w }]
+      if (!SPLITTABLE.has(p.type)) return [{ ...p, long, short, impossible: true }]
+
+      // Se parte por el eje que viola la chapa. Las partes llevan sus dimensiones
+      // REALES en w/h: si conservaran las del panel entero, el visor, el DXF y la
+      // lista de compra leerían medidas que no existen.
+      const halveShort = short > MATERIAL.PLATE_HEIGHT
+      let nw = p.w, nh = p.h
+      if (halveShort) { if (p.w === short) nw = p.w / 2; else nh = p.h / 2 }
+      else            { if (p.w === long)  nw = p.w / 2; else nh = p.h / 2 }
+
+      const nl = Math.max(nw, nh), ns = Math.min(nw, nh)
+      if (nl > MATERIAL.PLATE_WIDTH || ns > MATERIAL.PLATE_HEIGHT) {
+        return [{ ...p, long, short, impossible: true }]
+      }
+      return [1, 2].map(i => ({
+        ...p, id: `${p.id}-P${i}`, w: nw, h: nh, long: nl, short: ns,
+        split: true, splitFrom: p.id
+      }))
+    }
+
+    const norm      = pieces.flatMap(expand)
+    const splitFrom = [...new Set(norm.filter(p => p.split).map(p => p.splitFrom))]
+    const sorted    = norm.sort((a, b) => b.long * b.short - a.long * a.short)
     const plateArea = PW * PH
     const plates    = []
+    const oversized = []
     let plate = { id: 1, usedArea: 0, pieces: [] }
     let curX = 0, curY = 0, rowH = 0
 
-    for (const piece of sorted) {
-      const pw = piece.w + KERF
-      const ph = piece.h + KERF
+    const closePlate = () => {
+      if (plate.pieces.length) plates.push({ ...plate, efficiency: plate.usedArea / plateArea })
+    }
 
-      if (curX + pw <= PW) {
-        plate.pieces.push({ ...piece, posX: curX, posY: curY })
-        plate.usedArea += piece.w * piece.h
-        curX += pw
-        rowH  = Math.max(rowH, ph)
+    for (const p of sorted) {
+      const area = p.long * p.short
+
+      // GUARD A — no cabe en la chapa física en NINGUNA orientación ni admite
+      // partición (no es fondo). Nunca se coloca: se reporta como error real.
+      if (p.impossible) {
+        oversized.push({ id: p.id, width: p.w, height: p.h, type: p.type, reason: 'EXCEEDS_PLATE' })
+        continue
+      }
+
+      const pl = p.long + KERF, ps = p.short + KERF
+
+      // GUARD B — cabe en la chapa física pero no dentro de los márgenes de
+      // aprovechamiento: va sola en chapa dedicada (el taller reduce márgenes).
+      if (pl > PW || ps > PH) {
+        closePlate()
+        plates.push({
+          id: plates.length + 1, usedArea: area, dedicated: true,
+          pieces: [{ ...p, posX: 0, posY: 0 }], efficiency: area / plateArea
+        })
+        plate = { id: plates.length + 1, usedArea: 0, pieces: [] }
+        curX = 0; curY = 0; rowH = 0
+        continue
+      }
+
+      // Colocación: fila actual → nueva fila → nueva chapa. Siempre re-verifica AMBOS ejes.
+      if (curX + pl <= PW && curY + ps <= PH) {
+        plate.pieces.push({ ...p, posX: curX, posY: curY })
+        plate.usedArea += area
+        curX += pl
+        rowH = Math.max(rowH, ps)
+      } else if (curY + rowH + ps <= PH) {
+        curY += rowH; curX = 0; rowH = 0
+        plate.pieces.push({ ...p, posX: curX, posY: curY })
+        plate.usedArea += area
+        curX = pl; rowH = ps
       } else {
-        curX = 0
-        curY += rowH
-        rowH  = 0
-        if (curY + ph <= PH) {
-          plate.pieces.push({ ...piece, posX: curX, posY: curY })
-          plate.usedArea += piece.w * piece.h
-          curX = pw
-          rowH = ph
-        } else {
-          plates.push({ ...plate, efficiency: plate.usedArea / plateArea })
-          plate = { id: plates.length + 1, usedArea: piece.w * piece.h, pieces: [{ ...piece, posX: 0, posY: 0 }] }
-          curX = pw; curY = 0; rowH = ph
-        }
+        closePlate()
+        plate = { id: plates.length + 1, usedArea: area, pieces: [{ ...p, posX: 0, posY: 0 }] }
+        curX = pl; curY = 0; rowH = ps
       }
     }
-    if (plate.pieces.length) {
-      plates.push({ ...plate, efficiency: plate.usedArea / plateArea })
-    }
+    closePlate()
 
-    const totalUsed  = pieces.reduce((s, p) => s + p.w * p.h, 0)
+    // El área usada se calcula SOLO sobre piezas realmente colocadas: una pieza
+    // descartada no puede inflar la eficiencia ni ocultar que falta material.
+    const totalUsed  = plates.reduce((s, pl) => s + pl.usedArea, 0)
     const totalAvail = plates.length * plateArea
 
     result.push({
       thickness:         parseInt(thickness),
       plateCount:        plates.length,
       plates,
+      placedPieces:      plates.reduce((s, pl) => s + pl.pieces.length, 0),
+      oversizedPieces:   oversized,
+      splitPieces:       splitFrom,
+      grainRotatedCount: sorted.filter(p => p.rotated && p.grainDirection).length,
       totalPieceArea:    totalUsed,
       totalPlateArea:    totalAvail,
       overallEfficiency: totalAvail > 0 ? Math.round((totalUsed / totalAvail) * 100) / 100 : 0
@@ -469,8 +605,39 @@ function generateProject(params) {
     const nesting = estimateNesting(cutList)
     const hardware = generateHardwareBOM(config)
 
+    // ── Transparencia de fabricación ─────────────────────────────────────────
+    // Toda desviación respecto al pedido del cliente viaja en specAdjustments,
+    // para que UI y PDF puedan mostrarla. Nada se corrige en silencio.
+    const specAdjustments = [...(config.specAdjustments || [])]
+    for (const group of nesting) {
+      if (group.oversizedPieces && group.oversizedPieces.length) {
+        specAdjustments.push({
+          code: 'PIECE_EXCEEDS_PLATE',
+          severity: 'critical',
+          field: 'nesting',
+          message: `${group.oversizedPieces.length} pieza(s) de ${group.thickness}mm no caben en la ` +
+                   `chapa ${MATERIAL.PLATE_WIDTH}×${MATERIAL.PLATE_HEIGHT}mm y quedaron FUERA del ` +
+                   `plan de corte: ${group.oversizedPieces.map(p => p.id).join(', ')}. Divida el módulo.`,
+          pieces: group.oversizedPieces
+        })
+      }
+      if (group.splitPieces && group.splitPieces.length) {
+        specAdjustments.push({
+          code: 'BACK_PANEL_SPLIT',
+          severity: 'warning',
+          field: 'nesting',
+          message: `El fondo (${group.splitPieces.join(', ')}) no cabe entero en la chapa ` +
+                   `${MATERIAL.PLATE_WIDTH}×${MATERIAL.PLATE_HEIGHT}mm: se cortará en 2 partes ` +
+                   `para unir con regla de MDF. El material ya está contabilizado.`,
+          pieces: group.splitPieces
+        })
+      }
+    }
+
     return {
       success:     true,
+      specAdjustments,
+      hasSpecAdjustments: specAdjustments.length > 0,
       id:          'ORB-' + uuidv4().slice(0, 8).toUpperCase(),
       type:        config.moduleType,
       version:     '4.5.0-LEGACY_RESTORATION',

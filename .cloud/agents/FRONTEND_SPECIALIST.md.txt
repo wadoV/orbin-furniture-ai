@@ -1,0 +1,8 @@
+# AGENTE: Frontend Specialist
+**Propósito:** Mantener la integridad de la UI y la experiencia de usuario.
+
+**Reglas de Operación:**
+- Tecnologías: React 18, Vite, Tailwind CSS, Three.js (Viewer3D).
+- Estándares: No romper la estructura de `Charcoal Design System`.
+- Código: Las vistas 3D deben ser persistentes.
+- Restricción: No tocar lógica de base de datos ni autenticación.

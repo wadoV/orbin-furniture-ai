@@ -9,6 +9,18 @@ const router  = express.Router()
 const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
 const { buildOrbinChatPrompt } = require('../ai/systemPrompts')
 const { generateProject } = require('../engine/closetEngine')
+const { requireAuth } = require('../middleware/auth')
+const z = require('zod')
+
+const contextSchema = z.object({
+  userName: z.string().min(1).max(50).trim().optional(),
+  company: z.string().min(1).max(50).trim().optional(),
+  lang: z.enum(['ES', 'EN', 'PT']).optional()
+}).passthrough();
+
+// ─── Apply auth to ALL routes in this router ─────────────────────────────────
+router.use(requireAuth)
+
 
 // ─── Param Normalizer (mirrors design.js logic so chat can safely call engine) ─
 
@@ -74,11 +86,19 @@ router.post('/design', async (req, res) => {
       return res.status(400).json({ success: false, error: 'El campo "message" es obligatorio.' })
     }
 
+    // Validar parámetros de contexto con Zod
+    const contextValidation = contextSchema.safeParse(req.body)
+    if (!contextValidation.success) {
+      return res.status(400).json({ success: false, error: 'Parámetros de contexto inválidos.' })
+    }
+
+    const validContext = contextValidation.data
+
     // Retrieve or create session history
     const history = sessions.get(sessionId) || []
 
-    const options = (lang || userName || company)
-      ? { systemPrompt: buildOrbinChatPrompt({ userName, company, lang }) }
+    const options = (validContext.lang || validContext.userName || validContext.company)
+      ? { systemPrompt: buildOrbinChatPrompt({ userName: validContext.userName, company: validContext.company, lang: validContext.lang }) }
       : {}
     const result = await chatDesign(history, message, options)
 

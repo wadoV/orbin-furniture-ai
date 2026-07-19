@@ -28,7 +28,14 @@ function validateDesign(design) {
   if (cfg.height > STRUCTURAL_LIMITS.MAX_MODULE_HEIGHT) {
     warnings.push(`Altura (${cfg.height}mm) acima de ${STRUCTURAL_LIMITS.MAX_MODULE_HEIGHT}mm recomendado para montagem em obra.`)
   }
-  if (cfg.depth < 300) {
+  // La regla de profundidad mínima es de mueble BASE. Un aéreo de cocina son
+  // 320mm y uno de baño 150mm: avisar ahí era un FALSO POSITIVO que ensuciaba
+  // todos los planos de aéreos y restaba credibilidad a los avisos reales.
+  if (cfg.moduleType === 'aereo') {
+    if (cfg.depth < 100) {
+      warnings.push(`Profundidade (${cfg.depth}mm) muito rasa para um aereo. Minimo: 100mm.`)
+    }
+  } else if (cfg.depth < 300) {
     warnings.push(`Profundidade (${cfg.depth}mm) muito rasa. Minimo recomendado: 400mm.`)
   }
 
@@ -118,6 +125,12 @@ function validateDesign(design) {
     } else if (drawerStack > availableHeight * 0.7) {
       warnings.push('Pilha de gavetas (' + drawerStack + 'mm) ocupa mais de 70% da altura interna.')
     }
+  }
+
+  // 4c. Drawer Top Covering Rule
+  if (cfg.numDrawers > 0 && cfg.topShelf !== true) {
+    cfg.topShelf = true;
+    warnings.push('Repisa superior de cierre forzada (DRAWER TOP COVERING RULE) para proteger estructura.');
   }
 
   // 4b. Dividers — compartment width minimum

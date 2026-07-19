@@ -31,6 +31,7 @@ const PLAN_I18N = {
     subtitle:'Motor paramétrico Orbin · medidas reais · mm · MDF {t} mm',
     subtitle_conjunto:'Vista frontal do conjunto · largura total {w} mm',
     view_alzado:'ALÇADO FRONTAL', view_planta:'PLANTA SUPERIOR', view_iso:'ISOMÉTRICO',
+    avisos:'OBSERVAÇÕES',
     view_conjunto:'VISTA FRONTAL DO CONJUNTO',
     internal:'interno', depth_abbr:'prof.', back_word:'fundo {bt} mm',
     iso_placeholder:'captura 3D (linhas pretas · com volume)',
@@ -50,6 +51,7 @@ const PLAN_I18N = {
     subtitle:'Motor paramétrico Orbin · medidas reales · mm · MDF {t} mm',
     subtitle_conjunto:'Vista frontal del conjunto · ancho total {w} mm',
     view_alzado:'ALZADO FRONTAL', view_planta:'PLANTA SUPERIOR', view_iso:'ISOMÉTRICO',
+    avisos:'OBSERVACIONES',
     view_conjunto:'VISTA FRONTAL DEL CONJUNTO',
     internal:'interno', depth_abbr:'prof.', back_word:'fondo {bt} mm',
     iso_placeholder:'captura 3D (líneas negras · con volumen)',
@@ -69,6 +71,7 @@ const PLAN_I18N = {
     subtitle:'Orbin parametric engine · real dimensions · mm · MDF {t} mm',
     subtitle_conjunto:'Front view of assembly · total width {w} mm',
     view_alzado:'FRONT ELEVATION', view_planta:'TOP VIEW', view_iso:'ISOMETRIC',
+    avisos:'NOTES',
     view_conjunto:'FRONT VIEW — ASSEMBLY',
     internal:'internal', depth_abbr:'depth', back_word:'back {bt} mm',
     iso_placeholder:'3D capture (black lines · with volume)',
@@ -165,12 +168,28 @@ function plantaFromCapture(cfg, box, P, cap, D) {
   const hx = ax - 18
   g += `<line x1="${hx}" y1="${ay}" x2="${hx}" y2="${ay+dd}" stroke="${P.dim}" stroke-width="0.8"/><line x1="${hx-4}" y1="${ay}" x2="${hx+4}" y2="${ay}" stroke="${P.dim}" stroke-width="0.8"/><line x1="${hx-4}" y1="${ay+dd}" x2="${hx+4}" y2="${ay+dd}" stroke="${P.dim}" stroke-width="0.8"/>`
   g += `<text x="${hx-9}" y="${ay+dd/2}" text-anchor="middle" font-size="11" font-weight="600" fill="${P.text}" transform="rotate(-90 ${hx-9} ${ay+dd/2})">${cfg.depth}</text>`
-  g += `<text x="${ax+dw/2}" y="${ay-10}" text-anchor="middle" font-size="10" fill="${P.muted}">${cfg.width} × ${cfg.depth} · ${D.depth_abbr}</text>`
+  // Rótulo redundante eliminado: el ancho ya está acotado en el alzado y la
+  // profundidad en la cota izquierda de esta misma vista. Escrito en ay-10
+  // pisaba el título "2 · PLANTA SUPERIOR".
   return g
 }
 
 // ── Vista: ALZADO FRONTAL (adaptativo a la config) ──
-function buildAlzado(cfg, box, P, cap, D) {
+function buildAlzado(origCfg, box, P, cap, D) {
+  // CLONACIÓN Y MUTACIÓN ADITIVA DE REGLAS DE DIBUJO
+  const cfg = { ...origCfg };
+  if (cfg.showDoors === false) {
+    cfg.hasDoors = false;
+    cfg.numDoors = 0;
+  }
+  if (cfg.hasRodapie === false || cfg.hasPlinth === false) {
+    if (cfg.baseboard && cfg.baseboardHeight > 0) {
+      cfg.height -= cfg.baseboardHeight;
+      cfg.baseboard = false;
+      cfg.baseboardHeight = 0;
+    }
+  }
+
   if (cap && cap.url) return alzadoFromCapture(cfg, box, P, cap, D)
   const scale = Math.min(box.w / cfg.width, box.h / cfg.height)
   const dw = cfg.width * scale, dh = cfg.height * scale
@@ -265,7 +284,8 @@ function buildPlanta(cfg, box, P, cap, D) {
   if (cap && cap.url) return plantaFromCapture(cfg, box, P, cap, D)
   const scale = Math.min(box.w / cfg.width, box.h / cfg.depth)
   const dw = cfg.width * scale, dd = cfg.depth * scale
-  const ax = box.x, ay = box.y
+  // Centrada como el alzado: en proyección ortográfica ambas vistas comparten eje.
+  const ax = box.x + (box.w - dw) / 2, ay = box.y
   const T = cfg.thickness * scale
   let g = `<rect x="${ax}" y="${ay}" width="${dw}" height="${dd}" fill="${P.light}" stroke="${P.carc}" stroke-width="1"/>`
   g += `<rect x="${ax}" y="${ay}" width="${dw}" height="${T}" fill="${P.solid}" stroke="${P.carc}" stroke-width="1"/>`
@@ -285,18 +305,99 @@ function buildPlanta(cfg, box, P, cap, D) {
   return g
 }
 
-// ── Cajetín (todos los campos editables vía options.company) ──
-function buildCajetin(company, cfg, pieceCount, P, D) {
+// ── Cajetín ──────────────────────────────────────────────────────────────────
+// Geometría de los campos EDITABLES, en coordenadas del viewBox (1000×740).
+// El exportador de PDF la usa para superponer campos AcroForm reales: sin esta
+// tabla habría números mágicos duplicados entre el SVG y el PDF.
+export const PLAN_VIEWBOX = { w: 1000, h: 740 }
+export const CAJETIN_FIELDS = {
+  empresa:    { x: 708, y: 28, w: 118, h: 16 },
+  setor:      { x: 708, y: 60, w: 118, h: 16 },
+  desenhista: { x: 832, y: 60, w: 86,  h: 16 },
+  data:       { x: 924, y: 60, w: 58,  h: 16 },
+}
+
+function buildCajetin(company, cfg, pieceCount, P, D, editable) {
   const co = company || {}
   const trunc = (str, len) => (str && str.length > len) ? str.substring(0, len - 1) + '…' : str;
   const f = (k, v, maxL = 22) => `<text x="0" y="0" font-size="8.5" fill="${P.muted}" letter-spacing=".4">${esc(k)}</text><text x="0" y="13" font-size="11" font-weight="600" fill="${P.text}">${esc(trunc(v, maxL))}</text>`
+  // Campo intencionalmente vacío: el valor lo aporta un campo AcroForm editable
+  // superpuesto en el PDF. Si lo rasterizáramos aquí, el texto quedaría "quemado"
+  // debajo del campo y el marcenario vería el nombre viejo por detrás.
+  const fEdit = (k, w) => `<text x="0" y="0" font-size="8.5" fill="${P.muted}" letter-spacing=".4">${esc(k)}</text>` +
+                          `<line x1="0" y1="17" x2="${w}" y2="17" stroke="${P.rule}" stroke-width="0.8"/>`
+  const F = CAJETIN_FIELDS
   let g = ''
-  g += `<g transform="translate(708,26)">${f(D.cj_empresa, co.empresa || co.name || D.def_empresa, 18)}</g>`
-  g += `<g transform="translate(708,58)">${f(D.cj_setor, co.setor || D.def_setor, 18)}</g>`
+  g += `<g transform="translate(708,26)">${editable ? fEdit(D.cj_empresa, F.empresa.w) : f(D.cj_empresa, co.empresa || co.name || D.def_empresa, 18)}</g>`
+  g += `<g transform="translate(708,58)">${editable ? fEdit(D.cj_setor, F.setor.w) : f(D.cj_setor, co.setor || D.def_setor, 18)}</g>`
   g += `<g transform="translate(832,26)">${f(D.cj_material, co.material || `MDF ${cfg.thickness} mm`, 12)}</g>`
-  g += `<g transform="translate(832,58)">${f(D.cj_desenhista, co.desenhista || '—', 12)}</g>`
+  g += `<g transform="translate(832,58)">${editable ? fEdit(D.cj_desenhista, F.desenhista.w) : f(D.cj_desenhista, co.desenhista || '—', 12)}</g>`
   g += `<g transform="translate(924,26)">${f(D.cj_pecas, String(pieceCount), 8)}</g>`
-  g += `<g transform="translate(924,58)">${f(D.cj_data, co.data || new Date().toLocaleDateString(D.locale), 12)}</g>`
+  g += `<g transform="translate(924,58)">${editable ? fEdit(D.cj_data, F.data.w) : f(D.cj_data, co.data || new Date().toLocaleDateString(D.locale), 12)}</g>`
+  return g
+}
+
+// ── Reparto vertical de la columna izquierda (alzado + planta) ───────────────
+// CAUSA RAÍZ del "alzado desfigurado": la caja del alzado era fija (440×168) y
+// buildAlzado escala con min(w/ancho, h/alto). En un mueble alto (2400mm) mandaba
+// el alto → escala 0.07 → dibujo de 168px ahogado por cotas de 11px fijas.
+// Ahora el alzado —la vista que se usa para fabricar— tiene prioridad y la planta
+// se acota: solo necesita representar la profundidad, casi siempre << el alto.
+function planLayout(cfg) {
+  const X = 78, W = 440, TOP = 100, BOT = 530
+  // Canales de anotación reservados. El alzado escribe su cota de ancho POR DEBAJO
+  // del dibujo: línea a +16, medida a +31, interno a +44 ⇒ necesita ~50px libres.
+  // Sin reservarlos, esa cota invadía el título de la planta (amontonamiento).
+  const TITLE_H = 26, ALZ_DIM = 50, PLA_TITLE = 22, BOTTOM_PAD = 8
+  const plantaNat = cfg.depth * (W / Math.max(1, cfg.width))
+  const plantaH   = Math.max(40, Math.min(plantaNat, 80))
+  const alzTitleY = TOP + 16
+  const alzY      = TOP + TITLE_H
+  const alzadoH   = (BOT - TOP) - TITLE_H - ALZ_DIM - PLA_TITLE - plantaH - BOTTOM_PAD
+  const plaTitleY = alzY + alzadoH + ALZ_DIM + 14
+  const plaY      = plaTitleY + 10
+  return {
+    X, W, TOP, BOT, alzTitleY, alzY, alzadoH, plaTitleY, plaY, plantaH,
+    alzRect: { x: 22, y: TOP, w: 518, h: (alzY + alzadoH + ALZ_DIM + 4) - TOP },
+    plaRect: { x: 22, y: alzY + alzadoH + ALZ_DIM + 8, w: 518, h: BOT - (alzY + alzadoH + ALZ_DIM + 8) },
+    alzScale: Math.min(W / Math.max(1, cfg.width), alzadoH / Math.max(1, cfg.height)),
+    plaScale: Math.min(W / Math.max(1, cfg.width), plantaH / Math.max(1, cfg.depth)),
+  }
+}
+const scaleLabel = (s) => s > 0 ? `1:${Math.round(1 / s)}` : ''
+
+// ── Observaciones de fabricación ─────────────────────────────────────────────
+// Las desviaciones respecto al pedido (menos gavetas de las pedidas, fondo que se
+// parte en dos…) deben viajar EN EL PLANO. El plano es lo que llega al taller; un
+// aviso que solo vive en la pantalla no existe para quien corta.
+function buildAvisos(adjustments, P, D, box) {
+  const list = (adjustments || []).filter(Boolean)
+  if (!list.length) return ''
+  const order = { critical: 0, warning: 1, info: 2 }
+  const sorted = [...list].sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3))
+  const wrap = (str, n) => {
+    const words = String(str).split(/\s+/); const lines = []; let cur = ''
+    for (const w of words) {
+      if ((cur + ' ' + w).trim().length > n) { if (cur) lines.push(cur); cur = w } else { cur = (cur + ' ' + w).trim() }
+    }
+    if (cur) lines.push(cur)
+    return lines
+  }
+  let g = `<text x="${box.x}" y="${box.y}" font-size="11" font-weight="800" letter-spacing="1.5" fill="${P.vh}">${esc(D.avisos || 'OBSERVACIONES')}</text>`
+  let y = box.y + 16
+  const maxY = box.y + box.h
+  for (const a of sorted) {
+    if (y > maxY - 8) break
+    const col = a.severity === 'critical' ? '#C0392B' : a.severity === 'warning' ? '#B7791F' : P.muted
+    const mark = a.severity === 'critical' ? '!' : '•'
+    const lines = wrap(a.message, 62).slice(0, 3)
+    g += `<text x="${box.x}" y="${y}" font-size="9.5" font-weight="800" fill="${col}">${mark}</text>`
+    lines.forEach((ln, i) => {
+      if (y + i * 11 > maxY) return
+      g += `<text x="${box.x + 10}" y="${y + i * 11}" font-size="9.5" fill="${i === 0 ? P.text : P.muted}">${esc(ln)}</text>`
+    })
+    y += lines.length * 11 + 7
+  }
   return g
 }
 
@@ -351,18 +452,26 @@ export function generateModulePlanSVG(module, options = {}) {
   const label = (module && module.configuration && module.configuration.moduleType) || (module && module.type) || 'Módulo'
   let s = `<svg viewBox="0 0 1000 740" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, system-ui, sans-serif">`
   s += sheetHeader(`${D.title_module} — ${label}`, D.subtitle.replace('{t}', cfg.thickness), P)
-  s += buildCajetin(options.company, cfg, pieceCount, P, D)
+  s += buildCajetin(options.company, cfg, pieceCount, P, D, options.editableFields)
+
+  // Reparto adaptativo: el alzado manda, la planta se acota (ver planLayout).
+  const L = planLayout(cfg)
 
   // GRID DE DELIMITACIÓN: Separaciones geométricas sutiles para los diferentes tipos de diseño
-  s += `<rect x="22" y="100" width="518" height="270" fill="none" stroke="${P.rule}" stroke-width="0.8" rx="4"/>`
-  s += `<rect x="22" y="380" width="518" height="150" fill="none" stroke="${P.rule}" stroke-width="0.8" rx="4"/>`
+  s += `<rect x="${L.alzRect.x}" y="${L.alzRect.y}" width="${L.alzRect.w}" height="${L.alzRect.h}" fill="none" stroke="${P.rule}" stroke-width="0.8" rx="4"/>`
+  s += `<rect x="${L.plaRect.x}" y="${L.plaRect.y}" width="${L.plaRect.w}" height="${L.plaRect.h}" fill="none" stroke="${P.rule}" stroke-width="0.8" rx="4"/>`
   s += `<rect x="550" y="100" width="426" height="430" fill="none" stroke="${P.rule}" stroke-width="0.8" rx="4"/>`
 
-  s += `<text x="36" y="116" font-size="11" font-weight="800" letter-spacing="1.5" fill="${P.vh}">1 · ${D.view_alzado}</text>`
   const caps = options.captures || {}
-  s += buildAlzado(cfg, { x: 78, y: 138, w: 440, h: 168 }, P, caps.front, D)
-  s += `<text x="36" y="392" font-size="11" font-weight="800" letter-spacing="1.5" fill="${P.vh}">2 · ${D.view_planta}</text>`
-  s += buildPlanta(cfg, { x: 78, y: 408, w: 440, h: 110 }, P, caps.top, D)
+  s += `<text x="36" y="${L.alzTitleY}" font-size="11" font-weight="800" letter-spacing="1.5" fill="${P.vh}">1 · ${D.view_alzado}</text>`
+  s += `<text x="524" y="${L.alzTitleY}" text-anchor="end" font-size="9" fill="${P.muted}" letter-spacing=".6">esc. ${scaleLabel(L.alzScale)}</text>`
+  s += buildAlzado(cfg, { x: L.X, y: L.alzY, w: L.W, h: L.alzadoH }, P, caps.front, D)
+  s += `<text x="36" y="${L.plaTitleY}" font-size="11" font-weight="800" letter-spacing="1.5" fill="${P.vh}">2 · ${D.view_planta}</text>`
+  s += `<text x="524" y="${L.plaTitleY}" text-anchor="end" font-size="9" fill="${P.muted}" letter-spacing=".6">esc. ${scaleLabel(L.plaScale)}</text>`
+  // Planta SIEMPRE vectorial (no captura 3D): la captura arrastra el fondo del
+  // visor y en un plano de planta —que es un rectángulo con la profundidad
+  // acotada— no aporta nada. Vector = mueble gris limpio, sin fondo.
+  s += buildPlanta(cfg, { x: L.X, y: L.plaY, w: L.W, h: L.plantaH }, P, null, D)
   // Isométrico centrado en su media (columna derecha), título centrado sobre el dibujo.
   const isoCx = 765, isoW = 340, isoH = 252, isoY = 198
   s += `<text x="${isoCx}" y="184" text-anchor="middle" font-size="11" font-weight="800" letter-spacing="1.5" fill="${P.vh}">3 · ${D.view_iso}</text>`
@@ -373,6 +482,10 @@ export function generateModulePlanSVG(module, options = {}) {
     s += `<rect x="${isoCx - isoW / 2}" y="${isoY}" width="${isoW}" height="${isoH}" fill="none" stroke="${P.thin}" stroke-width="1" stroke-dasharray="5 4"/>`
     s += `<text x="${isoCx}" y="${isoY + isoH / 2}" text-anchor="middle" font-size="10" fill="${P.muted}">${D.iso_placeholder}</text>`
   }
+  // Observaciones: espacio libre de la columna derecha, bajo el isométrico.
+  const avisos = options.specAdjustments || (module && module.specAdjustments)
+  s += buildAvisos(avisos, P, D, { x: 566, y: isoY + isoH + 24, w: 400, h: 530 - (isoY + isoH + 24) })
+
   s += buildCutlist(rows, P, 540, D)
   s += orbinSeal(P, D)
   s += `</svg>`
@@ -389,9 +502,10 @@ export function generateConjuntoPlanSVG(modules, options = {}) {
   let s = `<svg viewBox="0 0 1000 740" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, system-ui, sans-serif">`
   s += sheetHeader(`${D.title_conjunto} — ${mods.length} ${D.modules_word}`, D.subtitle_conjunto.replace('{w}', totalW), P)
   const allRows = groupPieces(mods.flatMap(m => (m && m.pieces) || []))
-  s += buildCajetin(options.company, cfgOf(mods[0] || {}), allRows.reduce((a, r) => a + r.qty, 0), P, D)
-  // banda de alzados alineados a piso
-  const areaX = 60, areaW = 880, areaY = 130, areaH = 300
+  s += buildCajetin(options.company, cfgOf(mods[0] || {}), allRows.reduce((a, r) => a + r.qty, 0), P, D, options.editableFields)
+  // banda de alzados alineados a piso — altura ampliada: con 300px un conjunto de
+  // roperos altos quedaba diminuto por la misma causa que el alzado de módulo.
+  const areaX = 60, areaW = 880, areaY = 126, areaH = 384
   const scale = Math.min(areaW / totalW, areaH / maxH)
   let cx = areaX
   s += `<text x="36" y="118" font-size="11" font-weight="800" letter-spacing="1.5" fill="${P.vh}">${D.view_conjunto}</text>`
@@ -405,6 +519,21 @@ export function generateConjuntoPlanSVG(modules, options = {}) {
   s += orbinSeal(P, D)
   s += `</svg>`
   return s
+}
+
+// TASK 3: FUTURE-PROOF DYNAMIC QR HOOKS (60x40mm thermal sticker)
+export function generatePieceStickerSVG(piece, projectId) {
+  const url = `https://orbin.app/track/piece?id=${piece.id}&proj=${projectId || 'mvp'}`;
+  // 60x40mm sticker roughly maps to 226x151 pixels at 96 DPI
+  return `<svg viewBox="0 0 226 151" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, system-ui, sans-serif">
+    <rect width="100%" height="100%" fill="white" />
+    <!-- Placeholder for Barcode/QR Code Hook -->
+    <rect x="10" y="10" width="80" height="80" fill="none" stroke="black" stroke-dasharray="2 2"/>
+    <text x="50" y="55" font-size="10" text-anchor="middle" fill="black">QR_HOOK</text>
+    
+    <text x="100" y="25" font-size="12" font-weight="bold" fill="black">${piece.name || 'PIEZA'}</text>
+    <text x="10" y="110" font-size="9" fill="black">${url}</text>
+  </svg>`;
 }
 
 export default generateModulePlanSVG

@@ -148,9 +148,9 @@ Output strictly valid JSON with no markdown wrapping. The JSON must follow this 
 
 async function analyzeSpaceImage(base64Image, mimeType, userPrompt = "Analyze this space and suggest a furniture configuration.") {
   try {
-    const raw = await callGeminiVision(VISION_SYSTEM_PROMPT, userPrompt, base64Image, mimeType)
-    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/)
-    const parsed = JSON.parse(jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : raw)
+    const rawAiText = await callGeminiVision(VISION_SYSTEM_PROMPT, userPrompt, base64Image, mimeType)
+    let cleanCleanText = rawAiText.replace(/```json/gi, '').replace(/```/g, '').trim()
+    const parsed = JSON.parse(cleanCleanText)
     return { ...parsed, source: 'gemini-vision' }
   } catch (err) {
     console.error('[geminiClient] analyzeSpaceImage error:', err.message)

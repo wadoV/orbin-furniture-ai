@@ -10,12 +10,26 @@ const { generateProject } = require('../engine/closetEngine')
 const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
 const { parseNaturalLanguage } = require('../engine/nlParser')
 const { validateDesign } = require('../engine/validator')
+const { requireAuth } = require('../middleware/auth')
+const z = require('zod')
+
+const contextSchema = z.object({
+  userName: z.string().min(1).max(50).trim().optional(),
+  company: z.string().min(1).max(50).trim().optional(),
+  lang: z.enum(['ES', 'EN', 'PT']).optional()
+}).passthrough();
 
 // ─── POST /api/design/generate ────────────────────────────────────────────────
 
-router.post('/generate', async (req, res) => {
+router.post('/generate', requireAuth, async (req, res) => {
   try {
     const { params, naturalLanguage } = req.body
+
+    // Validar contexto con Zod (para prevenir inyecciones si se pasan estos campos)
+    const contextValidation = contextSchema.safeParse(req.body)
+    if (!contextValidation.success) {
+      return res.status(400).json({ success: false, error: 'Parámetros de contexto inválidos.' })
+    }
 
     let finalParams = {}
     let nlResult    = null
@@ -134,7 +148,7 @@ router.post('/generate', async (req, res) => {
 // ─── POST /api/design/parse ───────────────────────────────────────────────────
 // Quick endpoint to preview NL parsing without generating full design
 
-router.post('/parse', (req, res) => {
+router.post('/parse', requireAuth, (req, res) => {
   const { text } = req.body
   if (!text) return res.status(400).json({ success: false, error: 'El campo "text" es obligatorio.' })
   const result = parseNaturalLanguage(text)

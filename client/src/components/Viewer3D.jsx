@@ -182,6 +182,13 @@ export default function Viewer3D({
     stateRef.current = { exploded, wireframe, selectedPieceIds, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints }
   }, [exploded, wireframe, selectedPieceIds, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints])
 
+  // A1 FIX: resetear el estado de cajones al cambiar de módulo seleccionado.
+  // Sin este reset, el Set openDrawers heredaba el estado del módulo anterior,
+  // causando que cajones del nuevo módulo aparecieran animados como "ya abiertos".
+  useEffect(() => {
+    setOpenDrawers(new Set())
+  }, [selectedModuleId])
+
   // ★ PROTECTED: Magnetic snap detection between modules during drag
   const performSnapDetection = useCallback((mGroup, moduleId) => {
     const scene = sceneRef.current
@@ -267,13 +274,13 @@ export default function Viewer3D({
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.1
     renderer.outputColorSpace = THREE.SRGBColorSpace
-    renderer.setClearColor(0x0a0a0f, 1)
+    renderer.setClearColor(0x0d0d0d, 1) // C4 FIX: alineado con token Charcoal #0D0D0D
     rendererRef.current = renderer
 
     // --- Scene ---
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x0a0a0f)
-    scene.fog = new THREE.FogExp2(0x0a0a0f, 0.0008)
+    scene.background = new THREE.Color(0x0d0d0d) // C4 FIX: alineado con token Charcoal #0D0D0D
+    scene.fog = new THREE.FogExp2(0x0d0d0d, 0.0008)
 
     // --- Premium Environment Map (subtle reflections) ---
     const pmremGenerator = new THREE.PMREMGenerator(renderer)
@@ -1245,7 +1252,7 @@ export default function Viewer3D({
       const zCenter = BT + iD / 2 + 0.1
 
       // === BASEBOARD / FEET ===
-      if (cfg.baseboard !== false) {
+      if (cfg.baseboard !== false && cfg.hasRodapie !== false && cfg.hasPlinth !== false) {
         const fr = makeMesh(iW, BH, T, bodyColor, 'Zocalo Frontal', 'baseboard')
         fr.position.set(xOffset, BH / 2, D - T / 2 - 5)
         mGroup.add(fr)
@@ -1288,36 +1295,47 @@ export default function Viewer3D({
 
       if (nD > 0) {
         if (isHorizontal) {
-          const colW = iW / 2
+          // VULN-06 FIX: Descuenta la mitad del espesor del divisor central (T / 2)
+          const colW = (iW - T) / 2
           const drawersPerCol = Math.ceil(nD / 2)
           for (let col = 0; col < 2; col++) {
             let colY = yBase + BH + T
-            const startX = xOffset - iW / 2 + colW / 2 + col * colW
+            const startX = xOffset - iW / 2 + colW / 2 + col * (colW + T)
             for (let i = 0; i < drawersPerCol; i++) {
               if (col * drawersPerCol + i >= nD) break
-              const dKey = `m${dIdx}-d${col}-${i}`
+              const dKey = `${design.id}-d${col}-${i}` // A1 FIX: clave estable por design.id, no por posición
               const df = makeMesh(colW - 0.4, dH - 0.4, T, frontColor, `Frente Gaveta H-${col + 1}-${i + 1}`, 'drawer_front', dKey)
               df.position.set(startX, colY + dH / 2, D - T / 2)
               mGroup.add(df)
-              addDrawerBox(startX, colY + dH / 2, colW - 3, dH - 4, iD - 4, zCenter, dKey)
+              // VULN-02 FIX: Holgura real de 26mm * SCALE (13mm por lado)
+              addDrawerBox(startX, colY + dH / 2, colW - (26 * SCALE), dH - 4, iD - 4, zCenter, dKey)
               colY += dH
             }
           }
           curY += Math.ceil(nD / 2) * dH
         } else {
           for (let i = 0; i < nD; i++) {
-            const dKey = `m${dIdx}-d${i}`
+            const dKey = `${design.id}-d${i}` // A1 FIX: clave estable por design.id, no por posición
             const df = makeMesh(iW - 0.4, dH - 0.4, T, frontColor, `Frente Gaveta ${i + 1}`, 'drawer_front', dKey)
             df.position.set(xOffset, curY + dH / 2, D - T / 2)
             mGroup.add(df)
-            addDrawerBox(xOffset, curY + dH / 2, iW - 3, dH - 4, iD - 4, zCenter, dKey)
+            // VULN-02 FIX: Holgura real de 26mm * SCALE (13mm por lado)
+            addDrawerBox(xOffset, curY + dH / 2, iW - (26 * SCALE), dH - 4, iD - 4, zCenter, dKey)
             curY += dH
           }
+        }
+
+        // VULN-07 FIX: Repisa separadora colocada inmediatamente sobre cajones (igual que closetEngine.js)
+        if (curY < yBase + H - T) {
+          const tapa = makeMesh(iW, T, iD, bodyColor, 'Repisa Separadora (encima gavetas)', 'shelf')
+          tapa.position.set(xOffset, curY + T / 2, zCenter)
+          mGroup.add(tapa)
+          curY += T
         }
       }
 
       // === DOORS ===
-      if (cfg.hasDoors) {
+      if (cfg.hasDoors && cfg.showDoors !== false) {
         const nDoors = cfg.numDoors || 2
         const doorW = iW / nDoors
         const doorH = H - (curY - yBase) - T
@@ -1361,13 +1379,6 @@ export default function Viewer3D({
       // === SHELVES ===
       const nS = cfg.numShelves || 0
       if (nS > 0) {
-        // Separator after drawers
-        if (nD > 0 && curY < yBase + H - T) {
-          const tapa = makeMesh(iW, T, iD, bodyColor, 'Divisoria H', 'shelf')
-          tapa.position.set(xOffset, curY + T / 2, zCenter)
-          mGroup.add(tapa)
-          curY += T
-        }
         const remainingH = H - (curY - yBase) - T
         const spacing = remainingH / (nS + 1)
         for (let i = 0; i < nS; i++) {
@@ -1606,7 +1617,11 @@ export default function Viewer3D({
 
     return () => {
       if (overlayGroupRef.current) {
-        scene.remove(overlayGroupRef.current)
+        // A2 FIX: `scene` es la variable local capturada al inicio del effect (no sceneRef.current).
+        // Guard defensivo: si el renderer fue desmontado antes que este cleanup corra,
+        // scene sigue siendo una referencia válida pero Three.js la habrá liberado.
+        // El null-check previene un crash silencioso en ese edge-case.
+        if (scene) scene.remove(overlayGroupRef.current)
         overlayGroupRef.current.traverse(obj => {
           if (obj.geometry) obj.geometry.dispose()
           if (obj.material) (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(m => m.dispose())
@@ -1927,16 +1942,8 @@ export default function Viewer3D({
         </button>
       </div>
 
-      {/* Floating Operations Bar (Module Operations - Always Visible and Clean) */}
+      {/* Floating Operations Bar — acciones de módulo (Agregar / Eliminar) */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/60 backdrop-blur-xl p-2 px-4 rounded-full border border-white/10 shadow-2xl z-20">
-        <button
-          onClick={() => setIsPresentationMode(true)}
-          className="p-2.5 rounded-full hover:bg-white/10 text-white transition-all flex items-center justify-center"
-          title={lang === 'ES' ? 'Modo Presentación' : lang === 'PT' ? 'Modo Apresentação' : 'Presentation Mode'}
-        >
-          <MonitorPlay size={18} />
-        </button>
-        <div className="w-[1px] h-4 bg-white/10" />
         <button
           onClick={onAddModule}
           className="p-2.5 rounded-full hover:bg-primary bg-primary/10 text-primary hover:text-black transition-all flex items-center justify-center"
@@ -1953,6 +1960,23 @@ export default function Viewer3D({
             <Trash2 size={18} />
           </button>
         )}
+      
+        {/* Celda 4 — Presentación */}
+        <button
+          onClick={() => setIsPresentationMode(true)}
+          className="p-2.5 rounded-xl transition-all duration-200 group/btn relative
+                     hover:bg-white/10 text-white/80 hover:text-white"
+          title="Modo Presentación (turntable)"
+          aria-label="Activar modo presentación"
+        >
+          <MonitorPlay size={18} />
+          <span className="absolute right-12 top-1/2 -translate-y-1/2 bg-black border border-white/10
+                           text-white text-[10px] font-bold py-1 px-2 rounded-md
+                           opacity-0 group-hover/btn:opacity-100 pointer-events-none
+                           transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'ES' ? 'Presentación' : lang === 'PT' ? 'Apresentação' : 'Presentation'}
+          </span>
+        </button>
       </div>
 
       {/* ★ Modo Presentación (cinematic turntable) — antes el botón no renderizaba nada.
@@ -1970,25 +1994,45 @@ export default function Viewer3D({
         />
       )}
 
-      {/* Export button */}
-      <button
-        onClick={handleExport}
-        className="absolute top-4 right-16 p-2.5 bg-surface/40 hover:bg-primary text-white hover:text-black rounded-xl backdrop-blur-md transition-all border border-white/5 shadow-lg z-20"
-        title="Export PNG"
-      >
-        <Download size={16} />
-      </button>
-
-      {/* AR Button */}
-      <button
-        onClick={handleViewInAR}
-        disabled={isExportingAR || isEmpty}
-        className="absolute top-16 right-16 px-4 py-2 bg-primary hover:bg-primary/90 text-black font-bold text-sm rounded-xl backdrop-blur-md transition-all shadow-[0_0_15px_rgba(245,166,35,0.4)] z-20 flex items-center gap-2 disabled:opacity-50"
-        title="Ver en mi espacio (Realidad Aumentada)"
-      >
-        {isExportingAR ? <Loader2 size={16} className="animate-spin" /> : <Scan size={16} />}
-        Ver en mi espacio
-      </button>
+      {/* ─── Export & AR Top Right ─── */}
+      <div className="absolute top-4 right-16 z-20 flex gap-2 bg-black/60 backdrop-blur-xl p-2 rounded-2xl border border-white/10 shadow-2xl transition-all duration-300 hover:border-white/20">
+        {/* Celda 1 — Export PNG */}
+        <button
+          onClick={handleExport}
+          className="p-2.5 rounded-xl transition-all duration-200 group/btn relative
+                     hover:bg-white/10 text-white/80 hover:text-white"
+          title="Export PNG"
+          aria-label="Exportar imagen PNG"
+        >
+          <Download size={18} />
+          <span className="absolute right-12 top-1/2 -translate-y-1/2 bg-black border border-white/10
+                           text-[10px] text-white/80 font-black uppercase tracking-widest py-1.5 px-3 rounded-md
+                           opacity-0 group-hover/btn:opacity-100 pointer-events-none
+                           transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'ES' ? 'Exportar PNG' : lang === 'PT' ? 'Exportar PNG' : 'Export PNG'}
+          </span>
+        </button>
+        {/* Celda 2 — AR (Vista Aumentada) */}
+        <button
+          onClick={handleViewInAR}
+          disabled={isExportingAR || isEmpty}
+          className="p-2.5 rounded-xl transition-all duration-200 group/btn relative
+                     hover:bg-primary/20 text-primary disabled:opacity-40
+                     disabled:pointer-events-none"
+          title="Ver en mi espacio (Realidad Aumentada)"
+          aria-label="Ver en realidad aumentada"
+        >
+          {isExportingAR
+            ? <Loader2 size={18} className="animate-spin" />
+            : <Scan size={18} />}
+          <span className="absolute right-12 top-1/2 -translate-y-1/2 bg-black border border-white/10
+                           text-[10px] text-white/80 font-black uppercase tracking-widest py-1.5 px-3 rounded-md
+                           opacity-0 group-hover/btn:opacity-100 pointer-events-none
+                           transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'ES' ? 'Ver en AR' : lang === 'PT' ? 'Ver em AR' : 'View in AR'}
+          </span>
+        </button>
+      </div>
 
       {/* ─── Zoom controls (+ / -) — right side, vertically centered ─── */}
       <div className="absolute top-1/2 -translate-y-1/2 right-4 flex flex-col gap-2 bg-black/60 backdrop-blur-xl p-2 rounded-2xl border border-white/10 shadow-2xl z-30 transition-all duration-300 hover:border-white/20">

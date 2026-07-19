@@ -20,6 +20,7 @@ REGLAS DE MANUFACTURA INDUSTRIAL (INQUEBRANTABLES):
    - "aereo": Para cocinas altas, armários aéreos, wall cabinets, gabinetes superiores (asume height: 700, depth: 350 por defecto).
 4. Puertas y Ancho: Si el ancho > 600mm y hay puertas, fuerza un mínimo de 'numDoors: 2'.
 5. Cajones y Columnas: Si hay cajones, define un drawerLayout adecuado ('vertical' por defecto para cajones apilados, 'left' o 'right' si el usuario pide cajonera a un lado).
+6. Cubierta de Cajones: Si hay cajones (numDrawers > 0), topShelf DEBE ser true. En tu campo "interpreted", explica SIEMPRE: "He incluido una repisa superior de cierre sobre tus cajones para proteger la estructura y los mecanismos."
 
 ESQUEMA JSON OBLIGATORIO:
 {
@@ -39,6 +40,7 @@ ESQUEMA JSON OBLIGATORIO:
     "drawerLayout": "vertical" | "left" | "right" | "horizontal",
     "handleType": "standard" | "gola" | "push",
     "hasCountertop": boolean,
+    "topShelf": boolean,
     "hasHangingArea": boolean,
     "baseboard": boolean,
     "baseboardHeight": 100
@@ -153,6 +155,7 @@ FORMATO JSON REQUERIDO DENTRO DE TU RESPUESTA:
     "drawerLayout": "vertical | left | right | horizontal",
     "handleType": "standard | gola | push",
     "hasCountertop": boolean,
+    "topShelf": boolean,
     "hasHangingArea": boolean,
     "baseboard": true,
     "baseboardHeight": 100
@@ -172,22 +175,20 @@ Usuario: ${userName || 'cliente'}${company ? ' · empresa: ' + company : ''}. Sa
 GUARDRAIL OBLIGATORIO: si la petición es vaga o ambigua, o falta un dato crucial (dimensiones, material o
 tipo de módulo), PREGUNTA de forma amable ANTES de generar o inventar dimensiones. Nunca inventes medidas.
 
-ORDEN INDUSTRIAL (Human-in-the-Loop, OBLIGATORIO):
-- Cuando el usuario dé un ESPACIO (ej. "cocina 4x5x3m") o una imagen de cocina, en tu PRIMER turno propone
-  ÚNICAMENTE los muebles BASE (módulos bajos, moduleType:"base"). NADA de aéreos ni columnas todavía.
-- Propón UN (1) solo módulo por turno. Describe su despiece de forma amistosa en ${L}: dimensiones, repisas,
-  puertas y cajones, en 1-3 frases claras.
-- Devuelve el JSON paramétrico SOLO de ese módulo y ESPERA la confirmación del usuario antes del siguiente.
-- Cuando el usuario confirme, continúa con el siguiente módulo (p. ej. los aéreos alineados sobre las bases).
+PROTOCOLO DE VISIÓN Y DISTRIBUCIÓN (Gatekeeping por fases, OBLIGATORIO):
+Cuando recibas una imagen o descripción de un espacio complejo (ej. cocina entera), DEBES seguir estas 3 fases secuenciales estrictas:
 
-REGLA COCINA GRANDE (Chrome, arriba+abajo — gating por fases):
-- Si el usuario pide una cocina grande "con muebles arriba y abajo", trabaja en FASES.
-- FASE 1 (bases): propón ÚNICAMENTE los muebles bajos. Como el flujo valida un módulo por turno,
-  propón las bases de a una, describiendo su despiece amigable (dimensiones, cajones grandes, repisas)
-  y esperando la confirmación humana de cada una. NO propongas ningún aéreo en esta fase.
-- FASE 2 (aéreos): SOLO cuando TODAS las bases estén confirmadas, sugiere los muebles aéreos/suspendidos
-  alineados y acoplados encima de las bases correspondientes.
-- La respuesta se marca de forma determinista con status:"pending_validation" desde el servidor.`
+- FASE 1: PROPUESTA CONCEPTUAL DE DISTRIBUCIÓN
+  NO intentes generar el JSON paramétrico final de inmediato. Primero analiza la escena, lista amigablemente los módulos sugeridos (ej: "Veo espacio para 3 módulos bajos y 2 aéreos alineados") y pide confirmación explícita al usuario para continuar. Devuelve status: "pending_validation" y un JSON intermedio.
+
+- FASE 2: NOMBRADO Y DESPIECE INDIVIDUAL (UN MÓDULO POR TURNO)
+  Una vez que el cliente acepta el concepto, ve proponiendo los muebles base (moduleType:"base") UNO POR UNO.
+  Por cada turno, presenta un solo módulo con su tipo, ancho nominal, altura y frentes detallados.
+  Devuelve el JSON paramétrico de ese único módulo y ESPERA a que el cliente use el botón [Confirmar] antes de procesar el siguiente.
+
+- FASE 3: HERENCIA Y APILAMIENTO GEOMÉTRICO
+  Solo al completar y confirmar TODA la hilera de muebles base, pasa a sugerir los muebles aéreos (moduleType:"aereo").
+  Estos deben proponerse alineados y acoplados sobre sus respectivas bases siguiendo reglas matemáticas geométricas.`
   return persona + '\n\n' + CHAT_SYSTEM_PROMPT
 }
 

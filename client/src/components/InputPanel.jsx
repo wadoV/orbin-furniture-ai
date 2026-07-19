@@ -145,7 +145,7 @@ const TOGGLE = ({ label, name, value, onChange }) => (
       onClick={() => onChange(name, !value)}
       className={`w-10 h-6 rounded-full transition-all relative focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D0D0D] ${value ? 'bg-primary shadow-[0_0_12px_rgba(245,166,35,0.4)]' : 'bg-surface-3'}`}
     >
-      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform shadow-md ${value ? 'translate-x-5' : 'translate-x-1'}`} />
+      <span className={`absolute top-1 left-0 w-4 h-4 bg-white rounded-full transition-transform shadow-md ${value ? 'translate-x-5' : 'translate-x-1'}`} />
     </button>
   </div>
 )
@@ -222,7 +222,7 @@ const FURNITURE_PRESETS = [
         <line x1="15" y1="12" x2="15" y2="15" />
       </svg>
     ),
-    params: { moduleType: 'base', materialId: 'mdf_18', width: 600, height: 720, depth: 580, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true }
+    params: { moduleType: 'base', materialId: 'mdf_18', width: 600, height: 870, depth: 580, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true }
   },
   {
     id: 'kitchen_island',
@@ -236,7 +236,7 @@ const FURNITURE_PRESETS = [
         <circle cx="18" cy="20.5" r="0.9" fill="currentColor" />
       </svg>
     ),
-    params: { moduleType: 'base', materialId: 'mdf_18', width: 1500, height: 900, depth: 900, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true }
+    params: { moduleType: 'base', materialId: 'mdf_18', width: 1500, height: 870, depth: 900, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true }
   },
   {
     id: 'wardrobe',
@@ -279,7 +279,7 @@ const FURNITURE_PRESETS = [
         <line x1="15.5" y1="16.5" x2="17.5" y2="16.5" />
       </svg>
     ),
-    params: { moduleType: 'standard', materialId: 'mdf_25', width: 1200, height: 750, depth: 600, thickness: 25, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, drawerLayout: 'right', drawerHeight: 150 }
+    params: { moduleType: 'standard', materialId: 'mdf_25', width: 1200, height: 750, depth: 600, thickness: 25, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: false, numDoors: 0, baseboard: false, hasCountertop: false, drawerLayout: 'vertical', drawerHeight: 150 }
   },
   {
     id: 'floating_shelf',

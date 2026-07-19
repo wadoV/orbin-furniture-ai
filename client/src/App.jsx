@@ -87,7 +87,7 @@ class ErrorBoundary extends Component {
 }
 
 export default function App() {
-  const { t, lang } = usePreferences()
+  const { t, lang, clipboardModule } = usePreferences()
   const { isFree, canAddModule, canUseChat, planConfig, refreshPlan, user } = useUser()
   const [planAlert, setPlanAlert] = useState(null)   // { message, description }
   // RECOVERY [2026-06-26]: feedback post-checkout (Stripe/Mercado Pago redirige a
@@ -116,6 +116,7 @@ export default function App() {
   const modulesRef = useRef([])
   const [history,   setHistory]   = useState([])
   const [redoStack, setRedoStack] = useState([])
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [selectedModuleId, setSelectedModuleId] = useState(null)
   const [selectedPieceIds, setSelectedPieceIds] = useState(new Set())
   const [error,     setError]     = useState(null)
@@ -145,6 +146,18 @@ export default function App() {
   // Collaboration State
   const [roomId, setRoomId] = useState(null)
   const [socket, setSocket] = useState(null)
+
+  // TASK 3: UNSAVED CHANGES GUARD & SESSION CONTROLS
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '¿Desea guardar los cambios del diseño antes de salir?';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -199,7 +212,8 @@ export default function App() {
   const TABS = [
     { id: 'params', label: t('tab_parameters'), icon: Sliders },
     { id: 'chat',   label: t('tab_chat'),    icon: MessageSquare },
-    { id: 'vision', label: 'AI Vision',      icon: Camera },
+    // V2 FEATURE: Vision AI - Pending
+    // { id: 'vision', label: 'AI Vision',      icon: Camera },
     { id: 'projects', label: t('tab_projects'),  icon: FolderOpen },
     { id: 'export', label: t('tab_export'),    icon: Box },
   ]
@@ -238,6 +252,7 @@ export default function App() {
     setHistory(prev => [...prev, modulesRef.current].slice(-20))  // ★ FIX: usar ref para evitar stale closure
     setRedoStack([])
     setModules(newModules)
+    setHasUnsavedChanges(true)
 
     if (!isRemote) {
       const sock = getSocket()
@@ -303,7 +318,10 @@ export default function App() {
         //   resultado limpio de 1 módulo, sin apilar. "Generar" manual y NL
         //   siguen AGREGANDO a la composición existente. Reversible con Ctrl+Z
         //   porque pasa por saveHistory.
-        const nextModules = payload?.replace ? [newModule] : [...modules, newModule]
+        // ★ FIX: usar modulesRef (igual que saveHistory) — con `modules` del estado,
+        //   un closure viejo apilaba sobre un array obsoleto y el módulo anterior
+        //   desaparecía: el usuario veía "reemplaza en vez de agregar".
+        const nextModules = payload?.replace ? [newModule] : [...modulesRef.current, newModule]
         saveHistory(nextModules, (payload?.replace ? 'Preset ' : 'Generated ') + (design.type || 'module'))
         setSelectedModuleId(newModule.id)
         try {
@@ -340,24 +358,25 @@ export default function App() {
         throw new Error('La IA no pudo detectar módulos válidos en la imagen.')
       }
 
-      // ★ FIX: Wrap in `configuration` object so Viewer3D can build geometry correctly
-      const newModules = analysisResult.modules.map(mod => ({
-        id: crypto.randomUUID(),
-        type: 'base',
-        configuration: {
-          moduleType:   'base',
-          width:        mod.width        || 600,
-          height:       analysisResult.height || 2000,
-          depth:        analysisResult.depth  || 600,
-          thickness:    18,
-          hasCountertop: analysisResult.hasCountertop || false,
-          numShelves:   mod.numShelves   || 0,
-          numDrawers:   mod.numDrawers   || 0,
-          numDividers:  mod.numDividers  || 0,
-          materialBody:  'oak_light',
-          materialFront: 'white',
-        }
-      }))
+      // ★ FIX: Intercept incoming design payload and hydrate preview entities to prevent crash
+      const newModules = (analysisResult.modules || []).map(mod => {
+        if (mod.configuration && mod.id) return mod; // Already hydrated
+        return {
+          id: mod.id || crypto.randomUUID(),
+          type: mod.type || 'base',
+          configuration: {
+            width: Number(mod.width) || 600,
+            height: Number(mod.height) || 900,
+            depth: Number(mod.depth) || 600,
+            moduleType: mod.moduleType || 'base',
+            numShelves: Number(mod.numShelves ?? 2),
+            numDrawers: Number(mod.numDrawers ?? 0),
+            numDividers: Number(mod.numDividers ?? 0),
+            showDoors: mod.showDoors !== false,
+            hasRodapie: mod.hasRodapie !== false
+          }
+        };
+      });
 
       saveHistory(newModules, 'Generado desde IA Vision')
       
@@ -403,7 +422,7 @@ export default function App() {
 
   // BLOQUE 2: normaliza un design crudo de IA -> módulo completo (shape de Viewer3D).
   // Extraído tal cual del cuerpo de handleChatDesign; MISMA salida, sin cambio de conducta.
-  const buildModuleFromDesign = (design) => {
+  function buildModuleFromDesign(design) {
     const configuration = design.configuration
       ? design.configuration
       : {
@@ -730,7 +749,15 @@ export default function App() {
           />
         )}
         {/* Header containing inline pricing dropdown */}
-        <Header modules={modules} serverOnline={serverOnline} />
+        <Header 
+          modules={modules} 
+          serverOnline={serverOnline} 
+          onPasteModule={m => {
+            saveHistory([...modules, m], 'Módulo pegado');
+            setSelectedModuleId(m.id);
+            setActiveTab('params');
+          }} 
+        />
         <main className="max-w-screen-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24 xl:pb-6">
           {/* Mobile view toggle */}
           <div className="xl:hidden flex items-center justify-between mb-3">
@@ -782,6 +809,16 @@ export default function App() {
                     title="Rehacer">
                     <Redo2 size={14} />
                   </button>
+                  {clipboardModule && (
+                    <button onClick={() => {
+                      const newModule = { ...clipboardModule, id: crypto.randomUUID() };
+                      saveHistory([...modules, newModule]);
+                    }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all"
+                      title="Pegar">
+                      Pegar
+                    </button>
+                  )}
                   <button onClick={handleShareRoom}
                     className={`p-2 rounded-lg border transition-all ${roomId ? 'text-primary bg-primary/10 border-primary/20' : 'text-white/70 hover:text-white bg-white/5 border-white/5'}`}
                     title={roomId ? 'Copiar Enlace de Sala' : 'Crear Sala Compartida'}>
@@ -795,8 +832,7 @@ export default function App() {
                   {TABS.map(({ id, label, icon: Icon }) => (
                     <button key={id} onClick={() => setActiveTab(id)}
                       className={'flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ' +
-                        (activeTab === id ? 'bg-primary text-black shadow-sm' : 'text-muted hover:text-white hover:bg-surface-2') +
-                        (id === 'export' ? ' col-span-2' : '')}>
+                        (activeTab === id ? 'bg-primary text-black shadow-sm' : 'text-muted hover:text-white hover:bg-surface-2')}>
                       <Icon size={12} /> {label}
                     </button>
                   ))}
@@ -887,6 +923,13 @@ export default function App() {
                     onIsoCaptureReady={handleIsoCaptureReady}
                     onCadCaptureReady={handleCadCaptureReady}
                     onAddModule={() => {
+                      // ★ FIX: el botón "+" decía "Agregar Módulo" pero solo cambiaba de
+                      //   pestaña y hacía scroll — no creaba nada. El usuario pulsaba
+                      //   después un preset (replace:true) y el módulo anterior se perdía.
+                      //   Aditivo: genera un módulo nuevo partiendo de la config actual y
+                      //   lo APILA (handleGenerate sin replace). Reversible con Ctrl+Z.
+                      const base = (currentResult && currentResult.configuration) || {}
+                      handleGenerate({ params: { ...base } })
                       setActiveTab('params')
                       setTimeout(() => {
                         const el = document.getElementById('panel-params')
@@ -912,7 +955,7 @@ export default function App() {
                     onSelectPieces={setSelectedPieceIds}
                     onDeleteModule={handleDeleteModule}
                     onDeletePiece={handleDeletePiece}
-                    onSave={() => { if (import.meta.env.DEV) console.log('Saving module', currentResult.id) }}
+                    onSave={() => { setHasUnsavedChanges(false); if (import.meta.env.DEV) console.log('Saving module', currentResult.id) }}
                   />
                 </div>
               )}
@@ -931,7 +974,7 @@ export default function App() {
         )}
 
         {showUndoToast && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface-4 border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface-3 border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50">
             <span className="text-sm text-white">Module deleted</span>
             <button onClick={undo} className="text-primary text-sm font-bold uppercase tracking-widest hover:underline flex items-center gap-1.5">
               <RotateCcw size={14} /> Undo
@@ -941,9 +984,9 @@ export default function App() {
 
         {checkoutAlert && (
           <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 border px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50 ${
-            checkoutAlert.type === 'success' ? 'bg-emerald-500/10 border-emerald-400/30' :
-            checkoutAlert.type === 'pending' ? 'bg-amber-500/10 border-amber-400/30' :
-            'bg-red-500/10 border-red-400/30'
+            checkoutAlert.type === 'success' ? 'bg-success/10 border-success/30' :   // C1 FIX: token Charcoal
+            checkoutAlert.type === 'pending' ? 'bg-warning/10 border-warning/30' :   // C1 FIX: token Charcoal
+            'bg-danger/10 border-danger/30'                                           // C1 FIX: token Charcoal
           }`}>
             <span className="text-sm text-white">{checkoutAlert.message}</span>
             <button onClick={() => setCheckoutAlert(null)} className="text-white/60 hover:text-white text-xs uppercase tracking-widest">✕</button>

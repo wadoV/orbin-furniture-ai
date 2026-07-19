@@ -135,10 +135,10 @@ app.use((_req, res, next) => {
 })
 
 app.use(express.json({
-  limit: '5mb',
+  limit: '50mb',
   verify: (req, res, buf) => { req.rawBody = buf; }
-})) // 5mb maximum for payloads (reduced from 50mb to prevent DoS, yet sufficient for spatial images)
-app.use(express.urlencoded({ extended: true, limit: '5mb' }))
+})) // Increased to 50mb to handle high-res images from camera base64 uploads
+app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 
 // Request logger (dev only)
 if (process.env.NODE_ENV !== 'production') {

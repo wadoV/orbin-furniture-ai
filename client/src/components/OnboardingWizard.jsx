@@ -146,7 +146,10 @@ const STARTING_METHODS = [
     descKey: 'onboard_method_chat_desc',
     icon: <MessageSquare className="w-6 h-6 text-primary" />,
     previewType: 'chat'
-  },
+  }
+  // V2 FEATURE: Vision AI - Pending
+  /*
+  ,
   {
     id: 'vision',
     titleKey: 'onboard_method_vision',
@@ -154,6 +157,7 @@ const STARTING_METHODS = [
     icon: <Camera className="w-6 h-6 text-primary" />,
     previewType: 'vision'
   }
+  */
 ]
 
 // ─── Visual Previews for Step 2 ──────────────────────────────────────────────
