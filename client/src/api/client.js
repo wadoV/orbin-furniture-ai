@@ -44,6 +44,9 @@ async function request(method, path, body) {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`
     } catch {}
+    if (!headers['Authorization'] && import.meta.env?.DEV) {
+      headers['Authorization'] = 'Bearer dev-token'
+    }
 
     res = await fetch(`${BASE_URL}${path}`, {
       method,

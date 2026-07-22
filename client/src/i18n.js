@@ -583,7 +583,7 @@ export const translations = {
     countertop_mdf:       'MDF 25mm (incluída na lista de corte)',
     bancada_label:        'Bancada / Tampo',
     server_offline_title: 'Servidor sem conexão',
-    server_offline_desc:  'Os presets e o gerador precisam do servidor. Verifique se está ligado e tente novamente.',
+    server_offline_desc:  'O gerador precisa do servidor. Verifique se está ligado e tente novamente.',
   },
 
   ES: {
@@ -1159,7 +1159,7 @@ export const translations = {
     countertop_mdf:       'MDF 25mm (incluida en lista de corte)',
     bancada_label:        'Bancada / Encimera',
     server_offline_title: 'Servidor sin conexión',
-    server_offline_desc:  'Los presets y el generador necesitan el servidor. Verifica que esté encendido e inténtalo de nuevo.',
+    server_offline_desc:  'El generador necesita el servidor. Verifica que esté encendido e inténtalo de nuevo.',
   },
 
   EN: {
@@ -1736,7 +1736,7 @@ export const translations = {
     countertop_mdf:       'MDF 25mm (included in cut list)',
     bancada_label:        'Countertop / Worktop',
     server_offline_title: 'Server offline',
-    server_offline_desc:  'Presets and the generator need the server. Make sure it is running and try again.',
+    server_offline_desc:  'The generator needs the server. Make sure it is running and try again.',
   },
 }
 

@@ -4,7 +4,7 @@
  * Rules: rules/parametric_constraints.md
  */
 
-const { STRUCTURAL_LIMITS, MATERIAL, HARDWARE } = require('./constants')
+const { STRUCTURAL_LIMITS, MATERIAL, HARDWARE, BASEBOARD } = require('./constants')
 
 function validateDesign(design) {
   const errors   = []
@@ -50,30 +50,30 @@ function validateDesign(design) {
     if (pieceLower.includes('fundo') || pieceLower.includes('fondo')) {
       if (maxDim > MATERIAL.PLATE_WIDTH || minDim > MATERIAL.PLATE_HEIGHT) {
         warnings.push(
-          'Painel de fundo (' + piece.width + 'x' + piece.height + 'mm) nao cabe em uma unica chapa. ' +
-          'Cortar em 2 partes e unir com regua de MDF.'
+          'Panel de fondo (' + piece.width + 'x' + piece.height + 'mm) no cabe en una sola placa. ' +
+          'Cortar en 2 partes y unir con regla de MDF.'
         )
       }
       continue
     }
 
     if (maxDim > MATERIAL.PLATE_WIDTH) {
-      errors.push('Peca "' + piece.name + '" (' + maxDim + 'mm) excede o comprimento maximo da chapa (' + MATERIAL.PLATE_WIDTH + 'mm).')
+      errors.push('Pieza "' + piece.name + '" (' + maxDim + 'mm) excede el largo máximo de la placa (' + MATERIAL.PLATE_WIDTH + 'mm).')
     }
     if (minDim > MATERIAL.PLATE_HEIGHT) {
-      errors.push('Peca "' + piece.name + '" (' + minDim + 'mm) excede a largura maxima da chapa (' + MATERIAL.PLATE_HEIGHT + 'mm).')
+      errors.push('Pieza "' + piece.name + '" (' + minDim + 'mm) excede el ancho máximo de la placa (' + MATERIAL.PLATE_HEIGHT + 'mm).')
     }
     if (piece.width <= 0 || piece.height <= 0) {
-      errors.push('Peca "' + piece.name + '" tem dimensao invalida (<= 0mm).')
+      errors.push('Pieza "' + piece.name + '" tiene dimensión inválida (<= 0mm).')
     }
   }
 
   // 3. Internal width — minimum structural viability
   const internalWidth = cfg.width - 2 * cfg.thickness
   if (internalWidth <= 0) {
-    errors.push('Ancho interno (' + internalWidth + 'mm) negativo ou zero. Espessura maior que a metade da largura — geometria impossivel.')
+    errors.push('Ancho interno (' + internalWidth + 'mm) negativo o cero. Espesor mayor que la mitad del ancho — geometría imposible.')
   } else if (internalWidth < 100) {
-    errors.push('Ancho interno (' + internalWidth + 'mm) insuficiente. Minimo estrutural: 100mm (largura atual ' + cfg.width + 'mm com espessura ' + cfg.thickness + 'mm).')
+    errors.push('Ancho interno (' + internalWidth + 'mm) insuficiente. Mínimo estructural: 100mm (ancho actual ' + cfg.width + 'mm con espesor ' + cfg.thickness + 'mm).')
   } else {
     // ADITIVO 2026-07-19: el vao efectivo descuenta los divisores (cada montante
     // central divide la luz). Antes un modulo de 1600mm con 2 divisores (vaos
@@ -95,11 +95,11 @@ function validateDesign(design) {
     if (dCols > 1) effectiveSpan = Math.min(effectiveSpan, Math.round((internalWidth - (dCols - 1) * cfg.thickness) / dCols))
     if (effectiveSpan > STRUCTURAL_LIMITS.MAX_SHELF_SPAN) {
       warnings.push(
-        'Vao interno (' + effectiveSpan + 'mm' + (nDivs > 0 ? ' por compartimento' : '') + ') supera ' +
-        STRUCTURAL_LIMITS.MAX_SHELF_SPAN + 'mm. Adicione um montante central divisorio.'
+        'Vano interno (' + effectiveSpan + 'mm' + (nDivs > 0 ? ' por compartimento' : '') + ') supera ' +
+        STRUCTURAL_LIMITS.MAX_SHELF_SPAN + 'mm. Agregue un montante central divisorio.'
       )
     } else if (effectiveSpan > 800) {
-      warnings.push('Vao interno (' + effectiveSpan + 'mm' + (nDivs > 0 ? ' por compartimento' : '') + ') proximo do limite. Monitore deformacao em prateleiras com carga.')
+      warnings.push('Vano interno (' + effectiveSpan + 'mm' + (nDivs > 0 ? ' por compartimento' : '') + ') próximo al límite. Monitore deformación en estantes con carga.')
     }
   }
 
@@ -112,10 +112,23 @@ function validateDesign(design) {
   if (cfg.numDrawers > 0) {
     const boxWidth = drawerZoneWidth - HARDWARE.DRAWER_SLIDE_TOTAL  // 13mm per side × 2
     if (boxWidth < 100) {
-      errors.push('Caixa de gaveta muito estreita (' + boxWidth + 'mm) apos desconto das corredicas. Minimo: 100mm.')
+      errors.push('Cajón muy estrecho (' + boxWidth + 'mm) tras descuento de las correderas. Mínimo: 100mm.')
     }
     if (cfg.drawerHeight < 80) {
-      errors.push('Altura da gaveta (' + cfg.drawerHeight + 'mm) muito pequena. Minimo: 80mm.')
+      errors.push('Altura del cajón (' + cfg.drawerHeight + 'mm) muy pequeña. Mínimo: 80mm.')
+    }
+    // ★ FIX 2026-07-20 (auditoría estructural): faltaba por completo la regla de
+    //   PROFUNDIDAD. El motor emitia cajas de 250mm en muebles de 150mm de fondo
+    //   y esto se daba por VALIDADO. Por debajo de 250mm de fondo util no existe
+    //   corredica telescopica comercial → gaveta no fabricable.
+    const usableDepth = cfg.depth - (cfg.backThickness || 6) - HARDWARE.DRAWER_BOX_REAR_GAP
+    if (usableDepth < HARDWARE.SLIDE_LENGTH_MIN) {
+      errors.push(
+        'Profundidad útil (' + usableDepth + 'mm) insuficiente para corredera telescópica comercial ' +
+        '(mínima: ' + HARDWARE.SLIDE_LENGTH_MIN + 'mm). Aumente la profundidad a >=' +
+        (HARDWARE.SLIDE_LENGTH_MIN + (cfg.backThickness || 6) + HARDWARE.DRAWER_BOX_REAR_GAP) +
+        'mm o remueva los cajones.'
+      )
     }
     // ADITIVO 2026-07-19: drawerColumns también aplica al cálculo de pila
     const vCols = (cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) ? Math.floor(cfg.drawerColumns) : null
@@ -128,29 +141,29 @@ function validateDesign(design) {
     // when slide clearance is added (20 × 116mm = 2320mm > 2264mm → STRUCTURAL_FAIL).
     const slotHeight = cfg.drawerHeight + STRUCTURAL_LIMITS.DRAWER_TOP_CLEARANCE
     const drawerStack = drawersPerCol * slotHeight
-    const availableHeight = cfg.height - (cfg.baseboard ? (cfg.baseboardHeight || 100) : 0) - (2 * cfg.thickness)
+    const availableHeight = cfg.height - (cfg.baseboard ? (cfg.baseboardHeight || BASEBOARD.DEFAULT_HEIGHT) : 0) - (2 * cfg.thickness)
     if (drawerStack > availableHeight) {
       errors.push(
-        'Pilha de gavetas (' + drawersPerCol + ' × ' + slotHeight + 'mm c/folga = ' + drawerStack + 'mm) ' +
-        'excede a altura interna util (' + availableHeight + 'mm).'
+        'Cajones acumulados (' + drawersPerCol + ' × ' + slotHeight + 'mm c/holgura = ' + drawerStack + 'mm) ' +
+        'excede la altura interna útil (' + availableHeight + 'mm).'
       )
     } else if (drawerStack > availableHeight * 0.85 && (cfg.numShelves > 0 || cfg.numDividers > 0)) {
       // El usuario pidió estantes/divisores ADEMÁS de gavetas, pero la pila los
       // deja sin espacio → error de diseño real.
       errors.push(
-        'Pilha de gavetas (' + drawerStack + 'mm) ocupa ' +
-        Math.round(drawerStack/availableHeight*100) + '% da altura interna — sem espaco para estantes ou separador.'
+        'Cajones acumulados (' + drawerStack + 'mm) ocupa ' +
+        Math.round(drawerStack/availableHeight*100) + '% de la altura interna — sin espacio para estantes o separador.'
       )
     } else if (drawerStack > availableHeight * 0.85) {
       // [2026-07] Cômoda pura (numShelves === 0, sem divisores): llenar 85-100%
       // con gavetas ES el diseño buscado. Que quepa físicamente ya lo garantiza
       // el `if` inicial (drawerStack > availableHeight) → aviso, no rechazo.
       warnings.push(
-        'Pilha de gavetas ocupa ' + Math.round(drawerStack/availableHeight*100) +
-        '% da altura interna (cômoda de gavetas — sem estantes).'
+        'Cajones acumulados ocupa ' + Math.round(drawerStack/availableHeight*100) +
+        '% de la altura interna (cómoda de cajones — sin estantes).'
       )
     } else if (drawerStack > availableHeight * 0.7) {
-      warnings.push('Pilha de gavetas (' + drawerStack + 'mm) ocupa mais de 70% da altura interna.')
+      warnings.push('Cajones acumulados (' + drawerStack + 'mm) ocupa más del 70% de la altura interna.')
     }
   }
 
@@ -165,24 +178,24 @@ function validateDesign(design) {
     const compartmentWidth = internalWidth / (cfg.numDividers + 1)
     if (compartmentWidth < 150) {
       errors.push(
-        'Compartimento (' + Math.round(compartmentWidth) + 'mm) muito estreito com ' + cfg.numDividers +
-        ' divisores em ' + internalWidth + 'mm interno. Minimo: 150mm por compartimento.'
+        'Compartimento (' + Math.round(compartmentWidth) + 'mm) muy estrecho con ' + cfg.numDividers +
+        ' divisores en ' + internalWidth + 'mm interno. Mínimo: 150mm por compartimento.'
       )
     } else if (compartmentWidth < 250) {
       warnings.push(
-        'Compartimento (' + Math.round(compartmentWidth) + 'mm) estreito. Considere reduzir o numero de divisores.'
+        'Compartimento (' + Math.round(compartmentWidth) + 'mm) estrecho. Considere reducir el número de divisores.'
       )
     }
   }
 
   // 5. Baseboard
   if (cfg.baseboard) {
-    const bh = cfg.baseboardHeight || 100
+    const bh = cfg.baseboardHeight || BASEBOARD.DEFAULT_HEIGHT
     if (bh < STRUCTURAL_LIMITS.BASEBOARD_MIN_HEIGHT) {
-      errors.push('Rodape (' + bh + 'mm) abaixo do minimo de ' + STRUCTURAL_LIMITS.BASEBOARD_MIN_HEIGHT + 'mm.')
+      errors.push('Zócalo (' + bh + 'mm) debajo del mínimo de ' + STRUCTURAL_LIMITS.BASEBOARD_MIN_HEIGHT + 'mm.')
     }
     if (bh > STRUCTURAL_LIMITS.BASEBOARD_MAX_HEIGHT) {
-      warnings.push('Rodape (' + bh + 'mm) acima de ' + STRUCTURAL_LIMITS.BASEBOARD_MAX_HEIGHT + 'mm.')
+      warnings.push('Zócalo (' + bh + 'mm) por encima de ' + STRUCTURAL_LIMITS.BASEBOARD_MAX_HEIGHT + 'mm.')
     }
   }
 
@@ -201,8 +214,8 @@ function validateDesign(design) {
         const overlapY = Math.abs((d.y || 0) - (s.y || 0)) < (dHalfH - 1)
         if (overlapX && overlapY) {
           errors.push(
-            'COLISION: "' + s.name + '" atravessa "' + d.name + '" (x=' + d.x + ', y=' + s.y + '). ' +
-            'Peca horizontal deve ser gerada por compartimento. Design nao montavel.'
+            'COLISIÓN: "' + s.name + '" atraviesa "' + d.name + '" (x=' + d.x + ', y=' + s.y + '). ' +
+            'Pieza horizontal debe ser generada por compartimento. Diseño no armable.'
           )
         }
       }
@@ -213,7 +226,7 @@ function validateDesign(design) {
   if (design.nesting && design.nesting.length > 0) {
     for (const n of design.nesting) {
       if (n.overallEfficiency < 0.5) {
-        warnings.push('Eficiencia baixa (' + Math.round(n.overallEfficiency * 100) + '%) para chapas de ' + n.thickness + 'mm.')
+        warnings.push('Eficiencia baja (' + Math.round(n.overallEfficiency * 100) + '%) para placas de ' + n.thickness + 'mm.')
       }
     }
   }
@@ -225,10 +238,10 @@ function validateDesign(design) {
     errors,
     warnings,
     summary: errors.length > 0
-      ? (errors.length + ' erro(s) critico(s). Corrija antes de produzir.')
+      ? (errors.length + ' error(es) crítico(s). Corrija antes de producir.')
       : warnings.length > 0
-        ? ('Design aprovado com ' + warnings.length + ' aviso(s). Revise antes de cortar.')
-        : 'Design estruturalmente valido. Pronto para producao.',
+        ? ('Diseño aprobado con ' + warnings.length + ' aviso(s). Revise antes de cortar.')
+        : 'Diseño estructuralmente válido. Listo para producción.',
   }
 }
 

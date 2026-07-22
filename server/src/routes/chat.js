@@ -118,12 +118,24 @@ router.post('/design', async (req, res) => {
       source:  result.source,
     }
 
+    // ADITIVO 2026-07-20: supuestos declarados por la capa NLP (dimensiones no
+    // dichas por el cliente, valores clampeados, llaves fuera de contrato).
+    // Se propagan SIEMPRE, aunque el motor no llegue a correr.
+    const nlpAdjustments = Array.isArray(result.specAdjustments) ? result.specAdjustments : []
+    if (nlpAdjustments.length) response.specAdjustments = nlpAdjustments
+
     // If params were extracted and autoGenerate is on, run the engine
     if (result.params && autoGenerate) {
       try {
         const safeParams = normalizeDesignParams(result.params)
         response.design  = generateProject(safeParams)
         response.params  = safeParams
+        // Fusiona supuestos NLP + ajustes de fabricación del motor en una sola lista.
+        if (response.design && response.design.success) {
+          response.design.specAdjustments = [...nlpAdjustments, ...(response.design.specAdjustments || [])]
+          response.design.hasSpecAdjustments = response.design.specAdjustments.length > 0
+          response.specAdjustments = response.design.specAdjustments
+        }
       } catch (engineErr) {
         console.error('[chat/design] Engine error:', engineErr.message)
         response.engineError = engineErr.message

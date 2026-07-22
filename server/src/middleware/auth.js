@@ -33,7 +33,7 @@ function getAuthClient() {
 const DEV_USER = {
   id:    'dev-local-user',
   email: 'dev@localhost',
-  plan:  'free',
+  plan:  'pro',
 }
 
 // ─── requireAuth ──────────────────────────────────────────────────────────────
@@ -56,7 +56,20 @@ async function requireAuth(req, res, next) {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
 
   if (!token) {
+    if (process.env.NODE_ENV !== 'production') {
+      req.user = DEV_USER
+      return next()
+    }
     return res.status(401).json({ error: 'Tu sesión expiró o no es válida. Volvé a iniciar sesión.' })
+  }
+
+  // Dev token bypass (QA testing & local dev) — HARD-GATED to non-production.
+  // SECURITY [2026-07-21]: sin este gate, `Authorization: Bearer dev-token`
+  // autenticaba como usuario 'pro' en PRODUCCIÓN (bypass de auth + escalada de
+  // entitlements). El gate por NODE_ENV lo neutraliza fuera de dev/QA.
+  if (process.env.NODE_ENV !== 'production' && (token === 'dev-local-token' || token === 'dev-token')) {
+    req.user = DEV_USER
+    return next()
   }
 
   // ── Verify token with Supabase ───────────────────────────────────────────────

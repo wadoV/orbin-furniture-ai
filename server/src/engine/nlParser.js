@@ -161,7 +161,7 @@ function parseNaturalLanguage(input) {
     result.type = 'kitchen_low'; result.moduleType = 'base';
     result.height = 900; result.depth = 600; result.hasCountertop = true;
     notes.push('Tipo: Módulo Bajo');
-  } else if (detectFeature(text, ['cocina alta', 'cozinha alta', 'aereo', 'suspendido'])) {
+  } else if (detectFeature(text, ['cocina alta', 'cozinha alta', 'aereo', 'aéreo', 'módulo aéreo', 'modulo aereo', 'módulo alto', 'modulo alto', 'suspendido'])) {
     result.type = 'kitchen_high'; result.moduleType = 'aereo';
     result.height = 700; result.depth = 350;
     notes.push('Tipo: Módulo Alto');

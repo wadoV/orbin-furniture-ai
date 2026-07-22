@@ -1254,11 +1254,47 @@ export default function Viewer3D({
       const iD = D - BT - 0.2
       const zCenter = BT + iD / 2 + 0.1
 
+      // ★ SSOT 2026-07-20: la caja de gaveta se LEE del payload del motor (derivada de
+      //   las piezas reales de la lista de corte) en vez de recalcularse aquí.
+      //   El visor usaba `iD − 4`: divergía ~18mm de lo fabricado y, peor, ENMASCARABA
+      //   geometría imposible (una caja de 250mm en un mueble de 150mm se dibujaba
+      //   como 102mm y "encajaba" perfecta). Aditivo y con fallback:
+      //   - `engBox` presente  → se usa la geometría real del motor.
+      //   - módulo del motor SIN caja (`drawerBox: null`) → el motor la declaró NO
+      //     fabricable: se dibuja solo el frente, sin mentir con una caja inexistente.
+      //   - payload antiguo/sin piezas → fórmula histórica (cero regresión).
+      const engBox        = design?.drawerBox || null
+      const isEnginePayload = Array.isArray(design?.pieces) && design.pieces.length > 0
+      const boxDepthU     = engBox?.depth != null ? engBox.depth * SCALE : (iD - 4)
+      const boxOuterWU    = engBox?.outerWidth != null ? engBox.outerWidth * SCALE : null
+      const skipDrawerBox = isEnginePayload && !engBox
+
       // === BASEBOARD / FEET ===
-      if (cfg.baseboard !== false && cfg.hasRodapie !== false && cfg.hasPlinth !== false) {
-        const fr = makeMesh(iW, BH, T, bodyColor, 'Zocalo Frontal', 'baseboard')
-        fr.position.set(xOffset, BH / 2, D - T / 2 - 5)
-        mGroup.add(fr)
+      // ★ RODAPIÉ UNIVERSAL 2026-07-20 — alineado con closetEngine.js. Tres divergencias
+      //   corregidas, todas aditivas:
+      //   1) RECUO: el visor usaba `5` (=50mm); el motor ahora usa BASEBOARD.INSET=100mm
+      //      con clamp por fondo. Se replica la MISMA fórmula → 0mm de divergencia.
+      //   2) GUARD DE AÉREO: al visor le faltaba. Un colgado con `baseboard` undefined
+      //      dibujaba un zócalo que el motor NO corta (un aéreo no toca el piso).
+      //   3) baseType 'legs'/'none': el motor solo emite zócalo en 'recessed'; el visor
+      //      lo pintaba siempre. En 'legs' ahora se dibujan solo las patas.
+      const isAereoMod  = cfg.moduleType === 'aereo'
+      const bbType      = cfg.baseType || (cfg.baseboard === false ? 'none' : 'recessed')
+      const showBase    = cfg.baseboard !== false && cfg.hasRodapie !== false && cfg.hasPlinth !== false && !isAereoMod
+      // Mismo clamp que el motor: inset = min(100, floor((D − T − 50) / 2)), en mm.
+      const bbInsetMM   = Math.max(0, Math.min(100, Math.floor((D / SCALE - T / SCALE - 50) / 2)))
+      const bbInsetU    = bbInsetMM * SCALE
+
+      if (showBase) {
+        if (bbType === 'recessed') {
+          const fr = makeMesh(iW, BH, T, bodyColor, 'Zocalo Frontal', 'baseboard')
+          fr.position.set(xOffset, BH / 2, D - T / 2 - bbInsetU)
+          mGroup.add(fr)
+          // Zócalo trasero: el motor lo corta (RODAPIE-TRASERO) y el visor lo omitía.
+          const bkz = makeMesh(iW, BH, T, bodyColor, 'Zocalo Trasero', 'baseboard')
+          bkz.position.set(xOffset, BH / 2, T / 2 + bbInsetU)
+          mGroup.add(bkz)
+        }
 
         for (const fx of [-1, 1]) {
           const foot = makeMesh(3, BH, 3, 0x222222, 'Pata', 'feet')
@@ -1311,7 +1347,13 @@ export default function Viewer3D({
               df.position.set(startX, colY + dH / 2, D - T / 2)
               mGroup.add(df)
               // VULN-02 FIX: Holgura real de 26mm * SCALE (13mm por lado)
-              addDrawerBox(startX, colY + dH / 2, colW - (26 * SCALE), dH - 4, iD - 4, zCenter, dKey)
+              // ★ SSOT 2026-07-20: PROFUNDIDAD desde el motor. El ancho se mantiene
+              //   local: este bloque asume 2 columnas fijas y el motor soporta 2..4
+              //   (deuda abierta), así que su outerWidth puede no corresponder a esta
+              //   retícula. La divergencia documentada era la profundidad.
+              if (!skipDrawerBox) {
+                addDrawerBox(startX, colY + dH / 2, colW - (26 * SCALE), dH - 4, boxDepthU, zCenter, dKey)
+              }
               colY += dH
             }
           }
@@ -1323,7 +1365,11 @@ export default function Viewer3D({
             df.position.set(xOffset, curY + dH / 2, D - T / 2)
             mGroup.add(df)
             // VULN-02 FIX: Holgura real de 26mm * SCALE (13mm por lado)
-            addDrawerBox(xOffset, curY + dH / 2, iW - (26 * SCALE), dH - 4, iD - 4, zCenter, dKey)
+            // ★ SSOT 2026-07-20: ancho y profundidad REALES del motor (columna única,
+            //   la geometría del payload corresponde 1:1 con esta caja).
+            if (!skipDrawerBox) {
+              addDrawerBox(xOffset, curY + dH / 2, boxOuterWU ?? (iW - (26 * SCALE)), dH - 4, boxDepthU, zCenter, dKey)
+            }
             curY += dH
           }
         }

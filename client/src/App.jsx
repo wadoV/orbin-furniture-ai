@@ -103,7 +103,9 @@ export default function App() {
   // ★ Captura CAD unificada (front/top/iso) para el Plano de Montaje
   const cadCaptureRef = useRef(null)
   const handleCadCaptureReady = useCallback(fn => { cadCaptureRef.current = fn }, [])
-  const [showWelcome, setShowWelcome] = useState(true)
+  const [showWelcome, setShowWelcome] = useState(() => {
+    try { return !localStorage.getItem('orbin_onboarded') } catch { return false }
+  })
   const [activeTab, setActiveTab] = useState('params')
   const [loading,   setLoading]   = useState(false)
   const [modules,   setModules]   = useState(() => {

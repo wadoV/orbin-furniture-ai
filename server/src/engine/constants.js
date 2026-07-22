@@ -26,6 +26,12 @@ const HARDWARE = {
   DRAWER_SLIDE_PER_SIDE: 13,   // usado por validator.js (folga por lado)
   DRAWER_SLIDE_TOTAL: 26,      // usado por validator.js (13mm × 2 lados)
   SLIDE_CLEARANCE: 13,         // alias usado por closetEngine.js (= DRAWER_SLIDE_PER_SIDE)
+  // ★ 2026-07-20 (auditoría estructural): longitudes comerciales de corredera
+  //   telescópica (mm). NO existe herraje por debajo de 250mm: si el fondo útil
+  //   no alcanza 250, la gaveta NO es fabricable (no se debe emitir caja).
+  SLIDE_LENGTHS: [250, 300, 350, 400, 450, 500, 550, 600],
+  SLIDE_LENGTH_MIN: 250,
+  DRAWER_BOX_REAR_GAP: 20,     // holgura trasera caja↔fondo (valor histórico del motor)
   // ── Fondos ranurados ─────────────────────────────────────────────────────
   BACK_GROOVE_DEPTH: 6,
   BACK_GROOVE_FROM_EDGE: 20,
@@ -48,10 +54,35 @@ const STRUCTURAL_LIMITS = {
   MAX_MODULE_HEIGHT: 2600,
   BASEBOARD_MIN_HEIGHT: 60,
   BASEBOARD_MAX_HEIGHT: 150,
-  BASEBOARD_SETBACK_MIN: 30,
-  BASEBOARD_SETBACK_MAX: 50,
+  // ★ 2026-07-20: `BASEBOARD_SETBACK_MIN/MAX` eliminados — declarados y NUNCA
+  //   consumidos (mismo patrón que SLIDE_GAP). El recuo vive ahora en BASEBOARD.INSET,
+  //   que sí es la fuente única que lee el motor.
   DRAWER_TOP_CLEARANCE: 16,
   DRAWER_BACK_CLEARANCE: 50,
+}
+
+// ── RODAPIÉ / ZÓCALO (sóculo) — SSOT universal de mueble de piso ─────────────
+// ★ 2026-07-20. Referencias de marcenaria confirmadas:
+//   · Altura del sóculo: 100–150mm (estándar BR). Toe kick US: 3.5–4" ≈ 89–100mm.
+//     → DEFAULT_HEIGHT 100mm cae en el consenso de ambos mercados.
+//   · Recuo (inset): estándar BR 10–15 CM = 100–150mm. Mínimo ergonómico US 3" = 76mm;
+//     por debajo de eso el toe kick deja de cumplir su función (el pie no entra).
+//     → INSET 100mm. El motor usaba 50mm, por DEBAJO del piso ergonómico.
+//   · Espesor: el del propio carcasa (T) — no se define aquí a propósito.
+// SEMÁNTICA DE ALTURA (decisión 2026-07-20): H es la altura TOTAL e INCLUYE el
+//   rodapié → structuralHeight = H − BH. Pedir 870mm devuelve un mueble de 870mm.
+//   El rodapié consume espacio interior, NO se suma a H. Cero regresión.
+const BASEBOARD = {
+  DEFAULT_HEIGHT: 100,      // altura por defecto del zócalo (mm)
+  INSET: 100,               // recuo frontal/trasero desde la cara del mueble (mm)
+  INSET_ERGONOMIC_MIN: 76,  // 3" — por debajo el toe kick no funciona (referencia)
+  MIN_HEIGHT: 60,
+  MAX_HEIGHT: 150,
+  // Holgura mínima entre zócalo frontal y trasero. Si el fondo no da para
+  // 2×INSET + esto, el recuo se reduce (ver clampInset en closetEngine.js):
+  // sin este guard, en muebles poco profundos el zócalo frontal quedaba DETRÁS
+  // del trasero (geometría invertida).
+  MIN_INNER_GAP: 50,
 }
 
 // AEREO: Wall-mounted cabinet constraints (ABNT ergonomic guidelines). All values in mm.
@@ -106,4 +137,4 @@ const DEFAULTS = {
   mountHeight: 1400,
 }
 
-module.exports = { MATERIAL, EDGE_BANDING, HARDWARE, STRUCTURAL_LIMITS, DEFAULTS, AEREO }
+module.exports = { MATERIAL, EDGE_BANDING, HARDWARE, STRUCTURAL_LIMITS, BASEBOARD, DEFAULTS, AEREO }

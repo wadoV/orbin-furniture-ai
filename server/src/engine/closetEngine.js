@@ -11,12 +11,73 @@
  */
 
 const { v4: uuidv4 } = require('uuid')
+const { z } = require('zod')
 // ── Manifiesto matemático (Single Source of Truth) — DeepSeek R1 specs ──
 const FurnitureMath = require('../ai/furnitureMathSpecs')
 // ★ Ley física (chapa + herrajes): FUENTE ÚNICA en ./constants.
 //   Generador y validador leen el MISMO MATERIAL y el MISMO HARDWARE para evitar
 //   que el motor genere piezas que su propio validador rechaza (P0 resuelto 2026-07-19).
-const { MATERIAL, HARDWARE } = require('./constants')
+const { MATERIAL, HARDWARE, BASEBOARD } = require('./constants')
+
+// ★ RODAPIÉ UNIVERSAL 2026-07-20 — recuo con guard de fondo.
+//   El zócalo frontal se coloca en `z = D − T/2 − inset` y el trasero en `z = T/2 + inset`.
+//   Con un recuo fijo, en muebles poco profundos el FRONTAL cae DETRÁS del TRASERO
+//   (geometría invertida, mueble no ensamblable). Ej. D=200, T=18, inset=100:
+//   frontal z=91, trasero z=109 → invertido. Este clamp reduce el recuo lo justo
+//   para preservar `MIN_INNER_GAP` entre ambos, de forma determinista.
+//   Devuelve 0 si ni siquiera eso es posible (fondo ridículo) → zócalos a ras.
+function clampBaseboardInset(depth, thickness, desiredInset = BASEBOARD.INSET) {
+  const maxInset = Math.floor((depth - thickness - BASEBOARD.MIN_INNER_GAP) / 2)
+  return Math.max(0, Math.min(desiredInset, maxInset))
+}
+
+// ─── Zod Schema & Structural Validation ──────────────────────────────────────
+const dimensionsSchema = z.object({
+  width: z.number({ required_error: 'width es obligatorio', invalid_type_error: 'width debe ser un número' })
+    .refine((v) => Number.isFinite(v), { message: 'width debe ser un número finito' })
+    .refine((v) => v > 0, { message: 'width debe ser mayor a 0' }),
+  height: z.number({ required_error: 'height es obligatorio', invalid_type_error: 'height debe ser un número' })
+    .refine((v) => Number.isFinite(v), { message: 'height debe ser un número finito' })
+    .refine((v) => v > 0, { message: 'height debe ser mayor a 0' }),
+  depth: z.number({ required_error: 'depth es obligatorio', invalid_type_error: 'depth debe ser un número' })
+    .refine((v) => Number.isFinite(v), { message: 'depth debe ser un número finito' })
+    .refine((v) => v > 0, { message: 'depth debe ser mayor a 0' }),
+  thickness: z.number({ required_error: 'thickness es obligatorio', invalid_type_error: 'thickness debe ser un número' })
+    .refine((v) => Number.isFinite(v), { message: 'thickness debe ser un número finito' })
+    .refine((v) => v > 0, { message: 'thickness debe ser mayor a 0' }),
+})
+
+function validateStructuralDimensions(cfg) {
+  const fields = ['width', 'height', 'depth', 'thickness']
+  const dimsToValidate = {}
+
+  for (const field of fields) {
+    const rawVal = cfg?.[field]
+    if (rawVal === null || rawVal === undefined || typeof rawVal === 'boolean' || rawVal === '') {
+      const err = new Error(`INVALID_DIMENSION: El campo "${field}" es obligatorio y no puede ser nulo, booleano ni vacío.`)
+      err.code = 'STRUCTURAL_FAIL_BAD_INPUT'
+      err.statusCode = 400
+      throw err
+    }
+    const numVal = Number(rawVal)
+    if (isNaN(numVal) || !Number.isFinite(numVal) || numVal <= 0) {
+      const err = new Error(`INVALID_DIMENSION: El campo "${field}" debe ser un número finito y mayor a 0. Valor recibido: ${rawVal}`)
+      err.code = 'STRUCTURAL_FAIL_BAD_INPUT'
+      err.statusCode = 400
+      throw err
+    }
+    dimsToValidate[field] = numVal
+  }
+
+  const parseResult = dimensionsSchema.safeParse(dimsToValidate)
+  if (!parseResult.success) {
+    const issueMessage = parseResult.error.issues.map(i => i.message).join(', ')
+    const err = new Error(`STRUCTURAL_FAIL_BAD_INPUT: ${issueMessage}`)
+    err.code = 'STRUCTURAL_FAIL_BAD_INPUT'
+    err.statusCode = 400
+    throw err
+  }
+}
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -29,7 +90,7 @@ const DEFAULTS = {
   drawerLayout: 'vertical',
   hasDoors: true, numDoors: 2, doorType: 'hinged',
   edgeBandingType: 'thin',
-  baseboard: true, baseboardHeight: 100,
+  baseboard: true, baseboardHeight: BASEBOARD.DEFAULT_HEIGHT,
   baseType: 'recessed', legHeight: 100,
   topStyle: null,   // null = auto por moduleType ('base'→overlay, resto→inset)
   doorStyle: null,  // null = auto por moduleType ('base'→overlay, resto→legacy)
@@ -65,6 +126,22 @@ function makePiece(id, name, type, w, h, t, qty, x, y, z, grainDir, edgeBanding,
     notes: notes || '',
     frontType: frontType
   }
+}
+
+// ★ FIX 2026-07-20 (auditoría estructural — profundidad de caja de gaveta):
+//   El motor elegía `Math.max(250, floor((D-BT-20)/50)*50)`. El piso de 250mm
+//   IGNORABA el espacio disponible: con D < 276mm emitía una caja MÁS PROFUNDA
+//   que el propio mueble (verificado: aéreo de baño D=150 → caja de 250mm, 100mm
+//   fuera de la carcasa) y el validador lo daba por VALIDADO.
+//   Regla real de marcenaria: se monta la corredera comercial MÁS LARGA que quepa;
+//   por debajo de 250mm no existe herraje telescópico → no hay caja fabricable.
+//   Comportamiento IDÉNTICO al histórico para todo D >= 276mm (cero regresión).
+function pickSlideDepth(availableDepth) {
+  let best = 0
+  for (const len of HARDWARE.SLIDE_LENGTHS) {
+    if (len <= availableDepth && len > best) best = len
+  }
+  return best
 }
 
 function generateCutList(pieces, defaultEdgeThickness = 1.0) {
@@ -116,6 +193,7 @@ function generateCutList(pieces, defaultEdgeThickness = 1.0) {
 // ningún path existente. El preset "Escritorio" generaba antes un aparador
 // cerrado (sin vano, gavetas de ancho completo) — topología incorrecta.
 function generateDeskFurniture(cfg) {
+  validateStructuralDimensions(cfg)
   const { width: W, height: H, depth: D, thickness: T, backThickness: BT } = cfg
   const pedW = Math.min(Math.max(cfg.pedestalWidth || 400, 300), W - 600 > 300 ? W - 600 : W * 0.4)
   const pieces = []
@@ -162,9 +240,9 @@ function generateDeskFurniture(cfg) {
       pedCenterX, yPos, D - T/2, 'horizontal', { all: true }, 'Holgura 2mm/lado', 'drawer_front'), drawerGroupId: drawerId })
     const boxOuterW = FurnitureMath.drawerBox.netWidth(pedInterior)
     const boxInnerW = FurnitureMath.drawerBox.headerWidth(boxOuterW, T)
-    const boxD = Math.max(250, Math.floor((D - BT - 20) / 50) * 50)
+    const boxD = pickSlideDepth(D - BT - HARDWARE.DRAWER_BOX_REAR_GAP)
     const boxH = dh - 40
-    if (boxOuterW > 2 * T && boxInnerW > 10 && boxH > 20) {
+    if (boxOuterW > 2 * T && boxInnerW > 10 && boxH > 20 && boxD > 0) {
       pieces.push({ ...makePiece(nextId('GAV-LAT'), `Lateral Cajon ${i+1}`, 'drawer_box', boxD, boxH, T, 2, pedCenterX, yPos, D/2, 'horizontal', { front: true }), drawerGroupId: drawerId })
       pieces.push({ ...makePiece(nextId('GAV-EST'), `Frente/Trasera Cajon ${i+1}`, 'drawer_box', boxInnerW, boxH, T, 2, pedCenterX, yPos, D/2, 'horizontal', { front: true }), drawerGroupId: drawerId })
       pieces.push({ ...makePiece(nextId('GAV-FUNDO'), `Fondo Cajon ${i+1}`, 'drawer_bottom', boxOuterW, boxD, 6, 1, pedCenterX, yPos - boxH/2 + 3, D/2, 'horizontal', { none: true }), drawerGroupId: drawerId })
@@ -193,6 +271,7 @@ function generateDeskFurniture(cfg) {
 
 function generateFurniture(params) {
   const cfg = { ...DEFAULTS, ...params }
+  validateStructuralDimensions(cfg)
 
   // ── ADITIVO 2026-07-19: topología escritorio — rama dedicada, path viejo intacto
   if (cfg.moduleType === 'desk') return generateDeskFurniture(cfg)
@@ -222,7 +301,7 @@ function generateFurniture(params) {
   if ((cfg.numDrawers || 0) > 0) {
     const CLEAR = 16, MINH = 80
     const availableHeight = cfg.height
-      - (cfg.baseboard ? (cfg.baseboardHeight || 100) : 0)
+      - (cfg.baseboard ? (cfg.baseboardHeight || BASEBOARD.DEFAULT_HEIGHT) : 0)
       - (2 * cfg.thickness)
     if (availableHeight > 0) {
       // ADITIVO 2026-07-19: drawerColumns también aplica al auto-fit de la pila
@@ -294,7 +373,10 @@ function generateFurniture(params) {
 
   const isAereo = moduleType === 'aereo'
   const isBase = moduleType === 'base' || moduleType === 'standard'
-  const BH3 = (baseboard && !isAereo) ? (baseboardHeight || 100) : 0
+  // ★ GUARD DE MUEBLE COLGADO: un aéreo NUNCA lleva rodapié (va a pared, no al piso).
+  //   `!isAereo` es la barrera dura; `baseboard:false` es el opt-out explícito del usuario.
+  //   BH3=0 → structuralHeight = H completa (la altura no se ve alterada).
+  const BH3 = (baseboard && !isAereo) ? (baseboardHeight || BASEBOARD.DEFAULT_HEIGHT) : 0
   const structuralHeight = H - BH3
 
   // ── MÉTODO DE MONTAJE DE PUERTA (cfg.doorStyle) ─────────────────────────────
@@ -351,8 +433,9 @@ function generateFurniture(params) {
   const topT = (topStyle === 'overlay' && hasTopPanel && !isAereo) ? T : 0
 
   const latBottom = onLegs ? BH3 : 0
-  const latH = H - latBottom - topT
-  const latY = latBottom + latH/2
+  const baseDeduction = cfg.baseThicknessDeduction || 0
+  const latH = FurnitureMath.calculatePanelHeight(H, baseDeduction, topT, latBottom)
+  const latY = latBottom + baseDeduction + latH/2
   pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', CD, latH, T, 1, T/2, latY, CD/2, 'vertical', { front: true }))
   pieces.push(makePiece(nextId('LAT-R'), 'Lateral Derecho', 'lateral', CD, latH, T, 1, W - T/2, latY, CD/2, 'vertical', { front: true }))
 
@@ -389,14 +472,26 @@ function generateFurniture(params) {
       : internalWidth
   pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', backWidth, backH, BT, 1, W/2, BH3 + T + baseBackH/2, CD - BT/2, 'none'))
 
+  // ★ RODAPIÉ UNIVERSAL 2026-07-20: recuo desde SSOT (BASEBOARD.INSET = 100mm, estándar
+  //   BR 10–15cm) con clamp para fondos poco profundos. Antes era `50` hardcodeado, por
+  //   debajo del mínimo ergonómico de 76mm (3"). IDs renombrados a RODAPIE-FRONTAL/TRASERO
+  //   (el `type: 'baseboard'` NO cambia — es la clave que consumen visor, cutlist,
+  //   planRenderer y ExportPanel, así que el renombre es seguro).
   if (baseType === 'recessed' && BH3 > 0) {
-    pieces.push(makePiece(nextId('RDPE-F'), 'Zócalo Frontal', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, D - T/2 - 50, 'vertical', { front: true }))
-    pieces.push(makePiece(nextId('RDPE-B'), 'Zócalo Trasero', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, T/2 + 50, 'vertical', { front: true }))
+    const bbInset = clampBaseboardInset(D, T)
+    const bbNote  = bbInset < BASEBOARD.INSET
+      ? `Recuo reducido a ${bbInset}mm (fondo ${D}mm insuficiente para el estándar de ${BASEBOARD.INSET}mm)`
+      : `Recuo ${bbInset}mm (estándar marcenaria BR)`
+    pieces.push(makePiece(nextId('RODAPIE-FRONTAL'), 'Zócalo Frontal', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, D - T/2 - bbInset, 'vertical', { front: true }, bbNote))
+    pieces.push(makePiece(nextId('RODAPIE-TRASERO'), 'Zócalo Trasero', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, T/2 + bbInset, 'vertical', { front: true }, bbNote))
   }
 
   const safeDrawerHeight = Math.max(100, drawerHeight)
   let drawerYStart = BH3 + T
-  const SLIDE_GAP = HARDWARE.SLIDE_CLEARANCE
+  // ★ 2026-07-20: `SLIDE_GAP` eliminada — estaba declarada y NUNCA usada. La holgura
+  //   real de corredera (26mm) entra por FurnitureMath.drawerBox.netWidth(), que lee
+  //   HARDWARE.DRAWER_SLIDE_TOTAL. La variable muerta sugería un segundo punto de
+  //   aplicación que no existía.
 
   const numDivs = cfg.numDividers || 0
   // ★ ADITIVO 2026-07-19 (work item N columnas): drawerColumns (2..4) generaliza el
@@ -447,8 +542,8 @@ function generateFurniture(params) {
       const boxOuterW = FurnitureMath.drawerBox.netWidth(drawerW)
       const boxInnerW = FurnitureMath.drawerBox.headerWidth(boxOuterW, T)
       // VULN-03 FIX: Profundidad comercial basada en espacio útil con 20mm de holgura trasera
-      const maxAvailableD = D - BT - 20
-      const boxD = Math.max(250, Math.floor(maxAvailableD / 50) * 50)
+      const maxAvailableD = D - BT - HARDWARE.DRAWER_BOX_REAR_GAP
+      const boxD = pickSlideDepth(maxAvailableD)
       const boxH = safeDrawerHeight - 40
       const boxZ = D/2 + BT/2
 
@@ -777,7 +872,7 @@ function generateHardwareBOM(cfg) {
     // histórico si numDoors no viene.
     const nDoors = (cfg.numDoors && cfg.numDoors > 0) ? cfg.numDoors : Math.ceil(cfg.width / 600)
     const doorH = (cfg.height || 720)
-      - ((cfg.baseboard && cfg.moduleType !== 'aereo') ? (cfg.baseboardHeight || 100) : 0)
+      - ((cfg.baseboard && cfg.moduleType !== 'aereo') ? (cfg.baseboardHeight || BASEBOARD.DEFAULT_HEIGHT) : 0)
       - ((cfg.numDrawers || 0) > 0 ? (cfg.numDrawers * (cfg.drawerHeight || 180)) : 0)
     const perDoor = doorH > 1600 ? 4 : doorH > 900 ? 3 : 2
     bom.push({ type: 'Dobradica', description: 'Dobradica clip 35mm 110°', quantity: nDoors * perDoor, unit: 'un' })
@@ -885,10 +980,26 @@ function generateProject(params) {
       }
     }
 
+    // ★ SSOT 2026-07-20: geometría REAL de la caja de gaveta, DERIVADA de las piezas
+    //   ya generadas (la lista de corte es la fuente autoritativa — es lo que se
+    //   fabrica). Se publica en el payload para que Viewer3D la CONSUMA en vez de
+    //   recalcularla por su cuenta. Antes el visor usaba `iD − 4`, divergiendo ~18mm
+    //   del despiece y llegando a ENMASCARAR geometría imposible.
+    //   `null` = el motor decidió que la caja NO es fabricable (sin corredera que quepa).
+    const _gavLat   = pieces.find(p => p.type === 'drawer_box' && /GAV-LAT/.test(p.id))
+    const _gavFundo = pieces.find(p => p.type === 'drawer_bottom')
+    const drawerBoxSpec = _gavLat ? {
+      depth:         _gavLat.width,      // profundidad = largo de la corredera comercial
+      height:        _gavLat.height,
+      outerWidth:    _gavFundo ? _gavFundo.width : null,
+      wallThickness: _gavLat.thickness,
+    } : null
+
     return {
       success:     true,
       specAdjustments,
       hasSpecAdjustments: specAdjustments.length > 0,
+      drawerBox:   drawerBoxSpec,
       id:          'ORB-' + uuidv4().slice(0, 8).toUpperCase(),
       type:        config.moduleType,
       version:     '4.5.0-LEGACY_RESTORATION',
@@ -909,7 +1020,9 @@ function generateProject(params) {
     return {
       success: false,
       error: 'Error en la generación del diseño.',
-      details: err.message
+      details: err.message,
+      code: err.code || 'ENGINE_ERROR',
+      statusCode: err.statusCode || 500
     }
   }
 }
@@ -962,4 +1075,47 @@ function generateProjectAutoSplit(params) {
   }
 }
 
-module.exports = { generateProject, generateProjectAutoSplit, generateFurniture, generateCutList, estimateNesting, generateHardwareBOM }
+// ─── Preset Library & Load Validation ───────────────────────────────────────
+const PRESETS = {
+  kitchen_cabinet: { moduleType: 'base', width: 600, height: 870, depth: 580, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true, handleType: 'gola' },
+  kitchen_island:  { moduleType: 'base', width: 900, height: 870, depth: 650, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true, drawerLayout: 'vertical', drawerHeight: 180, handleType: 'gola' },
+  wardrobe:        { moduleType: 'standard', width: 1200, height: 2200, depth: 580, thickness: 18, backThickness: 6, numShelves: 3, numDrawers: 2, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, drawerLayout: 'vertical', drawerHeight: 180, handleType: 'standard' },
+  pantry:          { moduleType: 'standard', width: 800, height: 2200, depth: 500, thickness: 18, backThickness: 6, numShelves: 4, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, handleType: 'standard' },
+  vanity:          { moduleType: 'base', width: 800, height: 850, depth: 500, thickness: 18, backThickness: 6, numShelves: 0, numDrawers: 2, numDividers: 0, hasDoors: false, baseboard: true, baseboardHeight: 100, hasCountertop: true, drawerLayout: 'vertical', drawerHeight: 200, handleType: 'push' },
+  office_credenza: { moduleType: 'base', width: 1200, height: 750, depth: 450, thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 2, numDividers: 1, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: true, baseboardHeight: 100, hasCountertop: true, drawerLayout: 'right', drawerHeight: 180, handleType: 'standard' },
+  wall_unit:       { moduleType: 'aereo', width: 800, height: 700, depth: 350, thickness: 18, backThickness: 6, numShelves: 2, numDrawers: 0, numDividers: 0, hasDoors: true, numDoors: 2, doorType: 'hinged', baseboard: false, baseboardHeight: 0, hasCountertop: false, handleType: 'push' },
+  desk:            { moduleType: 'desk', width: 1200, height: 750, depth: 600, thickness: 18, backThickness: 6, pedestalWidth: 400, numDrawers: 3, numShelves: 0, numDividers: 0, hasDoors: false, baseboard: false, baseboardHeight: 0, hasCountertop: false, handleType: 'standard' }
+}
+
+function loadPreset(presetName, overrides = {}) {
+  const preset = PRESETS[presetName]
+  if (!preset) {
+    console.error(`[loadPreset] Error: El preset "${presetName}" no existe en la biblioteca.`)
+    const err = new Error(`PRESET_NOT_FOUND: El preset "${presetName}" no existe.`)
+    err.code = 'STRUCTURAL_FAIL_BAD_INPUT'
+    err.statusCode = 400
+    throw err
+  }
+
+  const merged = { ...DEFAULTS, ...preset, ...overrides }
+
+  try {
+    validateStructuralDimensions(merged)
+  } catch (err) {
+    console.error(`[loadPreset] Error de validación estructural en preset "${presetName}":`, err.message)
+    throw err
+  }
+
+  return generateProject(merged)
+}
+
+module.exports = {
+  generateProject,
+  generateProjectAutoSplit,
+  generateFurniture,
+  generateCutList,
+  estimateNesting,
+  generateHardwareBOM,
+  loadPreset,
+  PRESETS
+}

@@ -7,7 +7,7 @@
 
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const { generateProject, generateProjectAutoSplit } = require('./closetEngine')
+const { generateProject, generateProjectAutoSplit, loadPreset, PRESETS } = require('./closetEngine')
 const { validateDesign } = require('./validator')
 
 // Helpers
@@ -68,6 +68,25 @@ describe('closetEngine.generateProject', () => {
     assert.ok(hasDrawers, 'Drawer-only cabinet should have drawer pieces')
   })
 
+  it('rejects invalid dimensions with STRUCTURAL_FAIL_BAD_INPUT', () => {
+    const invalidInputs = [
+      { width: 0, height: 2000, depth: 600 },
+      { width: -500, height: 2000, depth: 600 },
+      { width: 1000, height: 'invalid', depth: 600 },
+      { width: 1000, height: 2000, depth: NaN },
+      { width: 1000, height: 2000, depth: Infinity },
+      { width: 1000, height: 2000, depth: 600, thickness: -18 },
+      { width: 1000, height: 2000, depth: 600, thickness: null }
+    ]
+
+    for (const params of invalidInputs) {
+      const res = generateProject(params)
+      assert.strictEqual(res.success, false, `Expected failure for input: ${JSON.stringify(params)}`)
+      assert.strictEqual(res.code, 'STRUCTURAL_FAIL_BAD_INPUT', `Expected code STRUCTURAL_FAIL_BAD_INPUT, got: ${res.code}`)
+      assert.strictEqual(res.statusCode, 400, `Expected statusCode 400, got: ${res.statusCode}`)
+    }
+  })
+
 })
 
 // Suite 2: closetEngine.generateProjectAutoSplit
@@ -107,6 +126,30 @@ describe('closetEngine.generateProjectAutoSplit', () => {
     assert.ok(totalDrawerPieces > 0, 'Should have drawer pieces distributed across modules')
   })
 
+})
+
+// Suite: closetEngine.loadPreset
+describe('closetEngine.loadPreset', () => {
+  it('loads valid presets and passes validateStructuralDimensions', () => {
+    for (const presetName of Object.keys(PRESETS)) {
+      const proj = loadPreset(presetName)
+      assert.ok(proj.success, `loadPreset("${presetName}") failed: ${proj.error || proj.details}`)
+      assert.ok(Array.isArray(proj.pieces) && proj.pieces.length > 0, `loadPreset("${presetName}") must produce pieces`)
+      
+      const latL = proj.pieces.find(p => p.name === 'Lateral Izquierdo')
+      if (latL) {
+        assert.ok(latL.height <= proj.configuration.height, `Lateral height ${latL.height} exceeds module height ${proj.configuration.height}`)
+      }
+    }
+  })
+
+  it('rejects unknown presets with PRESET_NOT_FOUND / STRUCTURAL_FAIL_BAD_INPUT', () => {
+    assert.throws(() => {
+      loadPreset('non_existent_preset_xyz')
+    }, (err) => {
+      return err.code === 'STRUCTURAL_FAIL_BAD_INPUT' && err.statusCode === 400
+    })
+  })
 })
 
 // Suite 3: validator VALIDADO / RECHAZADO

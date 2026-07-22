@@ -7,6 +7,20 @@ import { Link } from 'react-router-dom'
 export default function DisenoParametricoMuebles() {
   return (
     <div className="min-h-screen bg-[#0D0D0D]">
+      {/* JSON-LD Article — prerenderizado por scripts/prerender.mjs */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": "Diseño Paramétrico de Muebles: Qué es y Por qué los Mejores Carpinteros lo Usan",
+        "description": "El diseño paramétrico transforma la carpintería. Define las reglas y el software genera todo automáticamente.",
+        "author": { "@type": "Organization", "name": "Orbin Technologies", "url": "https://orbin.app" },
+        "publisher": { "@type": "Organization", "name": "Orbin Technologies", "logo": { "@type": "ImageObject", "url": "https://orbin.app/favicon-32.png" } },
+        "datePublished": "2026-05-31",
+        "dateModified": "2026-07-19",
+        "image": "https://orbin.app/og-image.png",
+        "url": "https://orbin.app/blog/diseno-parametrico-muebles-cocina",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://orbin.app/blog/diseno-parametrico-muebles-cocina" }
+      }) }} />
       <header className="border-b border-white/5 px-6 py-4 flex items-center justify-between max-w-4xl mx-auto">
         <Link to="/" className="flex items-center gap-2">
           <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">

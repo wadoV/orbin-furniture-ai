@@ -83,18 +83,47 @@ async function callGeminiVision(systemPrompt, userPrompt, base64Image, mimeType)
   return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 }
 
+function extractParamsFromText(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)(?:```|$)/i);
+  const jsonCandidate = codeBlockMatch ? codeBlockMatch[1] : text;
+
+  try {
+    const raw = JSON.parse(jsonCandidate.trim());
+    return raw.params || (raw.width ? raw : null);
+  } catch (err) {}
+
+  const paramsBlockMatch = jsonCandidate.match(/"params"\s*:\s*(\{(?:[^{}]|\{[^{}]*\})*\})/);
+  if (paramsBlockMatch) {
+    try {
+      return JSON.parse(paramsBlockMatch[1]);
+    } catch (err) {}
+  }
+
+  let clean = jsonCandidate.replace(/```(?:json)?/gi, '').trim();
+  const lastValidSeparator = Math.max(clean.lastIndexOf(','), clean.lastIndexOf('}'), clean.lastIndexOf('{'));
+  if (lastValidSeparator !== -1) {
+    clean = clean.slice(0, lastValidSeparator + 1).replace(/,\s*$/, '');
+    let openBraces = (clean.match(/\{/g) || []).length - (clean.match(/\}/g) || []).length;
+    let openBrackets = (clean.match(/\[/g) || []).length - (clean.match(/\]/g) || []).length;
+    while (openBrackets > 0) { clean += ']'; openBrackets--; }
+    while (openBraces > 0) { clean += '}'; openBraces--; }
+    try {
+      const raw = JSON.parse(clean);
+      return raw.params || (raw.width ? raw : null);
+    } catch (err) {}
+  }
+
+  return null;
+}
+
 async function parseDesignIntent(text) {
   try {
     const raw = await callGemini(FURNITURE_SYSTEM_PROMPT, text)
-    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/)
-    if (!jsonMatch) throw new Error('No JSON in Gemini response')
-    
-    let cleanStr = (jsonMatch[1] || jsonMatch[0]).trim()
-    // Remove trailing commas which break standard JSON.parse in Node
-    cleanStr = cleanStr.replace(/,\s*([\]}])/g, '$1')
-    
-    const parsed = JSON.parse(cleanStr)
-    return { ...parsed, source: 'gemini-fallback' }
+    const params = extractParamsFromText(raw)
+    if (!params) throw new Error('No JSON in Gemini response')
+    return { ...params, source: 'gemini-fallback' }
   } catch (err) {
     console.error('[geminiClient] Parse error:', err.message)
     throw err
@@ -103,23 +132,11 @@ async function parseDesignIntent(text) {
 
 async function chatDesign(history, userMessage, options = {}) {
   try {
-    // History needs to be formatted for Gemini if we wanted full context, 
-    // but for fallback we might just send the latest context or a simplified summary.
-    // For now, let's just send the user message with the system prompt.
     const context = history.map(h => `${h.role}: ${h.content}`).join('\n')
     const fullMessage = context ? `History:\n${context}\n\nUser: ${userMessage}` : userMessage
     
     const text = await callGemini(options.systemPrompt || CHAT_SYSTEM_PROMPT, fullMessage)
-    
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/)
-    let params = null
-    if (jsonMatch) {
-      try {
-        const raw = JSON.parse(jsonMatch[1] || jsonMatch[0])
-        // Accept nested { params: {...} } OR flat root-level { width:..., height:... }
-        params = raw.params || (raw.width ? raw : null)
-      } catch {}
-    }
+    const params = extractParamsFromText(text)
 
     return { message: text, params, source: 'gemini-fallback' }
   } catch (err) {

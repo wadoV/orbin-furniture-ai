@@ -51,17 +51,34 @@ export const PLANS = {
   },
 }
 
+// DEV BYPASS [2026-07-22]: allows automated smoke-tests to reach /app without a
+// real Supabase account. Activated ONLY when Vite is running in development mode.
+const _IS_DEV_BYPASS =
+  typeof import.meta !== 'undefined' &&
+  import.meta.env?.DEV === true
+
 const defaultUser = {
   id: null,
   name: '',
   email: '',
-  plan: 'free',
+  plan: _IS_DEV_BYPASS ? 'pro' : 'free',
   company_name: '',
   isLoggedIn: false,
   isVerified: true,
   loading: true
 }
 const UserContext = createContext(null)
+
+const DEV_MOCK_USER = {
+  id: 'dev-local-user',
+  name: 'Dev User',
+  email: 'dev@localhost',
+  plan: 'pro',
+  company_name: 'Dev Corp',
+  isLoggedIn: true,
+  isVerified: true,
+  loading: false,
+}
 
 function planFromSession(session) {
   if (!session) return 'free'
@@ -71,6 +88,7 @@ function planFromSession(session) {
 
 export function UserProvider({ children }) {
   const [user, setUser] = useState(() => {
+    if (_IS_DEV_BYPASS) return DEV_MOCK_USER
     try {
       const saved = localStorage.getItem('orbin-user-session')
       if (saved) {
@@ -122,6 +140,13 @@ export function UserProvider({ children }) {
   }, [])
 
   useEffect(() => {
+    // DEV BYPASS: skip Supabase entirely, stay logged-in as dev-local-user.
+    if (_IS_DEV_BYPASS) {
+      console.warn('[UserContext] DEV_BYPASS active — using mock dev-local-user session. Never enable in production.')
+      setUser(DEV_MOCK_USER)
+      return  // no Supabase subscription needed
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setUser({
@@ -134,6 +159,15 @@ export function UserProvider({ children }) {
           loading: false
         })
         redeemPendingPromo()
+      } else if (import.meta.env.DEV && localStorage.getItem('orbin-user-session')) {
+        try {
+          const local = JSON.parse(localStorage.getItem('orbin-user-session'))
+          if (local.isLoggedIn) {
+            setUser({ ...DEV_MOCK_USER, ...local, loading: false })
+            return
+          }
+        } catch {}
+        setUser({ ...defaultUser, loading: false })
       } else {
         localStorage.removeItem('orbin-user-session')
         setUser({ ...defaultUser, loading: false })
