@@ -1,9 +1,112 @@
-import { useState } from 'react'
-import { FileText, Download, Save, Trash2, Box, Wrench, DollarSign, Layers, Package, X, Copy } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { FileText, Download, Save, Trash2, Box, Wrench, DollarSign, Layers, Package, X, Copy, ShieldCheck, Lock } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import { api } from '../api/client.js'
 import CutListTable from './CutListTable.jsx'
 import ValidationReport from './ValidationReport.jsx'
 import { calculateCostEstimation } from '../data/materials.js'
+import { GALLERY_CATEGORIES, suggestCategory } from '../data/galleryCategories.js'
+
+// ─── Viability Gate ─────────────────────────────────────────────────────────
+// Espejo EXACTO del guard del backend (server/src/routes/design.js → /save-viable).
+// Fail-closed: sin reporte de validación del servidor NO se considera viable.
+// El backend regenera y revalida igual — esto es solo UX, nunca la autoridad.
+function evaluateViability(design) {
+  const v = design?.validation
+  if (!v || v.status !== 'VALIDADO') {
+    return { viable: false, reason: 'validation_missing' }
+  }
+  if (Array.isArray(v.errors) && v.errors.length > 0) {
+    return { viable: false, reason: 'errors' }
+  }
+  const critical = (design.specAdjustments || []).filter(a => a?.severity === 'critical')
+  if (critical.length > 0) {
+    return { viable: false, reason: 'critical_adjustments' }
+  }
+  return { viable: true, reason: null }
+}
+
+// ─── Save as Viable Design ──────────────────────────────────────────────────
+function SaveViableButton({ design, t }) {
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState(null) // { type: 'ok' | 'error', msg }
+  const [category, setCategory] = useState(() => suggestCategory(design?.configuration?.moduleType))
+
+  const { viable, reason } = useMemo(() => evaluateViability(design), [design])
+
+  const blockedMsg = {
+    validation_missing:    t('viable_blocked_novalidation') || 'Sin validación estructural del servidor. Regenerá el diseño.',
+    errors:                t('viable_blocked_errors')       || 'El diseño tiene errores estructurales. Corregilos antes de archivarlo.',
+    critical_adjustments:  t('viable_blocked_critical')     || 'Hay desviaciones críticas de fabricación (piezas fuera de chapa).',
+  }[reason]
+
+  async function handleSave() {
+    if (!viable || saving) return
+    const suggested = `${design.configuration?.moduleType || 'Módulo'} ${design.dimensions?.external?.width || ''}x${design.dimensions?.external?.height || ''}`.trim()
+    const name = window.prompt(t('viable_name_prompt') || 'Nombre del diseño verificado:', suggested)
+    if (!name || !name.trim()) return
+
+    setSaving(true)
+    setStatus(null)
+    try {
+      await api.saveViableDesign(name.trim(), design.configuration, category || null)
+      setStatus({ type: 'ok', msg: t('viable_saved') || 'Guardado en la Biblioteca Verificada.' })
+    } catch (err) {
+      setStatus({ type: 'error', msg: err?.message || 'No pudimos guardar el diseño verificado.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {viable && (
+        <label className="flex items-center gap-2 bg-surface-3/40 px-3 py-2 rounded-xl border border-white/5">
+          <span className="text-[9px] font-black text-muted uppercase tracking-widest shrink-0">{t('gallery_category') || 'Categoría'}</span>
+          <select
+            value={category}
+            onChange={e => setCategory(e.target.value)}
+            className="flex-1 bg-transparent text-white text-[11px] font-bold outline-none cursor-pointer"
+          >
+            <option value="" className="bg-[#151518]">{t('gallery_uncategorized') || 'Sin clasificar'}</option>
+            {GALLERY_CATEGORIES.map(c => (
+              <option key={c.value} value={c.value} className="bg-[#151518]">{c.label}</option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <button
+        onClick={handleSave}
+        disabled={!viable || saving}
+        title={viable ? (t('save_viable_hint') || 'Archivar en la Biblioteca Verificada') : blockedMsg}
+        aria-disabled={!viable || saving}
+        className={`w-full h-14 flex items-center justify-center gap-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] border transition-all
+          ${viable
+            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/40 hover:bg-emerald-500/25 hover:border-emerald-400/70 shadow-xl shadow-emerald-500/10 hover:shadow-emerald-500/25 active:scale-[0.98]'
+            : 'bg-surface-3/30 text-muted/50 border-white/5 cursor-not-allowed'}`}
+      >
+        {saving
+          ? <span className="w-5 h-5 border-3 border-emerald-300/30 border-t-emerald-300 rounded-full animate-spin" aria-hidden="true" />
+          : <>
+              {viable ? <ShieldCheck size={18} /> : <Lock size={16} />}
+              {t('save_viable_design') || 'Guardar como Diseño Viable'}
+            </>
+        }
+      </button>
+
+      {!viable && blockedMsg && (
+        <p className="text-[10px] text-muted/70 font-medium text-center leading-snug px-2">{blockedMsg}</p>
+      )}
+
+      {status && (
+        <p className={`text-[10px] font-bold text-center leading-snug px-2 ${status.type === 'ok' ? 'text-emerald-300' : 'text-error'}`}>
+          {status.msg}
+        </p>
+      )}
+    </div>
+  )
+}
 
 // ─── Cost Card ──────────────────────────────────────────────────────────────
 function CostCard({ label, value, accent = false, sub }) {
@@ -367,7 +470,7 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
       )}
 
       {/* ── Save Button ─────────────────────────────────────────────────── */}
-      <div className="pt-6 border-t border-white/5">
+      <div className="pt-6 border-t border-white/5 space-y-3">
         <button
           onClick={onSave}
           disabled={loadingSave}
@@ -378,6 +481,10 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
             : <><Save size={18} /> {t('save_project')}</>
           }
         </button>
+
+        {/* Biblioteca Verificada — solo se habilita con diseño VALIDADO sin
+            errores ni desviaciones críticas. El backend revalida igualmente. */}
+        <SaveViableButton design={design} t={t} />
       </div>
     </div>
   )

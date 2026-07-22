@@ -8,6 +8,181 @@
 
 ## CHANGELOG DE AUDITORÍA
 
+### 2026-07-21 — GALERÍA (Verified Templates Catalog · Fase 1) · additive
+
+**Objetivo:** catálogo navegable de plantillas verificadas (`viable_designs`) con
+búsqueda + filtro por categoría y pipeline Copiar/Pegar (Ctrl+C / Ctrl+V) paramétrico.
+
+**Backend (delta mínimo — la persistencia ya existía y estaba verificada E2E):**
+- Migración `007_viable_designs_category.sql` (additiva, idempotente): columna
+  `category TEXT` + índice. **Aplicada y verificada contra la DB live**
+  (`information_schema` → `category | text`).
+- `POST /api/designs/save-viable`: acepta `category` opcional, normalizada contra
+  allow-list `GALLERY_CATEGORIES = [cocina, aereo, bano, closet, escritorio]`
+  (fuera de lista → null). El guard anti-forjado (regenerar + revalidar) queda intacto.
+- `GET /api/designs/viable`: devuelve `category` (las dims salen de `parametric_json`).
+- **Decisión:** `category` NO se deriva de `module_type` (un `standard` puede ser
+  closet o baño) — se captura explícita al guardar.
+
+**Frontend (charcoal parity, todo additivo):**
+- `client/src/data/galleryCategories.js`: SSOT de categorías (labels + `suggestCategory`),
+  compartida por ResultPanel y GalleryCatalog.
+- `GalleryCatalog.jsx` (nuevo): overlay charcoal, fetch `listViableDesigns()`, búsqueda
+  en vivo + chips (`Todos/Cocina/Aéreos/Baño/Closet/Escritorio`, icono `Filter`), cards
+  con Nombre · Categoría · W×H×D. Botón **Copiar** (`navigator.clipboard`) + **Usar**.
+- `Header.jsx`: nav **Galería** (`LayoutGrid`), solo en `/app`, prop `onOpenGallery`.
+- `ResultPanel.jsx` (SaveViableButton): selector de categoría en el flujo de guardado.
+- `App.jsx`: estado `galleryOpen`, render del overlay, `handleUseTemplateParams()` +
+  **Ctrl+V global** que lee el portapapeles, valida el JSON y regenera vía
+  `generateProject()` (Viewer3D + despiece se reconstruyen). Ctrl+V se ignora dentro de
+  inputs/textarea/contentEditable para no secuestrar el paste nativo. Toast de feedback.
+
+**Auditoría aéreos (read-only, sin cambios):** confirmado empíricamente que
+`moduleType:'aereo'` omite rodapié (`!isAereo` → BH3=0, 0 piezas `baseboard`) y usa
+min-depth 100mm en vez de 300mm. Aéreo de baño 600×600×150 → VALIDADO sin falsos avisos.
+
+**Verificación:** endpoint save-viable+category insert/select OK contra DB live; grafo
+esbuild completo (`main.jsx`) 0 errores; `vite build --logLevel error` corrió sin emitir
+errores (no finaliza en el sandbox por el cap de 45s → **el build final 0-errores lo corre
+Antigravity como gate previo al commit**).
+
+### 2026-07-20 (d) — RODAPIÉ UNIVERSAL (SSOT + recuo estándar BR) ✅ 90/90 · build 0 errores
+
+**Investigación previa (fuentes al pie del changelog):**
+- Altura del sóculo BR: **100–150mm**. Toe kick US: 3.5–4" ≈ 89–100mm. → `DEFAULT_HEIGHT 100mm`
+  cae en el consenso de ambos mercados (el valor que ya usaba el motor: confirmado correcto).
+- Recuo (recúo/inset): estándar BR **10–15 CM = 100–150mm**. Mínimo ergonómico US **3" = 76mm**;
+  por debajo de eso el toe kick deja de cumplir su función. El motor usaba **50mm**, es decir
+  **por DEBAJO del piso ergonómico** → corregido a **100mm**.
+- ⚠ El brief original pedía "inset 10mm a 15mm": error de unidad de **10×** (son cm, no mm).
+  Un recuo de 10–15mm no es un toe kick, es una junta de sombra. Descartado.
+
+**SEMÁNTICA DE ALTURA (decisión explícita del usuario):** `H` es la altura **TOTAL** e **INCLUYE**
+el rodapié → `structuralHeight = H − BH`. Pedir 870mm devuelve un mueble de 870mm y el rodapié
+consume interior. Se descartó "H crece con el rodapié" porque rompía la altura de TODOS los
+diseños guardados y descuadraba la encimera de cocina (870+30=900). **Cero regresión.**
+> Nota: el brief pedía "H incluye el rodapié SIN alterar el interior neto" — matemáticamente
+> incompatible. No se puede fijar H, añadir rodapié y conservar interior salvo que H crezca.
+
+- **SSOT nuevo `BASEBOARD` en `constants.js`**: `DEFAULT_HEIGHT 100`, `INSET 100`,
+  `INSET_ERGONOMIC_MIN 76`, `MIN_HEIGHT 60`, `MAX_HEIGHT 150`, `MIN_INNER_GAP 50`.
+  Eliminados `|| 100` hardcodeados en **4 puntos** de `closetEngine.js` y **2** de `validator.js`
+  (misma duplicación que causó los P0 de chapa y de profundidad de caja).
+- **`BASEBOARD_SETBACK_MIN/MAX` eliminados**: declarados y NUNCA consumidos (patrón `SLIDE_GAP`).
+- **Guard de recuo (`clampBaseboardInset`)** — bug real evitado: con recuo fijo de 100mm y fondo
+  bajo, el zócalo FRONTAL caía **detrás** del TRASERO (geometría invertida, no ensamblable).
+  Ej. D=200/T=18: frontal z=91 vs trasero z=109. El clamp reduce el recuo lo justo para preservar
+  `MIN_INNER_GAP`, de forma determinista. Verificado: D=300→gap 64mm · D=250→32mm · D=200→32mm,
+  **0 inversiones**. La pieza documenta el recuo aplicado en `notes`.
+- **Excepciones verificadas (0 piezas de rodapié):** `aereo` (incluso con `baseboard:true`
+  forzado — un colgado no toca el piso), `baseboard:false`, `baseType:'none'`, `baseType:'legs'`.
+  En los tres primeros `structuralHeight = H` (la altura no se altera).
+- **Cutlist/CNC:** IDs renombrados `RDPE-F/B` → **`RODAPIE-FRONTAL` / `RODAPIE-TRASERO`**.
+  Seguro: todo el downstream (Viewer3D, CutlistGenerator, planRenderer, ExportPanel, tests)
+  discrimina por `type: 'baseboard'`, **nunca por el ID**. Exportan con cotas netas
+  (`564×100×18` nominal → `cutHeight 99` tras el tapacanto de 1mm). ✓
+- **Viewer3D: 3 divergencias con el motor corregidas (aditivo).**
+  1. **Recuo**: usaba `5` (=50mm) fijo; ahora replica la fórmula del motor con el mismo clamp.
+  2. **Faltaba el guard de aéreo**: un colgado con `baseboard` undefined pintaba un zócalo que
+     el motor no corta.
+  3. **`baseType 'legs'/'none'`**: el motor solo emite zócalo en `'recessed'`; el visor lo
+     pintaba siempre. Ahora en `'legs'` dibuja solo las patas.
+  4. Añadido el **zócalo trasero**, que el motor sí corta y el visor omitía.
+- **Verificado:** suite **90/90 pass** · `vite build` **exit 0** (`✓ built in 16.05s`).
+
+Fuentes: [Guia da Marcenaria — rodapés, alturas padrão](https://www.guiadamarcenaria.com.br/post/rodap%C3%A9s-na-marcenaria-tipos-alturas-padr%C3%A3o-materiais-e-t%C3%A9cnicas-de-instala%C3%A7%C3%A3o) ·
+[Bruna Carvalho Arquitetura — o que é sóculo (recuo 10–15cm)](https://brunacarvalhoarquitetura.com.br/o-que-e-soculo/) ·
+[Kitchen Cabinet Kings — standard toe kick height/depth](https://kitchencabinetkings.com/blog/standard-toe-kick-height/) ·
+[ESS2GO — ideal toe kick dimensions (3" mínimo ergonómico)](https://www.ess2go.com/post/ideal-toe-kick-dimensions-and-height-for-cabinets)
+
+### 2026-07-20 (c) — SSOT: eliminadas las fuentes de verdad duplicadas ✅ 90/90 · build 0 errores
+- **`furnitureMathSpecs.js` ya CONSUME `constants.js`.** Hardcodeaba `internalSpan − 26`:
+  era una segunda constitución numérica, igual que el P0 de chapa (jul-19) y el P0 de
+  profundidad (jul-20b). Ahora `netWidth()` lee `HARDWARE.DRAWER_SLIDE_TOTAL`.
+  **Propagación verificada en runtime:** mutando la constante a 40, `netWidth(564)` pasa
+  538→524 y el motor emite `GAV-FUNDO` 838→824. Antes, mutarla no cambiaba nada.
+  Solo consumidor: `closetEngine.js` + `smoke.test.js` (server-only, sin riesgo de bundle).
+- **⚠ Trampa evitada:** se intentó usar `HARDWARE.BACK_GROOVE_DEPTH` (=6) como default de
+  `groovedWidth`, pero el default histórico del motor es **8** y son magnitudes distintas
+  (profundidad de ranura en el canto ≠ sobreancho del fondo). Revertido y documentado
+  in-line. Habría alterado el ancho del fondo ranurado en silencio.
+- **`Viewer3D.jsx` ya LEE la caja de gaveta del payload del motor.** El motor publica
+  `drawerBox: { depth, height, outerWidth, wallThickness }` **derivado de las piezas reales
+  de la lista de corte** (fuente autoritativa). El visor lo consume con fallback triple:
+  payload del motor → módulo sin caja (`null`) → fórmula histórica (payloads antiguos).
+  **Divergencia medida y eliminada: 18mm exactos** (visor 532 vs motor 550 en D=580);
+  desk 600: −2mm. Ancho: 838 en ambos, sin cambio visual.
+- **El visor deja de mentir:** si el motor declara la caja NO fabricable (`drawerBox: null`,
+  p.ej. aéreo D=150), el visor ahora dibuja **solo el frente** en vez de inventar una caja
+  de 102mm que "encajaba". Era exactamente el mecanismo que ocultó el P0 de jul-20b.
+- **`SLIDE_GAP` eliminada** (`closetEngine.js`): declarada y nunca usada; sugería un segundo
+  punto de aplicación de la holgura que no existía. 0 referencias restantes.
+- **Verificado:** suite **90/90 pass** · `vite build` **exit 0** (`✓ built in 21.43s`).
+- **DEUDA que SIGUE abierta (consciente):** `Viewer3D` hardcodea **2 columnas**
+  (`Math.ceil(nD/2)`) mientras el motor soporta `drawerColumns` 2..4. Por eso el ancho de
+  caja se mantiene local en la rama horizontal (el `outerWidth` del motor no corresponde a
+  esa retícula). La profundidad —la divergencia documentada— sí se corrigió en ambas ramas.
+  El visor sigue construyendo desde `cfg` y no desde `pieces`: unificarlo es un rewrite
+  (perdería animación de gavetas, encimeras unificadas, drag & snap), NO un cambio quirúrgico.
+
+### 2026-07-20 (b) — AUDITORÍA ESTRUCTURAL: P0 profundidad de caja de gaveta ✅ 90/90 tests
+- **BUG P0 (geometría imposible, se daba por VALIDADO):** `closetEngine.js` calculaba
+  `boxD = Math.max(250, floor((D−BT−20)/50)*50)`. El **piso de 250mm ignoraba el espacio
+  disponible**: con `D < 276mm` la caja salía más profunda que el propio mueble.
+  Verificado empíricamente: aéreo de baño `D=150` → `GAV-LAT` de **250mm** (100mm fuera de
+  la carcasa) y `validateDesign` devolvía **VALIDADO, 0 errores**. Presente en las DOS rutas
+  (pila normal L503 y pedestal `desk` L215).
+- **Por qué nadie lo vio:** `Viewer3D.jsx` deriva la caja de `iD − 4` (= `D−BT−42`), NO del
+  motor. El 3D dibujaba una caja de 102mm que encajaba perfecta mientras la lista de corte
+  pedía 250mm. **El visor enmascaraba el defecto.**
+- **Fix (`pickSlideDepth`)**: se elige la corredera comercial MÁS LARGA que quepa
+  (`HARDWARE.SLIDE_LENGTHS = [250…600]`); si ninguna cabe (<250mm de fondo útil) **no existe
+  herraje telescópico** → no se emite caja (cae en el guard existente `caja imposible`).
+  Nuevas constantes: `SLIDE_LENGTHS`, `SLIDE_LENGTH_MIN: 250`, `DRAWER_BOX_REAR_GAP: 20`.
+- **Cero regresión verificada:** para todo `D ≥ 276mm` el resultado es IDÉNTICO al histórico
+  (580→550, 600→550, 400→350, 300→250, desk 600→550). Solo cambian los casos que antes
+  producían geometría imposible. Suite **90/90 pass**.
+- **Validator: faltaba por completo la regla de PROFUNDIDAD.** Añadida en la sección 4
+  (`usableDepth < SLIDE_LENGTH_MIN` → error). Los 3 casos imposibles ahora dan **RECHAZADO**.
+- **VERIFICADO OK (sin cambios):** holgura 26mm (13/lado) vía `FurnitureMath.drawerBox.netWidth`;
+  frente de gaveta 2mm/lado (`DRAWER_FRONT_GAP`); tapacanto 1mm por canto rebajado
+  (`generateCutList(pieces, defaultEdgeThickness=1.0)`, redondeo 0.1mm, piso 2mm);
+  guardas de colisión **0 colisiones** en 7 configs (incl. 12 gavetas + 4 estantes, 2 divisores,
+  3 columnas); **determinismo 200 corridas, 0 divergencias**; pila excesiva → RECHAZADO correcto.
+- **DEUDA ABIERTA (no tocada, riesgo medio):**
+  1. `furnitureMathSpecs.js` **hardcodea `internalSpan − 26`** en vez de leer
+     `HARDWARE.DRAWER_SLIDE_TOTAL` → viola SSOT; cambiar la constante NO propaga al motor.
+  2. `Viewer3D.jsx` calcula la caja por su cuenta (`iD − 4`) → **divergencia visor/despiece de
+     ~18mm** en muebles válidos. El 3D no es fiel a la pieza fabricada.
+  3. `Viewer3D.jsx` hardcodea **2 columnas** (`Math.ceil(nD/2)`); el motor soporta
+     `drawerColumns` 2..4 → un mueble de 3 columnas se renderiza como 2.
+  4. `SLIDE_GAP` (L451 `closetEngine.js`) declarada y **nunca usada** — la holgura real entra
+     por `netWidth`. Variable muerta, engañosa.
+
+### 2026-07-20 — PURGA DE PRESETS (production readiness) ✅ BUILD 0 ERRORES
+- **Eliminado `FURNITURE_PRESETS` + `<FurniturePresets/>`** (`client/src/components/InputPanel.jsx`):
+  los 10 botones quick-start (cocina, isla, ropero, baño, escritorio, flotante + 4 aéreos) y su
+  `onApply → onGenerate({replace:true})`. El flujo del usuario queda: **NL Chat + controles
+  paramétricos manuales**. ~205 líneas fuera; import `Layout` (lucide) retirado.
+- **CONSERVADO deliberadamente:** `DrawerPresets` (★ PROTECTED — helper local de cajones, solo
+  setea `numDrawers`/`drawerLayout` en el form, NO dispara generación); `materials.js` (data core);
+  `OnboardingWizard` (primer arranque, funcional — usa plantillas internas propias; si también debe
+  salir, es un corte aparte). La lógica `payload.replace` en `handleGenerate` se mantiene (aditiva,
+  inofensiva, reutilizable).
+- **Código muerto retirado en `App.jsx`:** import de `OnboardingFlow` (nunca renderizado; su lógica
+  fue absorbida por `OnboardingWizard` el 2026-06-23) y estado huérfano `showOnboarding` (declarado,
+  jamás leído).
+- **Copy i18n:** `server_offline_desc` (pt/es/en) + fallback en `App.jsx` ya no mencionan presets.
+  Las claves `preset_*`/`furniture_presets`/`FURNITURE_PRESETS` en `i18n.js` quedan como strings
+  muertos (inertes, sin referencias en código; limpiables en un pass de i18n).
+- **Verificado:** `vite build` → `✓ built in 17.18s`, **exit 0, 0 errores** (copia materializada en
+  /tmp por la lentitud/truncado del mount OneDrive — ver nota de entorno 2026-07-19). Único aviso:
+  chunks >500kB, preexistente.
+- **Colateral de entorno:** quedaron 2 paquetes de plataforma Linux en `client/node_modules`
+  (`@rollup/rollup-linux-x64-gnu`, `@esbuild/linux-x64`, --no-save, ~3MB, inertes en Windows;
+  `npm ci` los elimina). Hay ~13 `vite.config.js.timestamp-*.mjs` basura en `client/` (artefactos
+  de vite crasheado) — borrables sin riesgo.
+
 ### 2026-07-19 — P0 ley de chapa + HARDWARE unificados ✅ COMMITEADO `c35a248` (45/45 tests)
 - **Bug P0 resuelto:** el motor tenía DOS constituciones físicas contradictorias. `closetEngine.js`
   definía `MATERIAL` local (2800×2070, kerf 3.2) mientras `validator.js` usaba el de `constants.js`

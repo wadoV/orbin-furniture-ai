@@ -88,6 +88,14 @@ export const api = {
     return request('POST', '/projects/save', { design: payload, label });
   },
   listProjects:   ()         => request('GET',  '/projects'),
+
+  // Biblioteca Verificada (viable_designs) — solo diseños VALIDADO.
+  // El server REGENERA y REVALIDA con closetEngine + validator antes de guardar:
+  // lo que se manda es la configuración paramétrica, no la geometría derivada.
+  saveViableDesign: (designName, params, category = null) =>
+    request('POST', '/designs/save-viable', { design_name: designName, params, category }),
+  listViableDesigns: ()      => request('GET',  '/designs/viable'),
+
   getProject:     (id)       => request('GET',  `/projects/${id}`),
   deleteProject:  (id)       => request('DELETE', `/projects/${id}`),
 

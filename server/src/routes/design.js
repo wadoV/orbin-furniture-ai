@@ -113,7 +113,8 @@ router.post('/generate', requireAuth, async (req, res) => {
     const result = generateProject(finalParams)
 
     if (!result.success) {
-      return res.status(500).json(result)
+      const status = result.statusCode || (result.code === 'STRUCTURAL_FAIL_BAD_INPUT' ? 400 : 500)
+      return res.status(status).json(result)
     }
 
     // BUG FIX (Recovery item a): run the real structural validator instead of
@@ -221,6 +222,200 @@ router.get('/prices', getPrices)
 
 // Expose the handler function so it can be mounted directly at the root (/api/prices) in index.js
 router.getPrices = getPrices
+
+// ─── Biblioteca Verificada (viable_designs) ──────────────────────────────────
+// POST /api/designs/save-viable  — persiste SOLO diseños estructuralmente
+//                                  viables (validator.js → VALIDADO).
+// GET  /api/designs/viable       — lista la biblioteca del usuario.
+//
+// Montado también en /api/designs y /designs (ver server/src/index.js).
+// Migración requerida: server/supabase/migrations/005_create_viable_designs.sql
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Claves que closetEngine.generateProject() consume. Cualquier otra cosa que
+// venga del cliente (piezas, cutList, nesting, ids, timestamps, campos
+// inventados) se DESCARTA: `parametric_json` es un payload de ENTRADA
+// replayable, no un volcado de la salida.
+const ENGINE_INPUT_KEYS = [
+  'moduleType', 'type',
+  'width', 'height', 'depth', 'thickness', 'backThickness',
+  'numShelves', 'numDrawers', 'numDividers', 'numDoors', 'drawerHeight',
+  'hasDoors', 'doorType', 'baseboard', 'baseboardHeight',
+  'hasCountertop', 'countertopThickness', 'countertopOverhang',
+  'materialId', 'materialBody', 'materialFront',
+  'hangingRod', 'slideType', 'edgeBanding', 'grainDirection',
+]
+
+function pickEngineParams(source = {}) {
+  const out = {}
+  for (const k of ENGINE_INPUT_KEYS) {
+    const v = source[k]
+    if (v === undefined || v === null || typeof v === 'function') continue
+    out[k] = v
+  }
+  return out
+}
+
+// Categorías de negocio de la Galería. `category` NO se deriva de moduleType
+// (un `standard` puede ser closet o baño); se captura explícita al guardar.
+// null = sin clasificar. Cualquier valor fuera de la lista se normaliza a null.
+const GALLERY_CATEGORIES = ['cocina', 'aereo', 'bano', 'closet', 'escritorio']
+
+const viableSchema = z.object({
+  design_name: z.string().min(3).max(120).trim(),
+  params:      z.record(z.any()).optional(),
+  design:      z.record(z.any()).optional(),
+  category:    z.string().optional(),
+})
+
+router.post('/save-viable', requireAuth, async (req, res) => {
+  try {
+    // 1) Validación de entrada
+    const parsed = viableSchema.safeParse(req.body)
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nombre de diseño inválido (3–120 caracteres) o payload mal formado.',
+        code: 'BAD_INPUT',
+      })
+    }
+    const { design_name } = parsed.data
+    const rawParams = parsed.data.params || parsed.data.design?.configuration || parsed.data.design
+
+    if (!rawParams || typeof rawParams !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: 'Enviá "params" (configuración paramétrica) o "design" con su "configuration".',
+        code: 'BAD_INPUT',
+      })
+    }
+
+    const engineParams = pickEngineParams(rawParams)
+    if (!engineParams.width || !engineParams.height || !engineParams.depth) {
+      return res.status(400).json({
+        success: false,
+        error: 'La configuración no tiene dimensiones (width/height/depth).',
+        code: 'BAD_INPUT',
+      })
+    }
+
+    // 2) GUARD CRÍTICO — nunca confiar en la geometría que manda el cliente.
+    //    Se REGENERA el diseño server-side con el mismo motor y se valida esa
+    //    salida. Si aceptáramos `pieces` del body, cualquiera podría forjar un
+    //    payload "válido" con devtools y contaminar la biblioteca verificada.
+    const generated = generateProject(engineParams)
+    if (!generated || !generated.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'El motor no pudo generar este diseño. No se guardó.',
+        code: 'ENGINE_FAIL',
+      })
+    }
+
+    const validation = validateDesign(generated)
+
+    // Colisiones / desviaciones estructurales críticas emitidas por el motor
+    // (p. ej. PIECE_EXCEEDS_PLATE). VALIDADO no las cubre todas: el motor las
+    // reporta por separado en specAdjustments.
+    const criticalAdjustments = (generated.specAdjustments || [])
+      .filter(a => a && a.severity === 'critical')
+
+    const isViable =
+      validation.status === 'VALIDADO' &&
+      validation.errors.length === 0 &&
+      criticalAdjustments.length === 0
+
+    if (!isViable) {
+      return res.status(400).json({
+        success: false,
+        error: 'Diseño no viable: no se guarda en la Biblioteca Verificada.',
+        code: 'NOT_VIABLE',
+        validation,
+        criticalAdjustments,
+      })
+    }
+
+    // 3) Persistencia — sin fallback en memoria a propósito. Una "biblioteca
+    //    verificada" que se evapora al reiniciar el proceso es peor que un
+    //    error explícito: el usuario creería que guardó y no guardó nada.
+    const sb = getSupabase()
+    if (!sb) {
+      return res.status(503).json({
+        success: false,
+        error: 'El almacenamiento no está disponible en este momento. Intentá de nuevo en unos minutos.',
+        code: 'STORAGE_UNAVAILABLE',
+      })
+    }
+
+    // Normalizar categoría contra la allow-list (fuera de lista → null).
+    const rawCategory = typeof parsed.data.category === 'string' ? parsed.data.category.trim().toLowerCase() : null
+    const category = GALLERY_CATEGORIES.includes(rawCategory) ? rawCategory : null
+
+    const record = {
+      user_id:         req.user?.id && req.user.id !== 'dev-local-user' ? req.user.id : null,
+      design_name,
+      module_type:     generated.configuration?.moduleType || generated.type || 'standard',
+      category,
+      parametric_json: engineParams,          // ← replayable: generateProject(parametric_json)
+      snapshot_json:   { design: generated, validation },
+      engine_version:  generated.version || null,
+    }
+
+    const { data, error } = await sb
+      .from('viable_designs')
+      .insert(record)
+      .select('id, design_name, module_type, category, created_at')
+      .single()
+
+    if (error) throw new Error(error.message)
+
+    return res.status(201).json({
+      success: true,
+      saved:   data,
+      validation,
+    })
+  } catch (err) {
+    console.error('[design/save-viable] Error:', err)
+    return res.status(500).json({
+      success: false,
+      error: 'No pudimos guardar el diseño verificado. Intentá de nuevo.',
+    })
+  }
+})
+
+// ─── GET /api/designs/viable ─────────────────────────────────────────────────
+
+router.get('/viable', requireAuth, async (req, res) => {
+  try {
+    const sb = getSupabase()
+    if (!sb) {
+      return res.status(503).json({
+        success: false,
+        error: 'El almacenamiento no está disponible en este momento.',
+        code: 'STORAGE_UNAVAILABLE',
+      })
+    }
+
+    let query = sb
+      .from('viable_designs')
+      .select('id, design_name, module_type, category, parametric_json, engine_version, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    // Scoped al usuario autenticado (las filas legacy con user_id NULL no se listan)
+    if (req.user?.id && req.user.id !== 'dev-local-user') {
+      query = query.eq('user_id', req.user.id)
+    }
+
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+
+    return res.json({ success: true, designs: data || [] })
+  } catch (err) {
+    console.error('[design/viable-list] Error:', err)
+    return res.status(500).json({ success: false, error: 'No pudimos cargar la biblioteca verificada.' })
+  }
+})
 
 module.exports = router
 

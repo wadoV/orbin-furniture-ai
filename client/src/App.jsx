@@ -5,13 +5,13 @@ import InputPanel from './components/InputPanel.jsx'
 import ResultPanel from './components/ResultPanel.jsx'
 import ChatPanel from './components/ChatPanel.jsx'
 import ProjectsPanel from './components/ProjectsPanel.jsx'
+import GalleryCatalog from './components/GalleryCatalog.jsx'
 import CarpentryAdvisor from './components/CarpentryAdvisor.jsx'
 const Viewer3D = lazy(() => import('./components/Viewer3D.jsx'))
 import ExportPanel from './components/ExportPanel.jsx'
 import MemoryPanel from './components/MemoryPanel.jsx'
 import DesignHealthPanel from './components/DesignHealthPanel.jsx'
 import WelcomeScreen from './components/WelcomeScreen.jsx'
-import OnboardingFlow from './components/OnboardingFlow.jsx'
 import OnboardingWizard from './components/OnboardingWizard.jsx'
 import MultiplayerLayer from './components/MultiplayerLayer.jsx'
 import ImageToParametricPanel from './components/ImageToParametricPanel.jsx'
@@ -132,9 +132,8 @@ export default function App() {
   // ★ Server health tracking — enables offline fallback in handleSendMessage
   const [serverOnline, setServerOnline] = useState(true)
   const [mobileView, setMobileView] = useState('panel')
-  const [showOnboarding, setShowOnboarding] = useState(() => {
-    try { return !localStorage.getItem('orbin-onboarding-done') } catch { return false }
-  })
+  const [galleryOpen, setGalleryOpen] = useState(false)
+  const [pasteToast, setPasteToast] = useState(null) // { type:'ok'|'error', msg }
   const [showOnboardingWizard, setShowOnboardingWizard] = useState(() => {
     try { return !localStorage.getItem('orbin_onboarded') } catch { return false }
   })
@@ -678,9 +677,47 @@ export default function App() {
     if (sock) sock.emit('state-change', next)
   }
 
+  // ── Pipeline paramétrico (Galería / Ctrl+V) ─────────────────────────────────
+  // Los params de una plantilla son la ENTRADA replayable del motor; hidratar =
+  // regenerar vía handleGenerate para que Viewer3D + despiece se reconstruyan.
+  const isLikelyEngineParams = (o) =>
+    o && typeof o === 'object' && !Array.isArray(o) &&
+    ['width', 'height', 'depth'].every(k => Number.isFinite(Number(o[k])) && Number(o[k]) > 0)
+
+  const flashPaste = (type, msg) => {
+    setPasteToast({ type, msg })
+    setTimeout(() => setPasteToast(t => (t && t.msg === msg ? null : t)), 2600)
+  }
+
+  const handleUseTemplateParams = (params) => {
+    if (!isLikelyEngineParams(params)) {
+      flashPaste('error', t('paste_invalid') || 'El diseño copiado no es válido.')
+      return
+    }
+    // Apila la plantilla como un módulo nuevo (reversible con Ctrl+Z).
+    handleGenerate({ params })
+    setActiveTab('params')
+    flashPaste('ok', t('paste_ok') || 'Plantilla cargada en el lienzo.')
+  }
+
+  // Ctrl+V global: lee el portapapeles, valida el JSON y lo hidrata.
+  const handleClipboardPaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text) return
+      let parsed
+      try { parsed = JSON.parse(text) } catch { return } // no era JSON nuestro → ignorar
+      const params = parsed?.parametric_json || parsed?.params || parsed
+      if (!isLikelyEngineParams(params)) return
+      handleUseTemplateParams(params)
+    } catch {
+      // Portapapeles inaccesible (permisos / contexto no seguro) → silencioso.
+    }
+  }
+
   useEffect(() => {
     const handleKeyDown = (e) => {
-      const isInput = ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)
+      const isInput = ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName) || document.activeElement.isContentEditable
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (isInput) return
         e.preventDefault()
@@ -690,6 +727,12 @@ export default function App() {
         if (isInput) return
         e.preventDefault()
         redo()
+      }
+      // Ctrl+V / Cmd+V — pegar plantilla paramétrica. Nunca secuestra el paste
+      // nativo dentro de inputs/textarea/contentEditable.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        if (isInput) return
+        handleClipboardPaste()
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (isInput) return
@@ -768,15 +811,27 @@ export default function App() {
           />
         )}
         {/* Header containing inline pricing dropdown */}
-        <Header 
-          modules={modules} 
-          serverOnline={serverOnline} 
+        <Header
+          modules={modules}
+          serverOnline={serverOnline}
+          onOpenGallery={() => setGalleryOpen(true)}
           onPasteModule={m => {
             saveHistory([...modules, m], 'Módulo pegado');
             setSelectedModuleId(m.id);
             setActiveTab('params');
-          }} 
+          }}
         />
+
+        {/* ── Galería de plantillas verificadas ──────────────────────────── */}
+        {galleryOpen && (
+          <GalleryCatalog
+            onClose={() => setGalleryOpen(false)}
+            onUseTemplate={(params) => {
+              setGalleryOpen(false)
+              handleUseTemplateParams(params)
+            }}
+          />
+        )}
         <main className="max-w-screen-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24 xl:pb-6">
           {/* Mobile view toggle */}
           <div className="xl:hidden flex items-center justify-between mb-3">
@@ -867,7 +922,7 @@ export default function App() {
                     {!serverOnline && (
                       <div className="mb-4 bg-warning/10 border border-warning/30 rounded-xl px-4 py-3 text-sm text-warning" role="alert">
                         <p className="font-bold uppercase text-[10px] tracking-widest mb-1">{t('server_offline_title', 'Servidor sin conexión')}</p>
-                        <p className="text-[11px] opacity-80">{t('server_offline_desc', 'Los presets y el generador necesitan el servidor. Verifica que esté encendido e inténtalo de nuevo.')}</p>
+                        <p className="text-[11px] opacity-80">{t('server_offline_desc', 'El generador necesita el servidor. Verifica que esté encendido e inténtalo de nuevo.')}</p>
                       </div>
                     )}
                     <InputPanel
@@ -1008,6 +1063,14 @@ export default function App() {
             <button onClick={undo} className="text-primary text-sm font-bold uppercase tracking-widest hover:underline flex items-center gap-1.5">
               <RotateCcw size={14} /> Undo
             </button>
+          </div>
+        )}
+
+        {pasteToast && (
+          <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 border px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-4 duration-300 z-[360] ${
+            pasteToast.type === 'ok' ? 'bg-emerald-500/10 border-emerald-400/30' : 'bg-danger/10 border-danger/30'
+          }`}>
+            <span className={`text-sm font-bold ${pasteToast.type === 'ok' ? 'text-emerald-300' : 'text-danger'}`}>{pasteToast.msg}</span>
           </div>
         )}
 

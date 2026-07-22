@@ -4,7 +4,7 @@
  */
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Ruler, Crown, LogOut, Settings, Zap, ChevronDown, Tag, Check, X, Globe, ArrowLeft, Loader2, Clipboard, Lock, Unlock } from 'lucide-react'
+import { Ruler, Crown, LogOut, Settings, Zap, ChevronDown, Tag, Check, X, Globe, ArrowLeft, Loader2, Clipboard, Lock, Unlock, LayoutGrid } from 'lucide-react'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser, PLANS } from '../context/UserContext.jsx'
 import PricingDisplay from './PricingDisplay.jsx'
@@ -398,7 +398,7 @@ function SettingsModal({ onClose }) {
   )
 }
 
-export default function Header({ modules, serverOnline = true, onPasteModule }) {
+export default function Header({ modules, serverOnline = true, onPasteModule, onOpenGallery }) {
   const { unit, setUnit, t, clipboardModule } = usePreferences()
   const { user, plan, logout, isLoading } = useUser()
   const navigate = useNavigate()
@@ -484,6 +484,14 @@ export default function Header({ modules, serverOnline = true, onPasteModule }) 
 
           {/* Right side: Dropdown & Logout button */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {location.pathname === '/app' && typeof onOpenGallery === 'function' && (
+              <button onClick={onOpenGallery}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-3/60 border border-white/5 hover:border-primary/30 hover:bg-primary/10 text-white/70 hover:text-primary text-[10px] font-black uppercase tracking-widest transition-all"
+                title="Galería de plantillas verificadas">
+                <LayoutGrid size={13} /> <span className="hidden sm:inline">Galería</span>
+              </button>
+            )}
+
             {location.pathname === '/app' && (
               <PricingDisplay modules={modules} currency="USD" />
             )}

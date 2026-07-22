@@ -152,6 +152,9 @@ if (process.env.NODE_ENV !== 'production') {
 
 app.use('/api/design',       aiLimiter, designRouter)
 app.use('/design',           aiLimiter, designRouter)
+// Alias plural — Biblioteca Verificada: POST /api/designs/save-viable, GET /api/designs/viable
+app.use('/api/designs',      aiLimiter, designRouter)
+app.use('/designs',          aiLimiter, designRouter)
 app.get('/api/prices',       designRouter.getPrices)
 app.get('/prices',           designRouter.getPrices)
 app.use('/api/chat',         aiLimiter, chatRouter)
