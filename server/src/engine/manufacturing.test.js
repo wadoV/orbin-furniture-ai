@@ -158,13 +158,13 @@ describe('Validador: profundidad mínima no aplica a aéreos', () => {
     const d = generateProject({ moduleType: 'aereo', width: 600, height: 700, depth: 150,
       thickness: 15, numShelves: 2, baseboard: false })
     const v = validateDesign(d)
-    assert.ok(!v.warnings.some(w => /rasa/i.test(w)),
+    assert.ok(!v.warnings.some(w => /escasa|rasa/i.test(w)),
       'falso positivo: 150mm es correcto en un aéreo. Avisos: ' + JSON.stringify(v.warnings))
   })
   it('mueble base de 150mm SÍ genera el aviso', () => {
     const d = generateProject({ moduleType: 'standard', width: 600, height: 700, depth: 150,
       thickness: 15, numShelves: 1, hasDoors: false })
-    assert.ok(validateDesign(d).warnings.some(w => /rasa/i.test(w)))
+    assert.ok(validateDesign(d).warnings.some(w => /escasa|rasa/i.test(w)))
   })
 })
 

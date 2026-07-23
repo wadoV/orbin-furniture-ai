@@ -13,30 +13,30 @@ function validateDesign(design) {
 
   // 0. Hard sanity guards — geometry impossibilities
   if (cfg.thickness === undefined || cfg.thickness === null || isNaN(cfg.thickness)) {
-    errors.push('Espesor nao definido ou invalido. Especifique um valor entre 15mm e 25mm.')
-    return { status: 'RECHAZADO', errors, warnings, summary: errors.length + ' erro(s) critico(s). Corrija antes de produzir.' }
+    errors.push('Espesor no definido o inválido. Especifique un valor entre 15mm y 25mm.')
+    return { status: 'RECHAZADO', errors, warnings, summary: errors.length + ' error(es) crítico(s). Corrija antes de producir.' }
   }
   if (cfg.thickness <= 0) {
-    errors.push('Espesor (' + cfg.thickness + 'mm) invalido — deve ser maior que 0mm. Geometria impossivel.')
-    return { status: 'RECHAZADO', errors, warnings, summary: errors.length + ' erro(s) critico(s). Corrija antes de produzir.' }
+    errors.push('Espesor (' + cfg.thickness + 'mm) inválido — debe ser mayor que 0mm. Geometría imposible.')
+    return { status: 'RECHAZADO', errors, warnings, summary: errors.length + ' error(es) crítico(s). Corrija antes de producir.' }
   }
 
   // 1. External dimensions
   if (cfg.width > MATERIAL.PLATE_WIDTH) {
-    warnings.push(`Largura total (${cfg.width}mm) excede a chapa (${MATERIAL.PLATE_WIDTH}mm). Divida em modulos.`)
+    warnings.push(`Ancho total (${cfg.width}mm) excede la placa (${MATERIAL.PLATE_WIDTH}mm). Dividí en módulos.`)
   }
   if (cfg.height > STRUCTURAL_LIMITS.MAX_MODULE_HEIGHT) {
-    warnings.push(`Altura (${cfg.height}mm) acima de ${STRUCTURAL_LIMITS.MAX_MODULE_HEIGHT}mm recomendado para montagem em obra.`)
+    warnings.push(`Altura (${cfg.height}mm) por encima de ${STRUCTURAL_LIMITS.MAX_MODULE_HEIGHT}mm recomendado para montaje en obra.`)
   }
   // La regla de profundidad mínima es de mueble BASE. Un aéreo de cocina son
   // 320mm y uno de baño 150mm: avisar ahí era un FALSO POSITIVO que ensuciaba
   // todos los planos de aéreos y restaba credibilidad a los avisos reales.
   if (cfg.moduleType === 'aereo') {
     if (cfg.depth < 100) {
-      warnings.push(`Profundidade (${cfg.depth}mm) muito rasa para um aereo. Minimo: 100mm.`)
+      warnings.push(`Profundidad (${cfg.depth}mm) muy escasa para un aéreo. Mínimo: 100mm.`)
     }
   } else if (cfg.depth < 300) {
-    warnings.push(`Profundidade (${cfg.depth}mm) muito rasa. Minimo recomendado: 400mm.`)
+    warnings.push(`Profundidad (${cfg.depth}mm) muy escasa. Mínimo recomendado: 400mm.`)
   }
 
   // 2. Individual piece size
