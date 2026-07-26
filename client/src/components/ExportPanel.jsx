@@ -19,6 +19,7 @@ import { exportDesign, nestPieces, downloadBlob } from '../engine/exportAdapters
 import { drawElevation, elevationBox } from '../engine/planRenderer.js'
 import { generateFactoryCutlist } from '../engine/CutlistGenerator.js'
 import { generateModulePlanSVG, generateConjuntoPlanSVG, CAJETIN_FIELDS, PLAN_VIEWBOX } from '../engine/planGenerator.js'
+import { localizePieceName } from '../engine/pieceNames.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { trackEvent, EVENTS } from '../lib/analytics.js'
@@ -457,8 +458,12 @@ function generateEtiquetasPDF({ modules, user, lang, t }) {
     ty += 4.5
 
     // Piece name
+    // ★ 2026-07-26: traducido al idioma del proyecto. Esta etiqueta se PEGA a la pieza
+    //   física: si el plano dice "Left Side Panel" y el sticker "Lateral Izquierdo", el
+    //   operario no puede emparejarlos. El código abreviado (LAT/EST/BASE) se calcula
+    //   aparte sobre el nombre CANÓNICO y por eso es igual en los tres idiomas.
     doc.setFontSize(5.5); doc.setFont('helvetica','bold'); doc.setTextColor(30,30,30)
-    const nameLines = doc.splitTextToSize(p.name, INFO_W)
+    const nameLines = doc.splitTextToSize(localizePieceName(p.name, lang), INFO_W)
     doc.text(nameLines[0], INFO_X, ty); ty += 3.5
 
     // Dimensions
@@ -692,8 +697,11 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
 
   const handleCSVCutlist = () => {
     try {
+      // ★ 2026-07-26: el CSV va al taller junto con el plano y las etiquetas. Los tres
+      //   deben nombrar la pieza IGUAL o el operario no puede emparejarlos. Mismo `lang`
+      //   que el plano; el motor sigue guardando el nombre canónico.
       const pieces = extractPieces(modules).map(p=>({
-        name:p.name, w:p.w, h:p.h, t:p.t, material:p.material||'MDF',
+        name:localizePieceName(p.name, lang), w:p.w, h:p.h, t:p.t, material:p.material||'MDF',
         type:p.type, L1:p.L1, L2:p.L2, A1:p.A1, A2:p.A2
       }))
       const r = generateFactoryCutlist(pieces, { edgeThickness:1 })

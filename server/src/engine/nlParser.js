@@ -44,6 +44,115 @@ function normalizeMeasurements(text) {
   return text
 }
 
+// ★ 2026-07-26 (dedup) — estas dos tablas estaban COPIADAS acá. `paramContract.js` ya
+//   las define y es quien valida lo que sale del LLM: con dos copias, agregar un rango
+//   en una y no en la otra hace que el contrato acepte un valor que el parser resuelve
+//   distinto, y ningún test se queja. Una sola fuente.
+//   `PC_RANGES` trae más campos que los tres dimensionales (numDrawers, thickness…);
+//   resolveDimension sólo consulta width/height/depth, así que el resto es inofensivo.
+const { RANGES, COMMERCIAL_DEFAULTS } = require('../ai/paramContract')
+
+// ── Tabla ÚNICA de detección de tipo de módulo ───────────────────────────────
+// ★ 2026-07-26. Antes esta lógica vivía DUPLICADA en parseNaturalLanguage (una copia
+//   para la heurística de unidades y otra para asignar el tipo). Primera coincidencia
+//   gana, así que el ORDEN importa.
+//
+// ★ HALLAZGO que motivó el cambio: 'desk' NO estaba. La topología del escritorio
+//   (faldón, pedestal, travesaño de privacidad) sólo era alcanzable por el LLM; con
+//   Gemini caído o en modo offline, el producto no sabía hacer escritorios.
+//
+// ⚠ TRAMPA PT-BR: "escritório" en portugués es la OFICINA (el ambiente), no el mueble
+//   — el mueble es "escrivaninha". Incluir "escritório" haría que "armário para
+//   escritório" se clasifique como escritorio. Por eso no está, y por eso `not`
+//   descarta la frase si además nombra un ropero.
+const WARDROBE_WORDS = ['armario', 'armário', 'ropero', 'guarda-roupa', 'guarda roupa', 'closet', 'placard', 'wardrobe']
+const MODULE_TYPE_RULES = [
+  { moduleType: 'base',  type: 'kitchen_low',
+    kw: ['cocina baja', 'cozinha baixa', 'modulo bajo', 'módulo bajo', 'mueble bajo', 'bajo de cocina', 'mueble base', 'módulo base', 'modulo base', 'base de cocina', 'gabinete base', 'balcão', 'balcao'],
+    defaults: { height: 900, depth: 600 }, extra: { hasCountertop: true }, note: 'Tipo: Módulo Bajo' },
+  { moduleType: 'aereo', type: 'kitchen_high',
+    kw: ['cocina alta', 'cozinha alta', 'aereo', 'aéreo', 'módulo aéreo', 'modulo aereo', 'módulo alto', 'modulo alto', 'suspendido'],
+    defaults: { height: 700, depth: 350 }, note: 'Tipo: Módulo Alto' },
+  { moduleType: 'desk',  type: 'desk',
+    kw: ['escritorio', 'escrivaninha', 'mesa de trabajo', 'mesa de trabalho', 'mesa de estudio', 'mesa de estudo', 'writing desk', 'work desk', 'desk'],
+    not: WARDROBE_WORDS,
+    defaults: { width: 1400, height: 750, depth: 600 },
+    // Un escritorio no lleva puertas ni zócalo: el vano de piernas debe quedar abierto.
+    extra: { hasDoors: false, numDoors: 0, doorType: 'none', baseboard: false, hasCountertop: false },
+    note: 'Tipo: Escritorio' },
+  { moduleType: 'base',  type: 'kitchen_island',
+    kw: ['isla', 'ilha', 'island'], note: 'Tipo: Isla' },
+]
+function detectModuleRule(text) {
+  for (const r of MODULE_TYPE_RULES) {
+    if (!detectFeature(text, r.kw)) continue
+    if (r.not && detectFeature(text, r.not)) continue   // p.ej. "armario de escritorio"
+    return r
+  }
+  return null
+}
+
+function resolveDimension(rawStr, hasMMSuffix, field, moduleType, specAdjustments) {
+  const cleanStr = String(rawStr).replace(',', '.').trim()
+  const n = parseFloat(cleanStr)
+  if (!Number.isFinite(n)) return null
+
+  if (hasMMSuffix) return Math.round(n)
+
+  const mm = n
+  const cm = n * 10
+  const m  = n * 1000
+
+  const candidates = [
+    { value: mm, unit: 'mm' },
+    { value: cm, unit: 'cm' },
+    { value: m,  unit: 'm'  }
+  ]
+
+  const range = RANGES[field]
+  if (!range) {
+    return Math.round(n < 1000 ? n * 10 : n)
+  }
+
+  const [lo, hi] = range
+  const survivors = candidates.filter(c => c.value >= lo && c.value <= hi)
+
+  if (survivors.length === 1) {
+    return Math.round(survivors[0].value)
+  }
+
+  if (survivors.length === 0) {
+    const fallbackVal = Math.round(n < 1000 ? n * 10 : n)
+    if (specAdjustments) {
+      specAdjustments.push({
+        code: 'NLP_VALUE_IMPLAUSIBLE',
+        severity: 'warning',
+        field,
+        message: `El valor "${rawStr}" para "${field}" no es plausible en ningún sistema de unidades (rango: ${lo}-${hi}mm).`
+      })
+    }
+    return fallbackVal
+  }
+
+  const defaults = COMMERCIAL_DEFAULTS[moduleType] || COMMERCIAL_DEFAULTS.standard
+  const targetDefault = defaults[field] || 1000
+
+  survivors.sort((a, b) => Math.abs(a.value - targetDefault) - Math.abs(b.value - targetDefault))
+  const chosen = survivors[0]
+
+  if (specAdjustments) {
+    const listStr = survivors.map(s => `${Math.round(s.value)}mm (${s.unit})`).join(' o ')
+    specAdjustments.push({
+      code: 'NLP_UNIT_AMBIGUOUS',
+      severity: 'warning',
+      field,
+      message: `"${rawStr}" para ${field} puede ser ${listStr}; se interpretó ${Math.round(chosen.value)}mm (típico para ${moduleType}). Confirmá si no es lo que querías.`
+    })
+  }
+
+  return Math.round(chosen.value)
+}
+
 // 3-digit bare number near keyword = cm (marcenaria convention: "180 de largura" = 180cm = 1800mm)
 // 4-digit number or number followed by "mm" = use as-is
 function toDimMM(raw, hasMMSuffix) {
@@ -53,37 +162,40 @@ function toDimMM(raw, hasMMSuffix) {
 
 // ─── Dimension Extractors ─────────────────────────────────────────────────────
 
-function extractDimensionTriple(text) {
+function extractDimensionTriple(text, moduleType, specAdjustments) {
   const regex = /(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*[x*x×]\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*[x*x×]\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?/i
   const m = text.match(regex)
   if (m) {
-    const parsePart = (valStr, partUnit) => {
+    const parsePart = (valStr, partUnit, field) => {
       const val = parseFloat(valStr.replace(',', '.'))
-      const unit = partUnit || m[6] || m[4] || m[2] || (val < 10 ? 'm' : (val < 300 ? 'cm' : 'mm'))
-      if (unit === 'm') return Math.round(val * 1000)
-      if (unit === 'cm') return Math.round(val * 10)
-      return Math.round(val)
+      const unit = partUnit || m[6] || m[4] || m[2]
+      if (unit) {
+        if (unit === 'm') return Math.round(val * 1000)
+        if (unit === 'cm') return Math.round(val * 10)
+        return Math.round(val)
+      }
+      return resolveDimension(valStr, false, field, moduleType, specAdjustments)
     }
     return {
-      width:  parsePart(m[1], m[2]),
-      height: parsePart(m[3], m[4]),
-      depth:  parsePart(m[5], m[6])
+      width:  parsePart(m[1], m[2], 'width'),
+      height: parsePart(m[3], m[4], 'height'),
+      depth:  parsePart(m[5], m[6], 'depth')
     }
   }
   return null
 }
 
-function extractDimensionByKeyword(text, keywords) {
+function extractDimensionByKeyword(text, keywords, field, moduleType, specAdjustments) {
   for (const kw of keywords) {
     // Priority: number BEFORE keyword ("2000mm de largura" / "180 de largura")
-    const before = new RegExp('(\\d{3,4})\\s*(mm)?[^\\d]{0,15}' + kw, 'i')
+    const before = new RegExp('(\\d+(?:[.,]\\d+)?)\\s*(mm)?[^\\d.,]{0,15}' + kw, 'i')
     const mb = text.match(before)
-    if (mb) return toDimMM(parseInt(mb[1]), !!mb[2])
+    if (mb) return resolveDimension(mb[1], !!mb[2], field, moduleType, specAdjustments)
 
     // Fallback: keyword BEFORE number, tight window ("largura: 2400")
-    const after = new RegExp(kw + '\\s*[:\\s]{1,3}(\\d{3,4})\\s*(mm)?', 'i')
+    const after = new RegExp(kw + '\\s*[:\\s]{1,3}(\\d+(?:[.,]\\d+)?)\\s*(mm)?', 'i')
     const ma = text.match(after)
-    if (ma) return toDimMM(parseInt(ma[1]), !!ma[2])
+    if (ma) return resolveDimension(ma[1], !!ma[2], field, moduleType, specAdjustments)
   }
   return null
 }
@@ -157,14 +269,20 @@ function detectFeature(text, keywords) {
 
 function parseNaturalLanguage(input) {
   if (!input || typeof input !== 'string') {
-    return { params: { ...DEFAULTS }, confidence: 0, interpreted: 'Entrada vazia — usando padroes.' }
+    return { params: { ...DEFAULTS }, confidence: 0, interpreted: 'Entrada vazia — usando padroes.', specAdjustments: [] }
   }
 
   const rawInput = input.trim()
-  const triple = extractDimensionTriple(rawInput)
+  const specAdjustments = []
 
   let text = rawInput
   text = normalizeMeasurements(text)
+
+  // ★ 2026-07-26 (dedup): la detección de tipo estaba ESCRITA DOS VECES en este archivo
+  //   (acá para la heurística de unidades, y más abajo para asignar el tipo). Dos listas
+  //   de sinónimos que hay que recordar actualizar juntas. Ahora una sola tabla.
+  const rule = detectModuleRule(text)
+  const detectedModuleType = rule ? rule.moduleType : 'standard'
 
   const result = { ...DEFAULTS }
   const notes  = []
@@ -189,6 +307,8 @@ function parseNaturalLanguage(input) {
     notes.push(`Instalación: ${mh.value}mm del piso`)
   }
 
+  const triple = extractDimensionTriple(rawInput, detectedModuleType, specAdjustments)
+
   if (triple) {
     result.width  = triple.width
     result.height = triple.height
@@ -196,9 +316,9 @@ function parseNaturalLanguage(input) {
     userSet.width = userSet.height = userSet.depth = true
     confidence += 40
   } else {
-    const w = extractDimensionByKeyword(text, ['larg', 'anch', 'width', 'largura', 'ancho'])
-    const h = extractDimensionByKeyword(text, ['alt',  'height', 'altura', 'alto'])
-    const d = extractDimensionByKeyword(text, ['prof', 'depth', 'fundo', 'profundidade', 'fondo'])
+    const w = extractDimensionByKeyword(text, ['larg', 'anch', 'width', 'largura', 'ancho'], 'width', detectedModuleType, specAdjustments)
+    const h = extractDimensionByKeyword(text, ['alt',  'height', 'altura', 'alto'], 'height', detectedModuleType, specAdjustments)
+    const d = extractDimensionByKeyword(text, ['prof', 'depth', 'fundo', 'profundidade', 'fondo'], 'depth', detectedModuleType, specAdjustments)
 
     if (w) { result.width  = w; userSet.width  = true; confidence += 15 }
     if (h) { result.height = h; userSet.height = true; confidence += 15 }
@@ -215,23 +335,18 @@ function parseNaturalLanguage(input) {
 
   // --- Type Detection ---
   // NOTE: runs BEFORE the dimension note so interpreted reflects FINAL dimensions.
-  // BUG FIX: also set moduleType so Viewer3D renders the correct geometry
-  // ('kitchen_low' → 'base', 'kitchen_high' → 'aereo', default → 'standard')
-  if (detectFeature(text, ['cocina baja', 'cozinha baixa', 'modulo bajo', 'módulo bajo', 'mueble bajo', 'bajo de cocina', 'mueble base', 'módulo base', 'modulo base', 'base de cocina', 'gabinete base', 'balcão', 'balcao'])) {
-    result.type = 'kitchen_low'; result.moduleType = 'base';
-    // Defaults de tipo SOLO si el usuario no dio la medida (no pisar lo explícito).
-    if (!userSet.height) result.height = 900;
-    if (!userSet.depth)  result.depth  = 600;
-    result.hasCountertop = true;
-    notes.push('Tipo: Módulo Bajo');
-  } else if (detectFeature(text, ['cocina alta', 'cozinha alta', 'aereo', 'aéreo', 'módulo aéreo', 'modulo aereo', 'módulo alto', 'modulo alto', 'suspendido'])) {
-    result.type = 'kitchen_high'; result.moduleType = 'aereo';
-    if (!userSet.height) result.height = 700;
-    if (!userSet.depth)  result.depth  = 350;
-    notes.push('Tipo: Módulo Alto');
-  } else if (detectFeature(text, ['isla', 'ilha', 'island'])) {
-    result.type = 'kitchen_island'; result.moduleType = 'base';
-    notes.push('Tipo: Isla');
+  // ★ 2026-07-26: una sola tabla (MODULE_TYPE_RULES) alimenta esto Y la detección
+  //   temprana de arriba. Antes eran dos listas de sinónimos paralelas.
+  //   Se conserva intacta la regla del FIX 2026-07-23: los defaults de tipo SOLO
+  //   rellenan lo que el usuario NO dio (userSet), nunca pisan una medida explícita.
+  if (rule) {
+    result.type = rule.type
+    result.moduleType = rule.moduleType
+    for (const [field, val] of Object.entries(rule.defaults || {})) {
+      if (!userSet[field]) result[field] = val
+    }
+    Object.assign(result, rule.extra || {})
+    notes.push(rule.note)
   } else {
     result.moduleType = result.moduleType || 'standard';
   }
@@ -261,6 +376,25 @@ function parseNaturalLanguage(input) {
   }
 
   const drawers = extractCount(text, ['gaveta', 'cajon', 'cajón', 'drawer', 'gavetao'])
+
+  // ★ 2026-07-26 — ESCRITORIO SIN GAVETAS = PEDESTAL VACÍO. Un "quiero un escritorio"
+  //   a secas daba numDrawers 0, pero el motor igual construye el pedestal → salían
+  //   Costado + Base + Fondo Pedestal formando una CAJA ABIERTA sin nada adentro:
+  //   3 piezas de MDF cortadas para cero función. El cliente no pide eso nunca.
+  //   Regla: si el usuario no dijo cuántas gavetas, el escritorio sale con 3 (pedestal
+  //   estándar). Si dijo explícitamente que NO quiere, se saca el pedestal entero y
+  //   queda un escritorio de patas + faldón, que sí es un mueble coherente.
+  if (result.moduleType === 'desk' && drawers === 0) {
+    if (detectFeature(text, ['sin gaveta', 'sin cajon', 'sin cajón', 'sem gaveta', 'no drawer', 'without drawer', 'sin pedestal', 'sem pedestal'])) {
+      result.hasPedestal = false
+      result.numDrawers = 0
+      notes.push('Escritorio sin pedestal')
+    } else {
+      result.numDrawers = 3
+      notes.push('3 gaveta(s) (pedestal estándar)')
+    }
+  }
+
   if (drawers > 0) {
     result.numDrawers = drawers
     notes.push(drawers + ' gaveta(s)')
@@ -305,13 +439,11 @@ function parseNaturalLanguage(input) {
   if (detectFeature(text, ['push', 'push-to-open', 'toque', 'sem tirador', 'sin tirador', 'no handle'])) { result.handleType = 'push'; notes.push('Push') }
   if (detectFeature(text, ['gola', 'perfil gola', 'gola profile'])) { result.handleType = 'gola'; notes.push('Gola') }
 
-  confidence = Math.min(100, Math.max(20, confidence))
-
   const interpreted = notes.length > 0
     ? 'Interpretado: ' + notes.join(' | ')
     : 'Nenhum dado especifico — usando padroes (' + result.width + 'x' + result.height + 'x' + result.depth + 'mm)'
 
-  return { params: result, confidence, interpreted }
+  return { params: result, confidence, interpreted, specAdjustments }
 }
 
 module.exports = { parseNaturalLanguage }

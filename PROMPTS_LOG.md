@@ -191,3 +191,17 @@ Prompt Eduardo: "Al generar diseños con IA no aparece la lista de cortes abajo 
 - **Fix (aditivo, aislado):** App.jsx:795 nuevo `const shownResult = volatileOverlay || currentResult`; `ResultPanel design={shownResult}` y `onSave` usa `shownResult?.id` (líneas 1046/1051). El despiece ahora refleja el preview activo del Viewer3D. NO se tocó `currentResult` (otros 6 usos intactos) ni la persistencia HITL (Confirmar sigue siendo el único commit a Supabase).
 - **Verificación:** esbuild transform de App.jsx → exit 0 (JSX válido). Cambio solo-cliente (npm test server no afectado). Build rollup completo debe correr en Windows (node_modules del cliente son binarios win32; el sandbox Linux no puede ejecutar la toolchain — artefacto de entorno, no del código).
 - **Pendiente Eduardo:** `npm run build` + commit en Windows; verificación manual (chat → generar → confirmar que aparece la lista de cortes).
+
+---
+
+## Prompt 5 / Checkpoint 2
+> **Prompt:**  
+> Implement unit heuristics for resolving unit-less dimensions by range plausibility in server/src/engine/nlParser.js and client/src/engine/offlineParser.js. Set up automated SVG/PNG drawings non-regression validation pipeline in scripts/plan_snapshot.js.  
+> 
+* **Action:**
+  1. **Unit Heuristics**: Added `RANGES`, `COMMERCIAL_DEFAULTS`, `resolveDimension` and updated dimension extractors in both `server/src/engine/nlParser.js` and `client/src/engine/offlineParser.js` to resolve unit-less numbers based on range plausibility and module defaults.
+  2. **Heuristic Unit Tests**: Created `server/src/engine/unitHeuristic.test.js` verifying all required range cases (900 -> 900, 90 -> 900, 2.4 -> 2400, 180 -> 1800, etc.), preserving counters, and confirming `mountHeight` regression safety. All tests passing green.
+  3. **Plan Snapshot Generator & Validation Pipeline**: Created `scripts/plan_snapshot.js` to bundle/transpile `planGenerator.js` via `esbuild`, generate executive/assembly drawing SVGs for all module topologies and languages, validate assertions (no NaN/undefined, language coherence, contextual legend items, normalized scale ratio, and y <= 538 assembly overflow), and rasterize them to PNGs using `cairosvg`.
+  4. Added `npm run plan:snapshot` command to root `package.json`.
+* **Outcome:** Unit heuristics implemented and verified with 158/158 server tests passing. Plan drawings validation snapshot pipeline set up and fully verified.
+

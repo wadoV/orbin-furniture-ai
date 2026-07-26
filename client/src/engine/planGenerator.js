@@ -9,6 +9,10 @@
  * Temas: 'screen' (charcoal/ámbar) · 'print' (blanco y negro).
  */
 import { pieceRectsMM, hasProjectablePieces } from './elevationModel.js'
+// ★ 2026-07-26: los nombres de pieza se traducen al idioma del plano. El motor sigue
+//   emitiendo canónicos; acá sólo se presentan. Ver pieceNames.js para la regla de
+//   coherencia con la etiqueta térmica y el CSV.
+import { localizePieceName } from './pieceNames.js'
 
 const PALETTES = {
   screen: {
@@ -137,7 +141,13 @@ function cfgOf(module) {
 }
 
 // ── Agrupa piezas para la lista de cortes (largo = mayor, ancho = menor) ──
-function groupPieces(pieces) {
+// ★ 2026-07-26: acepta `lang` y devuelve el nombre TRADUCIDO para mostrar.
+//   La CLAVE de agrupado sigue usando el nombre CANÓNICO del motor: si agrupara por el
+//   nombre traducido, dos piezas distintas que colapsan al mismo término en un idioma
+//   se fusionarían y la lista de cortes mentiría. El agrupado es idéntico en ES/PT/EN.
+//   `nameCanonical` se conserva para que otras superficies (CSV, etiqueta térmica)
+//   puedan emparejar la fila con la pieza real.
+function groupPieces(pieces, lang) {
   const map = new Map()
   for (const p of (pieces || [])) {
     const w = num(p.width || p.w), h = num(p.height || p.h), t = num(p.thickness || p.t, 18)
@@ -147,7 +157,7 @@ function groupPieces(pieces) {
     const key = `${base}|${largo}x${ancho}x${t}`
     const qty = num(p.quantity, 1)
     if (map.has(key)) map.get(key).qty += qty
-    else map.set(key, { name: base, largo, ancho, t, qty, type: p.type })
+    else map.set(key, { name: localizePieceName(base, lang), nameCanonical: base, largo, ancho, t, qty, type: p.type })
   }
   return [...map.values()]
 }
@@ -774,7 +784,7 @@ export function generateModulePlanSVG(module, options = {}) {
   const D = LX(options.lang)
   const lang = lx0(options.lang)
   const cfg = cfgOf(module)
-  const rows = groupPieces(module && module.pieces)
+  const rows = groupPieces(module && module.pieces, lang)
   const pieceCount = rows.reduce((a, r) => a + r.qty, 0)
   const label = (module && module.configuration && module.configuration.moduleType) || (module && module.type) || 'Módulo'
   const modName = (module && (module.id || module.name)) || label
@@ -835,7 +845,7 @@ export function generateConjuntoPlanSVG(modules, options = {}) {
   const maxH = Math.max(1, ...mods.map(m => cfgOf(m).height))
   let s = `<svg viewBox="0 0 1000 740" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, system-ui, sans-serif">`
   s += sheetHeader(`${D.title_conjunto} — ${mods.length} ${D.modules_word}`, D.subtitle_conjunto.replace('{w}', totalW), P)
-  const allRows = groupPieces(mods.flatMap(m => (m && m.pieces) || []))
+  const allRows = groupPieces(mods.flatMap(m => (m && m.pieces) || []), options.lang)
   s += buildCajetin(options.company, cfgOf(mods[0] || {}), allRows.reduce((a, r) => a + r.qty, 0), P, D, options.editableFields)
   // banda de alzados — altura ampliada: con 300px un conjunto de roperos altos
   // quedaba diminuto por la misma causa que el alzado de módulo.
@@ -912,7 +922,11 @@ export function generateConjuntoPlanSVG(modules, options = {}) {
 }
 
 // TASK 3: FUTURE-PROOF DYNAMIC QR HOOKS (60x40mm thermal sticker)
-export function generatePieceStickerSVG(piece, projectId) {
+// ★ 2026-07-26 — `lang` es OPCIONAL (llamadas existentes siguen funcionando), pero
+//   DEBE pasarse el mismo idioma que el plano. Esta etiqueta se pega a la pieza física:
+//   si el plano dice "Left Side Panel" y el sticker dice "Lateral Izquierdo", el
+//   operario no puede emparejarlos. Es la superficie donde la incoherencia duele.
+export function generatePieceStickerSVG(piece, projectId, lang) {
   const url = `https://orbin.app/track/piece?id=${piece.id}&proj=${projectId || 'mvp'}`;
   // 60x40mm sticker roughly maps to 226x151 pixels at 96 DPI
   return `<svg viewBox="0 0 226 151" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, system-ui, sans-serif">
@@ -921,7 +935,7 @@ export function generatePieceStickerSVG(piece, projectId) {
     <rect x="10" y="10" width="80" height="80" fill="none" stroke="black" stroke-dasharray="2 2"/>
     <text x="50" y="55" font-size="10" text-anchor="middle" fill="black">QR_HOOK</text>
     
-    <text x="100" y="25" font-size="12" font-weight="bold" fill="black">${piece.name || 'PIEZA'}</text>
+    <text x="100" y="25" font-size="12" font-weight="bold" fill="black">${esc(localizePieceName(piece.name, lang) || 'PIEZA')}</text>
     <text x="10" y="110" font-size="9" fill="black">${url}</text>
   </svg>`;
 }

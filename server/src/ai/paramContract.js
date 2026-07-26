@@ -326,6 +326,9 @@ module.exports = {
   ENGINE_PARAM_KEYS,
   KEY_ALIASES,
   COMMERCIAL_DEFAULTS,
+  // ★ 2026-07-26: expuesto para que nlParser.resolveDimension consulte ESTOS rangos y
+  //   no una copia propia. Este archivo es la fuente de verdad de qué es fabricable.
+  RANGES,
   coerceEngineParams,
   validateOrchestratorResponse,
   PARAM_CONTRACT_PROMPT,
