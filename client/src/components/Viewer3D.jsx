@@ -19,6 +19,7 @@ import PresentationMode from './PresentationMode.jsx'
 import AIVisualStylist from './AIVisualStylist.jsx'
 import ViralShare from './ViralShare.jsx'
 import { getPBRMaterial } from '../engine/materialLibrary.js'
+import { AEREO_MOUNT } from '../engine/domainConstants.js'
 
 // Captura técnica (plano gris CAD): esconde y restaura las texturas PBR (bumpMap)
 // para que las vistas del plano queden en gris plano, sin veta de madera. [2026-07]
@@ -1164,7 +1165,15 @@ export default function Viewer3D({
       const D  = (cfg.depth  || 580) * SCALE
       const T  = (cfg.thickness || 18) * SCALE
       const BT = (cfg.backThickness || 6) * SCALE
-      const BH = (cfg.baseboardHeight || 100) * SCALE
+      // ★ FIX 2026-07-23 (aéreo "falsas patas"): BH (offset de zócalo que eleva el
+      //   piso y la carcasa) debe ser 0 cuando el mueble NO lleva zócalo. Antes se
+      //   calculaba siempre como baseboardHeight||100, así que en un AÉREO
+      //   (baseboard:false) el piso quedaba elevado 100mm y los laterales asomaban
+      //   por debajo → sensación de patas. Ahora respeta baseboard===false y aéreo.
+      //   Un módulo con zócalo (baseboard!==false y no aéreo) mantiene su BH → sin
+      //   cambios. Aditivo: solo agrega los guards al cálculo.
+      const noPlinth = cfg.baseboard === false || cfg.moduleType === 'aereo'
+      const BH = (noPlinth ? 0 : (cfg.baseboardHeight || 100)) * SCALE
 
       // Helper: create a mesh with edge helper
       const makeMesh = (w, h, d, color, pieceName, type, drawerKey = null) => {
@@ -1198,9 +1207,12 @@ export default function Viewer3D({
 
       const mGroup = new THREE.Group()
       // ★ PROTECTED: Position module using saved location or place after rightmost module
-      // ★ AEREO FIX: Wall-mounted modules are elevated by mountHeight (default 1400mm for kitchen, 1600mm for bathroom)
+      // ★ AEREO FIX: Wall-mounted modules are elevated by mountHeight (piso → borde inferior).
+      // ★ 2026-07-26: el literal 1400 pasó a AEREO_MOUNT.DEFAULT (=1450, el que usa el
+      //   motor). `??` en vez de `||`: con OR un mountHeight de 0 (aéreo apoyado, válido)
+      //   volvía a elevarse 1450mm y el 3D contradecía la config guardada.
       const isAereoModule = cfg.moduleType === 'aereo'
-      const mountY = isAereoModule ? ((cfg.mountHeight || 1400) * SCALE) : 0
+      const mountY = isAereoModule ? ((cfg.mountHeight ?? AEREO_MOUNT.DEFAULT) * SCALE) : 0
       const saved = modulePositionsRef.current[design.id]
       if (saved) {
         mGroup.position.x = saved.x
@@ -1225,6 +1237,13 @@ export default function Viewer3D({
       const yBase = 0
       const iW = W - 2 * T  // internal width
 
+      // ★ DESK RENDER 2026-07-22: la topología 'desk' tiene su propia rama fiel al
+      //   motor (tampo sobrepuesto, laterales H−T, pedestal por lado, faldón, simple).
+      //   El armado genérico de carcasa NO aplica a un escritorio (dibujaba techo/piso/
+      //   fondo completos que el motor no corta).
+      const isDeskViz = cfg.moduleType === 'desk'
+
+      if (!isDeskViz) {
       // === LATERAL LEFT ===
       const lp = makeMesh(T, H, D, bodyColor, 'Lateral Izquierdo', 'structural')
       lp.position.set(-W / 2 + T / 2 + xOffset, yBase + H / 2, D / 2)
@@ -1250,6 +1269,7 @@ export default function Viewer3D({
       const bk = makeMesh(iW, fullBkH, BT, bodyColor, 'Fondo', 'structural')
       bk.position.set(xOffset, yBase + BH + T + fullBkH / 2, BT / 2 + 0.01)
       mGroup.add(bk)
+      } // end !isDeskViz (carcasa genérica)
 
       const iD = D - BT - 0.2
       const zCenter = BT + iD / 2 + 0.1
@@ -1280,7 +1300,7 @@ export default function Viewer3D({
       //      lo pintaba siempre. En 'legs' ahora se dibujan solo las patas.
       const isAereoMod  = cfg.moduleType === 'aereo'
       const bbType      = cfg.baseType || (cfg.baseboard === false ? 'none' : 'recessed')
-      const showBase    = cfg.baseboard !== false && cfg.hasRodapie !== false && cfg.hasPlinth !== false && !isAereoMod
+      const showBase    = cfg.baseboard !== false && cfg.hasRodapie !== false && cfg.hasPlinth !== false && !isAereoMod && !isDeskViz
       // Mismo clamp que el motor: inset = min(100, floor((D − T − 50) / 2)), en mm.
       const bbInsetMM   = Math.max(0, Math.min(100, Math.floor((D / SCALE - T / SCALE - 50) / 2)))
       const bbInsetU    = bbInsetMM * SCALE
@@ -1332,7 +1352,96 @@ export default function Viewer3D({
         add(boxW - 2 * wall, bt, boxD - 2 * wall, cx, cy - boxH / 2 + bt / 2, cz, 'Fondo Cajón')
       }
 
-      if (nD > 0) {
+      // ★ DESK RENDER 2026-07-22 — rama fiel al motor (generateDeskFurniture):
+      //   mismas fórmulas de posición convertidas a coordenadas centradas del visor
+      //   (x_visor = x_motor − W/2). Caja de gaveta desde drawerBox del motor (SSOT).
+      if (isDeskViz) {
+        const mmW = cfg.width || 1200, mmT = cfg.thickness || 18
+        const hasPed = cfg.hasPedestal !== false
+        const side = cfg.pedestalSide === 'left' ? 'left' : 'right'
+        // Clamp de pedestalWidth IDÉNTICO al motor
+        const pedWmm = Math.min(Math.max(cfg.pedestalWidth || 400, 300), mmW - 600 > 300 ? mmW - 600 : mmW * 0.4)
+        const PW = pedWmm * SCALE
+        const latH = H - T
+        const toV = (xMotor) => xMotor - W / 2 + xOffset   // motor 0..W → visor centrado
+
+        // Tampo sobrepuesto: ancho completo, apoya sobre laterales (y pedestal)
+        const tampo = makeMesh(W, T, D, ctColor !== TYPE_COLORS.countertop ? ctColor : bodyColor, 'Tampo Escritorio', 'countertop')
+        tampo.position.set(xOffset, latH + T / 2, D / 2)
+        mGroup.add(tampo)
+
+        // Laterales de apoyo (H − T, el tampo apoya encima)
+        for (const [nm, xm] of [['Lateral Izquierdo', T / 2], ['Lateral Derecho', W - T / 2]]) {
+          const lm = makeMesh(T, latH, D, bodyColor, nm, 'structural')
+          lm.position.set(toV(xm), latH / 2, D / 2)
+          mGroup.add(lm)
+        }
+
+        if (hasPed) {
+          const divXm = side === 'right' ? (W - PW + T / 2) : (PW - T / 2)
+          const pedMidXm = side === 'right' ? (W - PW / 2) : (PW / 2)
+          const pedInterior = PW - 2 * T
+          const pedCXm = side === 'right' ? (W - PW + T + pedInterior / 2) : (T + pedInterior / 2)
+
+          const dv = makeMesh(T, latH, D, bodyColor, 'Costado Pedestal', 'structural')
+          dv.position.set(toV(divXm), latH / 2, D / 2)
+          mGroup.add(dv)
+
+          const pb = makeMesh(pedInterior, T, D - BT, bodyColor, 'Base Pedestal', 'structural')
+          pb.position.set(toV(pedMidXm), T / 2, (D - BT) / 2 + BT)
+          mGroup.add(pb)
+
+          const pf = makeMesh(pedInterior, latH - T, BT, bodyColor, 'Fondo Pedestal', 'structural')
+          pf.position.set(toV(pedMidXm), (latH + T) / 2, BT / 2 + 0.01)
+          mGroup.add(pf)
+
+          // ★ AUTO-FIT + TRAVESAÑO 2026-07-23 (espejo EXACTO del motor):
+          //   Travesaño de cierre (drawerRailHeight, estándar 50mm) pegado al tampo;
+          //   las gavetas se estiran para llenar el pedestal debajo, sin hueco.
+          const CLEAR_P = 16 * SCALE
+          const reqDrw  = cfg.numDrawers || 0
+          const railHU  = (reqDrw > 0 && cfg.drawerPrivacyPanel !== false)
+            ? Math.max(50, Math.round(cfg.drawerRailHeight || 50)) * SCALE
+            : 0
+          const usableHU    = latH - T
+          const drawerZoneU = usableHU - railHU
+          const MINH_P = 80 * SCALE
+          const nDrw = Math.min(reqDrw, Math.max(0, Math.floor(drawerZoneU / (MINH_P + CLEAR_P))))
+          const dhP = nDrw > 0 ? Math.max(MINH_P, (drawerZoneU / nDrw) - CLEAR_P) : 0
+          for (let i = 0; i < nDrw; i++) {
+            const yC = T + i * (dhP + CLEAR_P) + dhP / 2
+            const dKey = `${design.id}-d${i}`
+            const df = makeMesh(pedInterior - 0.4, dhP - 0.4, T, frontColor, `Frente Gaveta ${i + 1}`, 'drawer_front', dKey)
+            df.position.set(toV(pedCXm), yC, D - T / 2)
+            mGroup.add(df)
+            if (!skipDrawerBox) {
+              addDrawerBox(toV(pedCXm), yC, boxOuterWU ?? (pedInterior - (26 * SCALE)), dhP - 4, boxDepthU, zCenter, dKey)
+            }
+          }
+          // Travesaño de cierre PEGADO bajo el tampo (tope en latH).
+          if (railHU > 0 && nDrw > 0) {
+            const rail = makeMesh(pedInterior, railHU, T, bodyColor, 'Travesaño Superior', 'structural')
+            rail.position.set(toV(pedCXm), latH - railHU / 2, D - T / 2)
+            mGroup.add(rail)
+          }
+        }
+
+        // Faldón trasero (modesty panel) — pegado bajo el tampo, mismo clamp del motor
+        const latHmm = latH / SCALE
+        const apronHmm = Math.min(140, Math.max(90, Math.round(latHmm * 0.15)))
+        const apronH = apronHmm * SCALE
+        const kneeSpan = hasPed ? (W - PW - T) : (W - 2 * T)
+        // ★ FIX 2026-07-23: faldón centrado en el vano REAL (espejo del motor),
+        //   antes corrido ½T y pisando el lateral.
+        const apronXm = hasPed
+          ? (side === 'right' ? ((W - PW + T) / 2) : ((W + PW - T) / 2))
+          : W / 2
+        const ap = makeMesh(kneeSpan, apronH, T, bodyColor, 'Faldon Trasero', 'structural')
+        ap.position.set(toV(apronXm), latH - apronH / 2, BT + T / 2 + 0.02)
+        mGroup.add(ap)
+      }
+
+      if (nD > 0 && !isDeskViz) {
         if (isHorizontal) {
           // VULN-06 FIX: Descuenta la mitad del espesor del divisor central (T / 2)
           const colW = (iW - T) / 2
@@ -1659,7 +1768,8 @@ export default function Viewer3D({
       ;(modules || []).forEach(m => { const c = m?.configuration; if (c) totalW += (c.width || 600) * SCALE })
       g.position.x = totalW + W / 2 + (modules && modules.length ? 5 : 0)
     }
-    if (cfg.moduleType === 'aereo') g.position.y = (cfg.mountHeight || 1400) * SCALE
+    // ★ 2026-07-26: mismo fix que el mountY de arriba (constante única + `??`).
+    if (cfg.moduleType === 'aereo') g.position.y = (cfg.mountHeight ?? AEREO_MOUNT.DEFAULT) * SCALE
 
     scene.add(g)
     overlayGroupRef.current = g

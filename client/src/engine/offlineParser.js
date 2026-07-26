@@ -4,6 +4,8 @@
  * Used as fallback when the Express backend is unreachable.
  */
 
+import { AEREO_MOUNT } from './domainConstants.js'
+
 const DEFAULTS = {
   moduleType: 'standard', width: 600, height: 720, depth: 580,
   thickness: 18, backThickness: 6, numShelves: 1, numDrawers: 0,
@@ -67,6 +69,54 @@ function extractByKeyword(text, kws) {
   return null
 }
 
+// ─── Altura de INSTALACIÓN (piso → borde inferior) ───────────────────────────
+// ★ 2026-07-26 — DEUDA SALDADA. Antes: `result.mountHeight = 1450` hardcodeado al
+//   detectar "aéreo", IGNORANDO por completo lo que dijera el usuario. "colgalo a
+//   1.20 del piso" salía a 1450.
+//
+//   ¿Por qué NO se puede desambiguar por el sustantivo "altura"? Porque en carpintería
+//   "altura" = alto DEL MUEBLE, y extractByKeyword ya la reclama para `height`. Con
+//   "aéreo a 1.40 de altura" ambos extractores compiten y gana el equivocado.
+//   → Se desambigua por PREPOSICIÓN y por sustantivo de referencia (piso/suelo/chão),
+//     que es lo que hace única a esta medida.
+//
+//   ORDEN OBLIGATORIO: correr esto ANTES que la extracción de dimensiones y BORRAR el
+//   fragmento del texto (stripMountHeight), porque si no `extractByKeyword` recaptura
+//   el mismo número y lo asigna a `height`.
+const NUM = '(\\d+(?:[.,]\\d+)?)'   // admite decimal: "1.20 del piso" (con \\d{2,4} el
+                                   // regex capturaba el "20" y salía 200mm)
+const MOUNT_PATTERNS = [
+  // "colgado/pendurado/suspendido/fijado/instalado a 1400mm"
+  new RegExp('(?:colgad[oa]|pendurad[oa]|suspendid[oa]|fijad[oa]|fixad[oa]|instalad[oa]|montad[oa]|mounted|hung)\\s+(?:a|à|at|en|em|to)?\\s*' + NUM + '\\s*(mm)?', 'i'),
+  // "altura de instalación/fijación/montaje: 1400mm"
+  new RegExp('altura\\s+d[eo]\\s+(?:instalaci[oó]n|instala[çc][ãa]o|fijaci[oó]n|fixa[çc][ãa]o|montaje|montagem|installation|mounting)\\s*[:\\s]{0,3}' + NUM + '\\s*(mm)?', 'i'),
+  // "a 1400mm del piso" / "1400mm do chão" / "1400 from floor"
+  new RegExp(NUM + '\\s*(mm)?\\s*(?:d[eoa]l?|from|above)\\s+(?:piso|suelo|ch[ãa]o|solo|floor|ground|nivel)', 'i'),
+]
+// Escala propia (NO toDimMM): admite metros con decimal, que es como lo dice la gente
+// ("a 1.20 del piso"). toDimMM sólo distingue <1000 → cm.
+function mountToMM(raw, hasMM) {
+  const v = parseFloat(String(raw).replace(',', '.'))
+  if (!Number.isFinite(v)) return null
+  if (hasMM) return Math.round(v)          // "1450mm"
+  if (v < 10) return Math.round(v * 1000)  // "1.45"  → metros
+  if (v < 1000) return Math.round(v * 10)  // "145"   → cm (misma regla que toDimMM)
+  return Math.round(v)                     // "1450"  → mm
+}
+function extractMountHeight(text) {
+  for (const re of MOUNT_PATTERNS) {
+    const m = text.match(re)
+    if (m) {
+      const value = mountToMM(m[1], !!m[2])
+      if (value != null) return { value, match: m[0] }
+    }
+  }
+  return null
+}
+function stripMountHeight(text, match) {
+  return match ? text.replace(match, ' ') : text
+}
+
 function extractCount(text, kws) {
   const seen = new Set()
   for (const kw of kws) {
@@ -96,6 +146,16 @@ export function parseNaturalLanguage(input) {
   const notes = []
   let confidence = 0
 
+  // ★ Altura de instalación PRIMERO y se borra del texto: si no, "colgado a 1400 del
+  //   piso" sería recapturado por el extractor de `height` (ver nota en MOUNT_PATTERNS).
+  const mh = extractMountHeight(text)
+  if (mh) {
+    text = stripMountHeight(text, mh.match)
+    result.mountHeight = mh.value
+    confidence += 10
+    notes.push(`instalación ${mh.value}mm del piso`)
+  }
+
   // Dimensions
   if (triple) {
     result.width = triple.width; result.height = triple.height; result.depth = triple.depth
@@ -119,7 +179,15 @@ export function parseNaturalLanguage(input) {
     result.moduleType = 'base'; result.height = result.height || 900; result.hasCountertop = true; notes.push('Base cocina')
   } else if (detect(text, ['cocina alta', 'cozinha alta', 'aereo', 'suspendido', 'aéreo', 'superior', 'armario superior', 'armário superior'])) {
     result.moduleType = 'aereo'; result.height = result.height || 400; result.depth = result.depth || 320
-    result.baseboard = false; result.mountHeight = 1450; notes.push('Aéreo')
+    result.baseboard = false
+    // ★ 2026-07-26: sólo se aplica el default si el usuario NO dio una altura de
+    //   instalación. Antes pisaba SIEMPRE con 1450. El valor sale de la constante de
+    //   dominio (era un literal duplicado en 5 archivos con dos valores distintos).
+    //   OJO — acá SÍ hace falta default: en modo offline App.jsx arma el módulo con
+    //   `configuration: parsed.params` y `pieces: []`, el motor NO corre después, así
+    //   que dejarlo undefined dibujaría el aéreo apoyado en el piso.
+    if (result.mountHeight == null) result.mountHeight = AEREO_MOUNT.DEFAULT
+    notes.push('Aéreo')
   } else if (detect(text, ['isla', 'ilha', 'island'])) {
     result.moduleType = 'base'; notes.push('Isla')
   }

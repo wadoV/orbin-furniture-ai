@@ -179,3 +179,15 @@ visual/manual y una revisión de `git diff` antes del commit.
   5. Committed changes via git: `fix(i18n): finish Spanish validator copy (D6 remainder)`.
 * **Outcome:** Spanish copy for structural validator 100% complete and verified, 117/117 tests passing green.
 
+
+---
+
+## BUGFIX — Despiece no aparece en diseños por IA (Claude / Cowork) — 2026-07-22
+
+Prompt Eduardo: "Al generar diseños con IA no aparece la lista de cortes abajo como con parámetros. Soluciónalo."
+
+- **Reproducción:** flujo params (`handleGenerate`) empuja a `modules` + setea `selectedModuleId`; flujo chat IA (`stageVolatileModule`) solo setea `volatileOverlay`.
+- **Causa raíz (1 frase):** `ResultPanel` (contiene `CutListTable`) recibe `design={currentResult}` y `currentResult = modules.find(id===selectedModuleId)`; el preview HITL del chat vive en `volatileOverlay`, nunca en `modules`, así que `currentResult` es `undefined` → `ResultPanel` hace `if(!design) return null` → sin despiece. (App.jsx:788, 1039; ResultPanel.jsx:244)
+- **Fix (aditivo, aislado):** App.jsx:795 nuevo `const shownResult = volatileOverlay || currentResult`; `ResultPanel design={shownResult}` y `onSave` usa `shownResult?.id` (líneas 1046/1051). El despiece ahora refleja el preview activo del Viewer3D. NO se tocó `currentResult` (otros 6 usos intactos) ni la persistencia HITL (Confirmar sigue siendo el único commit a Supabase).
+- **Verificación:** esbuild transform de App.jsx → exit 0 (JSX válido). Cambio solo-cliente (npm test server no afectado). Build rollup completo debe correr en Windows (node_modules del cliente son binarios win32; el sandbox Linux no puede ejecutar la toolchain — artefacto de entorno, no del código).
+- **Pendiente Eduardo:** `npm run build` + commit en Windows; verificación manual (chat → generar → confirmar que aparece la lista de cortes).

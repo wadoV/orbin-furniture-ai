@@ -135,6 +135,46 @@ async function parseDesignIntent(text) {
     };
 }
 
+// ── Humaniza la respuesta del chat (ADITIVO 2026-07-23) ─────────────────────────
+// Objetivo: que el chat se sienta como hablar con un asistente, no como leer código.
+// El motor ya consumió los params (extraídos aparte), así que el bloque JSON NO debe
+// mostrarse al usuario. Si el modelo no dejó prosa, se sintetiza desde params.
+const MODULE_LABEL = {
+    standard: 'clóset', base: 'módulo base de cocina', aereo: 'gabinete aéreo', desk: 'escritorio',
+};
+
+function humanizeMessage(text, params, specAdjustments) {
+    let t = typeof text === 'string' ? text : '';
+    // 1) quitar bloques cercados ```json ... ``` (o ``` ... ```)
+    t = t.replace(/```[a-z]*\s*[\s\S]*?```/gi, '');
+    // 2) quitar un objeto JSON crudo suelto (params / moduleType / width)
+    t = t.replace(/\{[\s\S]*?"(?:params|moduleType|width)"[\s\S]*\}/g, '');
+    // 3) limpiar muletillas técnicas que introducían el JSON
+    t = t.replace(/aqu[ií] (?:tienes|te dejo|est[aá]n)[^.:\n]*(?:par[aá]metros|json|configuraci[oó]n)[^.:\n]*[.:]?/gi, '');
+    t = t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+
+    // 4) si quedó vacío o demasiado corto, sintetizar prosa natural desde params
+    if ((!t || t.length < 15) && params && params.width) {
+        const label = MODULE_LABEL[params.moduleType] || 'mueble';
+        const partes = [];
+        if (params.numDoors > 0) partes.push(`${params.numDoors} puertas`);
+        if (params.numDrawers > 0) partes.push(`${params.numDrawers} cajones`);
+        if (params.numShelves > 0) partes.push(`${params.numShelves} estantes`);
+        if (params.hasHangingRod) partes.push('barra de colgar');
+        if (params.hasCountertop) partes.push('encimera');
+        const comp = partes.length ? ` con ${partes.join(', ')}` : '';
+        t = `¡Listo! Diseñé tu ${label} de ${params.width}×${params.height}×${params.depth} mm${comp}. ` +
+            `Mirá el preview en 3D y confirmá cuando quieras.`;
+    }
+
+    // 5) anexar supuestos en lenguaje natural si el modelo no los mencionó
+    const assumed = (specAdjustments || []).filter(a => a && a.code === 'ASSUMED_DEFAULT');
+    if (assumed.length && t && !/asum|est[aá]ndar|no (?:indicaste|mencionaste|especificaste)/i.test(t)) {
+        t += '\n\n' + assumed.map(a => '· ' + a.message).join('\n');
+    }
+    return t.trim();
+}
+
 /**
  * Chat conversacional + extracción de params. Nunca lanza hacia la ruta.
  * @returns {{ message, params|null, specAdjustments, source }}
@@ -165,8 +205,9 @@ async function chatDesign(history = [], userMessage = '', options = {}) {
         if (c.dropped.length) console.warn('[aiOrchestrator] chat: llaves descartadas:', c.dropped.join(', '));
     }
 
+    const rawMessage = typeof out.message === 'string' ? out.message : String(out.message ?? '');
     const response = {
-        message: typeof out.message === 'string' ? out.message : String(out.message ?? ''),
+        message: humanizeMessage(rawMessage, params, specAdjustments),
         params,
         specAdjustments,
         source: provider,

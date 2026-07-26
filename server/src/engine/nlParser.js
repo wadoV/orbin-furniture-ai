@@ -88,6 +88,46 @@ function extractDimensionByKeyword(text, keywords) {
   return null
 }
 
+// ─── Altura de INSTALACIÓN (piso → borde inferior del mueble) ────────────────
+// ★ 2026-07-26 — espejo EXACTO de client/src/engine/offlineParser.js. Si tocás uno,
+//   tocá el otro o el modo online y el offline entienden frases distintas.
+//
+//   NO se desambigua por el sustantivo "altura": en carpintería "altura" = alto DEL
+//   MUEBLE y extractDimensionByKeyword ya la reclama para `height` (línea de abajo).
+//   Se desambigua por PREPOSICIÓN + sustantivo de referencia (piso/suelo/chão), que es
+//   lo único que hace única a esta medida.
+//
+//   ORDEN OBLIGATORIO: correr ANTES de extraer dimensiones y BORRAR el fragmento del
+//   texto, o `extractDimensionByKeyword` recaptura el número y lo asigna a `height`
+//   ("colgado a 1400 del piso" → mueble de 1400 de alto).
+const NUM = '(\\d+(?:[.,]\\d+)?)'   // admite decimal: "1.20 del piso" (con \\d{2,4} el
+                                   // regex capturaba el "20" y salía 200mm)
+const MOUNT_PATTERNS = [
+  new RegExp('(?:colgad[oa]|pendurad[oa]|suspendid[oa]|fijad[oa]|fixad[oa]|instalad[oa]|montad[oa]|mounted|hung)\\s+(?:a|à|at|en|em|to)?\\s*' + NUM + '\\s*(mm)?', 'i'),
+  new RegExp('altura\\s+d[eo]\\s+(?:instalaci[oó]n|instala[çc][ãa]o|fijaci[oó]n|fixa[çc][ãa]o|montaje|montagem|installation|mounting)\\s*[:\\s]{0,3}' + NUM + '\\s*(mm)?', 'i'),
+  new RegExp(NUM + '\\s*(mm)?\\s*(?:d[eoa]l?|from|above)\\s+(?:piso|suelo|ch[ãa]o|solo|floor|ground|nivel)', 'i'),
+]
+// Escala propia (NO toDimMM): esta medida admite metros con decimal, que es como la
+// dice la gente ("a 1.20 del piso"). toDimMM sólo distingue <1000 → cm.
+function mountToMM(raw, hasMM) {
+  const v = parseFloat(String(raw).replace(',', '.'))
+  if (!Number.isFinite(v)) return null
+  if (hasMM) return Math.round(v)          // "1450mm"
+  if (v < 10) return Math.round(v * 1000)  // "1.45"  → metros
+  if (v < 1000) return Math.round(v * 10)  // "145"   → cm  (misma regla que toDimMM)
+  return Math.round(v)                     // "1450"  → mm
+}
+function extractMountHeight(text) {
+  for (const re of MOUNT_PATTERNS) {
+    const m = text.match(re)
+    if (m) {
+      const value = mountToMM(m[1], !!m[2])
+      if (value != null) return { value, match: m[0] }
+    }
+  }
+  return null
+}
+
 // ─── Count Extractor ──────────────────────────────────────────────────────────
 
 function extractCount(text, keywords) {
@@ -130,19 +170,39 @@ function parseNaturalLanguage(input) {
   const notes  = []
   let confidence = 0
 
+  // ★ FIX 2026-07-23 (bug demo aéreo): flags de "el usuario ESPECIFICÓ esta
+  //   dimensión". La detección de tipo (abajo) forzaba height/depth de forma
+  //   incondicional y PISABA las medidas explícitas del usuario (ej. aéreo
+  //   "20 de alto, 30 de fondo" salía 700×350). Ahora los defaults de tipo solo
+  //   rellenan lo que el usuario NO dio. Mismo patrón que el offlineParser cliente.
+  const userSet = { width: false, height: false, depth: false }
+
+  // ★ 2026-07-26: altura de instalación PRIMERO y se borra del texto (ver nota en
+  //   MOUNT_PATTERNS). A diferencia del parser offline, acá NO se pone default para el
+  //   aéreo: este resultado sí pasa por closetEngine, que aplica AEREO.KITCHEN_MOUNT_HEIGHT
+  //   cuando el valor viene null. Dueño único del default = el motor.
+  const mh = extractMountHeight(text)
+  if (mh) {
+    text = text.replace(mh.match, ' ')
+    result.mountHeight = mh.value
+    confidence += 10
+    notes.push(`Instalación: ${mh.value}mm del piso`)
+  }
+
   if (triple) {
     result.width  = triple.width
     result.height = triple.height
     result.depth  = triple.depth
+    userSet.width = userSet.height = userSet.depth = true
     confidence += 40
   } else {
     const w = extractDimensionByKeyword(text, ['larg', 'anch', 'width', 'largura', 'ancho'])
     const h = extractDimensionByKeyword(text, ['alt',  'height', 'altura', 'alto'])
     const d = extractDimensionByKeyword(text, ['prof', 'depth', 'fundo', 'profundidade', 'fondo'])
 
-    if (w) { result.width  = w; confidence += 15 }
-    if (h) { result.height = h; confidence += 15 }
-    if (d) { result.depth  = d; confidence += 15 }
+    if (w) { result.width  = w; userSet.width  = true; confidence += 15 }
+    if (h) { result.height = h; userSet.height = true; confidence += 15 }
+    if (d) { result.depth  = d; userSet.depth  = true; confidence += 15 }
 
     if (!w) {
       const first = text.match(/\b(\d{3,4})\s*mm/)
@@ -157,13 +217,17 @@ function parseNaturalLanguage(input) {
   // NOTE: runs BEFORE the dimension note so interpreted reflects FINAL dimensions.
   // BUG FIX: also set moduleType so Viewer3D renders the correct geometry
   // ('kitchen_low' → 'base', 'kitchen_high' → 'aereo', default → 'standard')
-  if (detectFeature(text, ['cocina baja', 'cozinha baixa', 'modulo bajo', 'mueble bajo', 'bajo de cocina'])) {
+  if (detectFeature(text, ['cocina baja', 'cozinha baixa', 'modulo bajo', 'módulo bajo', 'mueble bajo', 'bajo de cocina', 'mueble base', 'módulo base', 'modulo base', 'base de cocina', 'gabinete base', 'balcão', 'balcao'])) {
     result.type = 'kitchen_low'; result.moduleType = 'base';
-    result.height = 900; result.depth = 600; result.hasCountertop = true;
+    // Defaults de tipo SOLO si el usuario no dio la medida (no pisar lo explícito).
+    if (!userSet.height) result.height = 900;
+    if (!userSet.depth)  result.depth  = 600;
+    result.hasCountertop = true;
     notes.push('Tipo: Módulo Bajo');
   } else if (detectFeature(text, ['cocina alta', 'cozinha alta', 'aereo', 'aéreo', 'módulo aéreo', 'modulo aereo', 'módulo alto', 'modulo alto', 'suspendido'])) {
     result.type = 'kitchen_high'; result.moduleType = 'aereo';
-    result.height = 700; result.depth = 350;
+    if (!userSet.height) result.height = 700;
+    if (!userSet.depth)  result.depth  = 350;
     notes.push('Tipo: Módulo Alto');
   } else if (detectFeature(text, ['isla', 'ilha', 'island'])) {
     result.type = 'kitchen_island'; result.moduleType = 'base';

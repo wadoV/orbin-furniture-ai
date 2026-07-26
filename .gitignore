@@ -78,3 +78,6 @@ client/src/engine/_cg_probe.js
 
 # Temporales de rasterizado de iconos (sandbox) — borrar manual
 client/public/_*
+
+# Scratch: rendered plan audits (temporary, regenerable)
+_plan_review/

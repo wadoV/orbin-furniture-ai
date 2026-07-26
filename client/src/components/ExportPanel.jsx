@@ -114,22 +114,48 @@ function extractPieces(modules) {
 
 // ── PLANO EJECUTIVO 2D ─────────────────────────────────────────────────────────
 async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, companySettings }) {
+  // ★ 2026-07-26: misma normalización que planGenerator.normLang (acepta minúsculas y
+  //   prefijo de locale, fallback PT = default real de la app). Antes este plano caía a
+  //   ES y el de montaje a PT → con un `lang` inválido los DOS PDF del mismo proyecto
+  //   salían en idiomas distintos. Para 'ES'|'PT'|'EN' no cambia nada.
+  const L = (() => {
+    const k = String(lang || '').trim().toUpperCase().split(/[-_]/)[0]
+    return ['ES','PT','EN'].includes(k) ? k : 'PT'
+  })()
+  const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' })
+  const company = companySettings?.name || user?.company_name || user?.name || 'Orbin AI'
+  // ★ REDISEÑO 2026-07-23: UN PLANO COMPLETO POR MÓDULO. Antes solo modules[0]
+  //   tenía cajetín/cotas/título; los módulos extra recibían una página pelada con
+  //   solo el alzado (sin identificación ni cotas). Ahora se dibuja la página íntegra
+  //   por cada módulo, con SUS datos (id, tipo, dimensiones, escala) y "Hoja i/N".
+  const list = (modules && modules.length) ? modules : [{}]
+  list.forEach((mod, i) => {
+    if (i > 0) doc.addPage()
+    drawExecutivePage(doc, mod, { L, lang, company, companySettings, index: i, total: list.length })
+  })
+
+  const firstId = (list[0] && (list[0].id || list[0].name)) || 'MOD-001'
+  const fileTag = list.length > 1 ? `proyecto-${list.length}mod` : firstId
+  const blob = doc.output('blob')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `plano-ejecutivo-${fileTag}-${Date.now()}.pdf`
+  a.click()
+}
+
+// ── Una PÁGINA de plano ejecutivo, completa, para UN módulo ──────────────────────
+function drawExecutivePage(doc, mod, { L, lang, company, companySettings, index = 0, total = 1 }) {
   const titles = {
     PT: 'PLANO EXECUTIVO', ES: 'PLANO EJECUTIVO', EN: 'EXECUTIVE PLAN'
   }
-  const L = ['PT','ES','EN'].includes(lang) ? lang : 'ES'
-  
   // Clean design margins: 10mm
   const MARGIN = 10
   const A4_W = 297
   const A4_H = 210
   const ROT_W = 50 // Cuadro de rotulación (50mm width)
   const ROT_X = A4_W - MARGIN - ROT_W // 237mm
-  
-  const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' })
-  const mod = modules[0] || {}
+
   const dims = getModuleDims(mod)
-  const company = companySettings?.name || user?.company_name || user?.name || 'Orbin AI'
   const modId = mod.id || mod.name || 'MOD-001'
   const dimStr = dims.W ? `${dims.W} × ${dims.H} × ${dims.D} mm` : 'N/D'
 
@@ -157,18 +183,34 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   // Draw text inside each block
   doc.setFont('helvetica', 'normal')
   
+  // ★ i18n 2026-07-23: labels del cajetín traducidos (antes hardcodeados en ES →
+  //   el plano ejecutivo no cambiaba de idioma al cambiar el selector de la app).
+  const LBL = {
+    ES: { proyecto: 'PROYECTO', empresa: 'EMPRESA', componente: 'COMPONENTE', dimensiones: 'DIMENSIONES', fecha: 'FECHA', escala: 'ESCALA' },
+    PT: { proyecto: 'PROJETO', empresa: 'EMPRESA', componente: 'COMPONENTE', dimensiones: 'DIMENSÕES', fecha: 'DATA', escala: 'ESCALA' },
+    EN: { proyecto: 'PROJECT', empresa: 'COMPANY', componente: 'COMPONENT', dimensiones: 'DIMENSIONS', fecha: 'DATE', escala: 'SCALE' },
+  }[L] || {}
+
   // Block 1: Header/Title (20mm height)
   doc.setFontSize(10)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(30, 30, 30)
-  doc.text(titles[L], ROT_X + ROT_W / 2, MARGIN + 12, { align: 'center' })
+  doc.text(titles[L], ROT_X + ROT_W / 2, MARGIN + 11, { align: 'center' })
+  // ★ Indicador de hoja cuando el proyecto tiene varios módulos (plano por módulo)
+  if (total > 1) {
+    const sheet = { PT: 'Folha', ES: 'Hoja', EN: 'Sheet' }[L] || 'Hoja'
+    doc.setFontSize(6)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(120, 120, 120)
+    doc.text(`${sheet} ${index + 1}/${total}`, ROT_X + ROT_W / 2, MARGIN + 16, { align: 'center' })
+  }
 
   // Block 2: PROYECTO (25mm height)
   let y = MARGIN + 20
   doc.setFontSize(6)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(100, 100, 100)
-  doc.text('PROYECTO', ROT_X + 4, y + 6)
+  doc.text(LBL.proyecto, ROT_X + 4, y + 6)
   doc.setFontSize(8)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(30, 30, 30)
@@ -179,7 +221,7 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   doc.setFontSize(6)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(100, 100, 100)
-  doc.text('EMPRESA', ROT_X + 4, y + 5)
+  doc.text(LBL.empresa, ROT_X + 4, y + 5)
   doc.setFontSize(8)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(30, 30, 30)
@@ -203,7 +245,7 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   doc.setFontSize(6)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(100, 100, 100)
-  doc.text('COMPONENTE', ROT_X + 4, y + 6)
+  doc.text(LBL.componente, ROT_X + 4, y + 6)
   doc.setFontSize(8)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(30, 30, 30)
@@ -215,7 +257,7 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   doc.setFontSize(6)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(100, 100, 100)
-  doc.text('DIMENSIONES', ROT_X + 4, y + 6)
+  doc.text(LBL.dimensiones, ROT_X + 4, y + 6)
   doc.setFontSize(8)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(30, 30, 30)
@@ -244,8 +286,8 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   doc.setFontSize(6)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(100, 100, 100)
-  doc.text('FECHA', ROT_X + 4, y + 6)
-  doc.text('ESCALA', ROT_X + ROT_W / 2 + 4, y + 6)
+  doc.text(LBL.fecha, ROT_X + 4, y + 6)
+  doc.text(LBL.escala, ROT_X + ROT_W / 2 + 4, y + 6)
   doc.setFontSize(7.5)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(30, 30, 30)
@@ -275,7 +317,9 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   // overallDims:false → las cotas generales de ancho/alto las dibuja ESTE plano más
   // abajo con su propio estilo de flechas. Dejarlas también en drawElevation producía
   // el duplicado "600" + "600 mm" y "720" + "720 mm" sobre el mismo dibujo.
-  const elevTitle = lang === 'PT' ? 'Alçado frontal' : lang === 'EN' ? 'Front elevation' : 'Alzado frontal'
+  // ★ 2026-07-26: usa L (normalizado), no el `lang` crudo — con 'pt-BR' el cajetín salía
+  //   en un idioma y este título en otro.
+  const elevTitle = L === 'PT' ? 'Alçado frontal' : L === 'EN' ? 'Front elevation' : 'Alzado frontal'
   // Niveles de cota del lado derecho (convención de dibujo técnico: cada sistema
   // en su propia línea, nunca a 2mm uno de otro):
   //   nivel 1 → +10mm : cadena interna de alturas (la dibuja drawElevation)
@@ -283,14 +327,6 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   const DIM_L1 = 10, DIM_L2 = 26
   const elevOpts = { overallDims: false, title: elevTitle, internalDimOffset: DIM_L1 }
   const elevBox = drawElevation(doc, mod, imgX, imgY, imgW, imgH, elevOpts)
-
-  // MULTI-MÓDULO: tras dibujar el módulo 0, si modules.length > 1, añade una página por cada módulo extra con su propio alzado
-  if (modules.length > 1) {
-    for (let i = 1; i < modules.length; i++) {
-      doc.addPage()
-      drawElevation(doc, modules[i], imgX, imgY, imgW, imgH, elevOpts)
-    }
-  }
 
   // ── LINES OF COTA (DIMENSIONING SYSTEM) ──────────────────────────────────────
   // La caja viene de drawElevation (fuente única). Antes se recalculaba aquí con
@@ -344,13 +380,6 @@ async function generatePlanoPDF({ modules, captureWireframe, user, lang, t, comp
   // 3. Cota de rodapié ELIMINADA: la cadena interna del lado derecho ya descompone
   //    toda la altura (sus tramos suman H), así que era información duplicada y
   //    obligaba a un segundo nivel de cota en el mismo lado. Plano más limpio.
-
-  // Save/Download Blob URL
-  const blob = doc.output('blob')
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `plano-ejecutivo-${modId}-${Date.now()}.pdf`
-  a.click()
 }
 
 // ── ETIQUETAS TÉRMICAS 60×40mm ─────────────────────────────────────────────────
@@ -576,9 +605,14 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
         const W = Math.round(1000 * scale), H = Math.round(740 * scale)
         const cv = document.createElement('canvas'); cv.width = W; cv.height = H
         const ctx = cv.getContext('2d')
+        // ★ PESO 2026-07-23: fondo blanco explícito + JPEG de alta calidad. El plano
+        //   es line-art sobre blanco; un PNG RGBA sin comprimir daba ~13MB por página
+        //   (>50MB el proyecto). JPEG 0.94 se ve igual y pesa ~8× menos. `mime` se
+        //   propaga a addImage para que jsPDF lo embeba correctamente.
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H)
         ctx.drawImage(img, 0, 0, W, H)
         URL.revokeObjectURL(url)
-        resolve(cv.toDataURL('image/png'))
+        resolve(cv.toDataURL('image/jpeg', 0.94))
       }
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('SVG->PNG failed')) }
       img.src = url
@@ -599,7 +633,17 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
       // cajetín siga siendo editable (cambiar diseñador/empresa sin regenerar el
       // proyecto), el SVG deja esos campos en blanco y aquí se superponen campos
       // AcroForm reales, rellenados con los datos de emisión actuales.
-      const sx = PW / PLAN_VIEWBOX.w, sy = PH / PLAN_VIEWBOX.h
+      // ★ FIDELIDAD 2026-07-26 — el plano salía DISTORSIONADO. El viewBox del SVG es
+      //   1000×740 (aspecto 1.351) y se estampaba con addImage(...,0,0,PW,PH) sobre A4
+      //   apaisado (aspecto 1.414) → estiramiento HORIZONTAL del 4,66%. En un plano
+      //   técnico eso significa que un ancho medido con regla da 4,66% más que un alto:
+      //   el dibujo deja de estar a una escala única y la cota de escala es imposible.
+      //   Ahora se encaja respetando el aspecto (letterbox) y se centra. Los campos
+      //   AcroForm del cajetín usan EL MISMO factor y offset, si no se despegan del
+      //   dibujo (van superpuestos sobre él).
+      const fit = Math.min(PW / PLAN_VIEWBOX.w, PH / PLAN_VIEWBOX.h)
+      const imgW = PLAN_VIEWBOX.w * fit, imgH = PLAN_VIEWBOX.h * fit
+      const offX = (PW - imgW) / 2, offY = (PH - imgH) / 2
       const fieldValues = {
         empresa:    company.empresa || '',
         setor:      company.setor || '',
@@ -611,7 +655,7 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
         Object.entries(CAJETIN_FIELDS).forEach(([key, box]) => {
           const tf = new AcroFormTextField()
           tf.fieldName = `${key}_p${page}`
-          tf.Rect = [box.x * sx, box.y * sy, box.w * sx, box.h * sy]
+          tf.Rect = [offX + box.x * fit, offY + box.y * fit, box.w * fit, box.h * fit]
           tf.value = String(fieldValues[key] ?? '')
           tf.fontSize = 9
           tf.maxFontSize = 11
@@ -621,7 +665,7 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
       const addSVG = async (svg, first) => {
         const png = await svgToPngDataURL(svg, 2.5)
         if (!first) pdf.addPage('a4', 'landscape')
-        pdf.addImage(png, 'PNG', 0, 0, PW, PH)
+        pdf.addImage(png, 'JPEG', offX, offY, imgW, imgH)   // ★ sin distorsión (ver nota arriba)
         addEditableCajetin()
       }
       const planOpts = { theme: 'print', lang, company, captures, isoDataURL: iso, editableFields: true }

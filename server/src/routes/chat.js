@@ -9,6 +9,9 @@ const router  = express.Router()
 const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
 const { buildOrbinChatPrompt } = require('../ai/systemPrompts')
 const { generateProject } = require('../engine/closetEngine')
+const { validateDesign } = require('../engine/validator')
+const { detectConfirmation, buildPreviewMessage } = require('./hitlPreview')
+const { TTLStore } = require('./ttlStore')
 const { requireAuth } = require('../middleware/auth')
 const z = require('zod')
 
@@ -74,8 +77,16 @@ function normalizeDesignParams(raw) {
   return p
 }
 
-// In-memory session store (replace with Redis/Supabase for production)
-const sessions = new Map()
+// In-memory session store (replace with Redis/Supabase for production).
+// ★ 2026-07-23: migrado de `new Map()` a TTLStore — el Map crecía sin límite
+//   (leak → OOM en proceso long-running). TTL 60min, tope 5000 sesiones.
+const sessions = new TTLStore({ ttlMs: 60 * 60 * 1000, maxEntries: 5000 })
+
+// ADITIVO 2026-07-23: caché de propuestas pendientes de confirmación.
+// SÓLO es resiliencia secundaria — la fuente autoritativa es el echo del cliente
+// (req.body.proposedParams). Nunca se depende de que sobreviva entre turnos.
+// TTL corto (15min): una propuesta no confirmada caduca y libera memoria.
+const pendingProposals = new TTLStore({ ttlMs: 15 * 60 * 1000, maxEntries: 5000 })
 
 // ─── POST /api/chat/design ────────────────────────────────────────────────────
 
@@ -93,6 +104,59 @@ router.post('/design', async (req, res) => {
     }
 
     const validContext = contextValidation.data
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADITIVO 2026-07-23 — MODO "VALIDACIÓN Y PROPUESTA PREVIA" (HITL 2 fases)
+    // Opt-in vía req.body.confirmFlow === true. Si el flag NO viene, el handler
+    // sigue exactamente igual que antes (cero regresión para el cliente actual).
+    //
+    // FASE 2 (confirmación): el cliente reenvía la propuesta con action:'confirm'
+    // y proposedParams. Es STATELESS: no depende de que el server retenga estado
+    // entre turnos (clave para Railway multi-instancia / redeploy).
+    // ═══════════════════════════════════════════════════════════════════════
+    const confirmFlow = req.body.confirmFlow === true
+    if (confirmFlow) {
+      const verdict = detectConfirmation({ action: req.body.action, message })
+      const echoed = (req.body.proposedParams && typeof req.body.proposedParams === 'object')
+        ? req.body.proposedParams
+        : (req.body.sessionId ? pendingProposals.get(req.body.sessionId) : null)
+
+      // ── FASE 2: generar el despiece definitivo ────────────────────────────
+      if (verdict === 'confirm' && echoed) {
+        try {
+          const safeParams = normalizeDesignParams(echoed)
+          const design = generateProject(safeParams)
+          if (sessionId) pendingProposals.delete(sessionId)
+          return res.json({
+            success: true,
+            phase: 'generated',
+            status: 'confirmed',
+            reply: (design && design.success)
+              ? { ES: 'Diseño generado. Lo agregué al lienzo.', PT: 'Projeto gerado. Adicionei ao canvas.', EN: 'Design generated and added to the canvas.' }[validContext.lang || 'ES']
+              : { ES: 'No pude generar el despiece.', PT: 'Não consegui gerar o plano.', EN: 'Could not generate the cut list.' }[validContext.lang || 'ES'],
+            design,
+            params: safeParams,
+            source: 'engine-confirmed',
+          })
+        } catch (engineErr) {
+          console.error('[chat/design] Fase 2 engine error:', engineErr.message)
+          return res.status(200).json({
+            success: false, phase: 'generated', status: 'error',
+            error: 'No pudimos generar el diseño confirmado. Revisá los parámetros.',
+          })
+        }
+      }
+
+      // ── Cancelación explícita: limpiar propuesta pendiente ───────────────
+      if (verdict === 'cancel') {
+        if (sessionId) pendingProposals.delete(sessionId)
+        return res.json({
+          success: true, phase: 'cancelled', status: 'cancelled',
+          reply: { ES: 'Cancelado. Contame qué ajustamos.', PT: 'Cancelado. Diga o que ajustamos.', EN: 'Cancelled. Tell me what to adjust.' }[validContext.lang || 'ES'],
+        })
+      }
+      // Si no es confirmación/cancelación → cae a FASE 1 (propuesta) más abajo.
+    }
 
     // Retrieve or create session history
     const history = sessions.get(sessionId) || []
@@ -124,6 +188,50 @@ router.post('/design', async (req, res) => {
     const nlpAdjustments = Array.isArray(result.specAdjustments) ? result.specAdjustments : []
     if (nlpAdjustments.length) response.specAdjustments = nlpAdjustments
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // FASE 1 (propuesta previa): confirmFlow activo + hay params extraídos.
+    // Corre el motor SÓLO para validar estructuralmente; NO devuelve el payload
+    // pesado que dispararía el render 3D. Responde previsualización textual y
+    // ESPERA la confirmación del usuario (Fase 2). 100% aditivo: si confirmFlow
+    // no viene, este bloque se salta y el flujo legacy queda idéntico.
+    // ═══════════════════════════════════════════════════════════════════════
+    if (confirmFlow && result.params) {
+      let safeParams, validation = null
+      try {
+        safeParams = normalizeDesignParams(result.params)
+        const probe = generateProject(safeParams)   // cálculo sólo-validación
+        const mergedAdjustments = [...nlpAdjustments, ...((probe && probe.specAdjustments) || [])]
+        validation = (probe && probe.success)
+          ? validateDesign(probe)
+          : { status: 'RECHAZADO', errors: [probe && probe.details || 'Error del motor'], warnings: [] }
+
+        const preview = buildPreviewMessage({
+          params: safeParams, validation, specAdjustments: mergedAdjustments, lang: validContext.lang,
+        })
+
+        if (preview.viable && sessionId) pendingProposals.set(sessionId, safeParams)
+
+        return res.json({
+          success: true,
+          phase: 'proposal',
+          status: preview.viable ? 'awaiting_confirmation' : 'rejected',
+          reply: preview.text,
+          // proposedParams = fuente autoritativa que el cliente reenvía al confirmar.
+          proposedParams: preview.viable ? safeParams : undefined,
+          validation: { status: validation.status, errors: validation.errors, warnings: validation.warnings },
+          specAdjustments: mergedAdjustments,
+          source: result.source,
+        })
+      } catch (probeErr) {
+        console.error('[chat/design] Fase 1 validación:', probeErr.message)
+        return res.json({
+          success: true, phase: 'proposal', status: 'rejected',
+          reply: 'No pude validar la propuesta. Revisá las medidas e intentá de nuevo.',
+          source: result.source,
+        })
+      }
+    }
+
     // If params were extracted and autoGenerate is on, run the engine
     if (result.params && autoGenerate) {
       try {
@@ -135,6 +243,17 @@ router.post('/design', async (req, res) => {
           response.design.specAdjustments = [...nlpAdjustments, ...(response.design.specAdjustments || [])]
           response.design.hasSpecAdjustments = response.design.specAdjustments.length > 0
           response.specAdjustments = response.design.specAdjustments
+          // ★ FIX 2026-07-23 (Galería): el chat no adjuntaba `validation`, así que el
+          //   guard fail-closed de la Biblioteca Verificada bloqueaba SIEMPRE el guardado
+          //   ("validation_missing"). Se corre el validador y se adjunta, igual que
+          //   design.js → habilita "Guardar en Galería" para diseños hechos por chat.
+          try {
+            const v = validateDesign(response.design)
+            response.design.validation = { status: v.status, errors: v.errors, warnings: v.warnings, summary: v.summary }
+            response.validation = response.design.validation
+          } catch (valErr) {
+            console.warn('[chat/design] validación no disponible:', valErr.message)
+          }
         }
       } catch (engineErr) {
         console.error('[chat/design] Engine error:', engineErr.message)

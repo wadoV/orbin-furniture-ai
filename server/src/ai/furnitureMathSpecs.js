@@ -44,6 +44,47 @@ module.exports = {
     nailedWidth: (totalWidth) => totalWidth - 2
   },
 
+  // ── TAMPONADO / TAPATORNILLOS (2026-07-20) ────────────────────────────────
+  // SEMÁNTICA: el ancho pedido W es el ancho ACABADO — incluye los paneles
+  // tapatornillos. La carcasa se descuenta para que el mueble instalado mida
+  // exactamente W (crítico en vanos de obra):
+  //   carcassWidth = W − (ladosConTampón × espesorTampón)
+  // Manual del taller: 900mm acabado con tampón de 9mm/lado → carcasa 882mm.
+  // Con tampón de MDF 15 (default = espesor de carcasa) → 870mm.
+  // Sin tamponado (sides=0) devuelve W intacto — cero regresión.
+  tamponado: {
+    carcassWidth: (finishedWidth, sides, tampThickness) =>
+      finishedWidth - (sides * tampThickness),
+    sidesFor: (tamponado) =>
+      tamponado === 'both' ? 2 : ((tamponado === 'left' || tamponado === 'right') ? 1 : 0)
+  },
+
+  // ── MOLDURA FRONTAL (2026-07-20, opt-in vía cfg.frontMolding) ─────────────
+  // Con moldura/taponamiento frontal que define la profundidad acabada D:
+  //   laterales = D − molding (ej. 600 → 580)
+  //   base/techo/repisas = D − 2×molding (ej. 600 → 560)
+  frontMolding: {
+    DEFAULT_DEPTH: 20,
+    lateralDepth:    (carcassDepth, molding = 20) => carcassDepth - molding,
+    horizontalDepth: (carcassDepth, molding = 20) => carcassDepth - (2 * molding)
+  },
+
+  // ── ESCRITORIOS (2026-07-22) ──────────────────────────────────────────────
+  // Reglas de la topología desk. El faldón (modesty panel) rigidiza el vano
+  // pegado BAJO el tampo: alto = 35% del lateral, acotado a [150, 300]mm.
+  desk: {
+    DEFAULT_HEIGHT: 750,
+    DEFAULT_DEPTH: 600,
+    // ★ 2026-07-23: faldón/modesty panel DISCRETO (antes 35% del lateral = ~256mm,
+    //   dominaba el vano como una pared). Estándar de escritorio: tira de ~100-120mm
+    //   bajo el tampo, suficiente para rigidez/privacidad sin tapar las piernas.
+    apronHeight: (latH) => Math.min(140, Math.max(90, Math.round(latH * 0.15))),
+    // Vano de piernas: con pedestal se descuenta su ancho + 1 costado;
+    // escritorio simple = vano completo entre laterales.
+    kneeSpan: (W, T, pedestalWidth = 0) =>
+      pedestalWidth > 0 ? W - pedestalWidth - T : W - (2 * T)
+  },
+
   // Edge banding compensation
   edgeBanding: (baseSize, edgeThickness) => baseSize - edgeThickness,
 

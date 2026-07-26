@@ -17,7 +17,7 @@ const FurnitureMath = require('../ai/furnitureMathSpecs')
 // ★ Ley física (chapa + herrajes): FUENTE ÚNICA en ./constants.
 //   Generador y validador leen el MISMO MATERIAL y el MISMO HARDWARE para evitar
 //   que el motor genere piezas que su propio validador rechaza (P0 resuelto 2026-07-19).
-const { MATERIAL, HARDWARE, BASEBOARD } = require('./constants')
+const { MATERIAL, HARDWARE, BASEBOARD, PANEL_VISTA, AEREO } = require('./constants')
 
 // ★ RODAPIÉ UNIVERSAL 2026-07-20 — recuo con guard de fondo.
 //   El zócalo frontal se coloca en `z = D − T/2 − inset` y el trasero en `z = T/2 + inset`.
@@ -106,7 +106,21 @@ const DEFAULTS = {
   pedestalWidth: 400,        // solo moduleType 'desk': ancho del gavetero
   // ── ADITIVO 2026-07-19 (work item topologías): defaults neutros = output idéntico
   nicheHeight: 0,            // >0: nicho abierto bajo las puertas (ref. gabinete c/nicho)
-  drawerColumns: null        // 2..4: N columnas de gavetas con montantes DIV-GAV
+  drawerColumns: null,       // 2..4: N columnas de gavetas con montantes DIV-GAV
+  drawerPrivacyPanel: true,  // ★ 2026-07-23: travesaño de cierre sobre gavetas (privacidad)
+  drawerRailHeight: 50,      // ★ 2026-07-23: alto del travesaño (mm), estándar 50, ampliable
+  // ── ADITIVO 2026-07-26: altura de INSTALACIÓN (piso → borde INFERIOR del mueble).
+  //    Es metadato de MONTAJE, no de fabricación: no genera ni modifica NINGUNA pieza
+  //    (la lista de cortes es idéntica con mountHeight 0 o 1450). Lo consumen el visor
+  //    3D, el plano de conjunto y la nota de fijación de la BOM.
+  //    Convención: borde INFERIOR, no superior — es la línea que marca el instalador
+  //    para la riel, y no cambia sola si cambia la altura del mueble.
+  //    null = NO ESPECIFICADO (sentinela). Se resuelve en el bloque INVARIANTE aéreo:
+  //    aéreo → AEREO.KITCHEN_MOUNT_HEIGHT · resto → 0 (apoyado en el piso).
+  //    OJO: no puede ser 0 acá. generateProject hace {...DEFAULTS,...params} ANTES de
+  //    llamar a generateFurniture, así que un 0 de default sería indistinguible de un
+  //    0 puesto por el usuario y el auto-default del aéreo nunca se dispararía.
+  mountHeight: null
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -136,6 +150,16 @@ function makePiece(id, name, type, w, h, t, qty, x, y, z, grainDir, edgeBanding,
 //   Regla real de marcenaria: se monta la corredera comercial MÁS LARGA que quepa;
 //   por debajo de 250mm no existe herraje telescópico → no hay caja fabricable.
 //   Comportamiento IDÉNTICO al histórico para todo D >= 276mm (cero regresión).
+// ★ RULES 2026-07-22 — despeje de profundidad PRECISO (diccionario paramétrico):
+//   despeje = T (frente de gaveta) + fondoEfectivo (Tb, + profundidad de ranura si
+//   el fondo es grooved) + DRAWER_REAR_CLEARANCE (10mm).
+//   Sustituye el `D − Tb − 20` histórico, que ignoraba el FRENTE: en D=580/T=18
+//   emitía caja de 550 → 550+6+10+18 = 584 > 580 (4mm de interferencia real).
+function drawerDepthClearance(T, Tb, backStyle, grooveDepth) {
+  const fondoEfectivo = Tb + (backStyle === 'grooved' ? (grooveDepth || 8) : 0)
+  return T + fondoEfectivo + HARDWARE.DRAWER_REAR_CLEARANCE
+}
+
 function pickSlideDepth(availableDepth) {
   let best = 0
   for (const len of HARDWARE.SLIDE_LENGTHS) {
@@ -207,31 +231,63 @@ function generateDeskFurniture(cfg) {
   pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', D, latH, T, 1, T/2, latH/2, D/2, 'vertical', { front: true }))
   pieces.push(makePiece(nextId('LAT-R'), 'Lateral Derecho', 'lateral', D, latH, T, 1, W - T/2, latH/2, D/2, 'vertical', { front: true }))
 
-  // Pedestal: costado interno que cierra el gavetero (lado derecho)
-  const divX = W - pedW + T/2
-  pieces.push(makePiece(nextId('PED-DIV'), 'Costado Pedestal', 'divider', D, latH, T, 1, divX, latH/2, D/2, 'vertical', { front: true }, 'Cierra el gavetero — vano libre a la izquierda'))
+  // ★ ADITIVO 2026-07-22 (escritorios v2): `hasPedestal` (default true = histórico)
+  //   y `pedestalSide` 'left'|'right' (default 'right' = histórico → cero regresión:
+  //   con los defaults, cada fórmula de posición es EXACTAMENTE la expresión previa).
+  //   hasPedestal:false → ESCRITORIO SIMPLE: cubierta + 2 laterales de apoyo +
+  //   faldón estructural a todo el vano. Sin gavetero.
+  const hasPedestal = cfg.hasPedestal !== undefined ? !!cfg.hasPedestal : true
+  const pedSide = (hasPedestal && cfg.pedestalSide === 'left') ? 'left' : 'right'
+  cfg.hasPedestal = hasPedestal
+  cfg.pedestalSide = hasPedestal ? pedSide : null
 
-  const pedInterior = pedW - 2 * T          // entre PED-DIV y LAT-R
-  const kneeSpan = W - pedW - T             // vano libre para piernas
+  const pedInterior = pedW - 2 * T          // entre PED-DIV y el lateral del lado del pedestal
+  const kneeSpan = hasPedestal ? (W - pedW - T) : (W - 2 * T)   // vano libre para piernas
 
-  // Piso del pedestal
-  pieces.push(makePiece(nextId('PED-BASE'), 'Base Pedestal', 'piso', pedInterior, D - BT, T, 1, W - pedW/2 - T/2 + T/2, T/2, (D - BT)/2, 'horizontal', { front: true }))
+  let pedCenterX = 0
+  if (hasPedestal) {
+    // Costado interno que cierra el gavetero; el vano de piernas queda al lado opuesto
+    const divX = pedSide === 'right' ? (W - pedW + T/2) : (pedW - T/2)
+    pieces.push(makePiece(nextId('PED-DIV'), 'Costado Pedestal', 'divider', D, latH, T, 1, divX, latH/2, D/2, 'vertical', { front: true }, `Cierra el gavetero — vano libre a la ${pedSide === 'right' ? 'izquierda' : 'derecha'}`))
 
-  // Fondo solo detrás del pedestal (el vano queda abierto para cables)
-  pieces.push(makePiece(nextId('PED-FUNDO'), 'Fondo Pedestal', 'fondo', pedInterior, latH - T, BT, 1, W - pedW/2, (latH + T)/2, D - BT/2, 'none'))
+    const pedMidX = pedSide === 'right' ? (W - pedW/2) : (pedW/2)
+    pedCenterX = pedSide === 'right' ? (W - pedW + T + pedInterior/2) : (T + pedInterior/2)
 
-  // Faldón trasero (modesty panel) en el vano — rigidiza y oculta cables
-  const apronH = Math.min(300, Math.max(150, Math.round(latH * 0.35)))
-  pieces.push(makePiece(nextId('TRAV-FALDON'), 'Faldon Trasero', 'tie_strip', kneeSpan, apronH, T, 1, (W - pedW - T)/2 + T/2, latH - apronH/2, D - BT - T/2, 'horizontal', { front: true }, 'Modesty panel — rigidez del vano'))
+    // Piso del pedestal
+    pieces.push(makePiece(nextId('PED-BASE'), 'Base Pedestal', 'piso', pedInterior, D - BT, T, 1, pedMidX, T/2, (D - BT)/2, 'horizontal', { front: true }))
 
-  // Gavetas del pedestal (pila desde abajo, holgura corredera 26mm)
+    // Fondo solo detrás del pedestal (el vano queda abierto para cables)
+    pieces.push(makePiece(nextId('PED-FUNDO'), 'Fondo Pedestal', 'fondo', pedInterior, latH - T, BT, 1, pedMidX, (latH + T)/2, D - BT/2, 'none'))
+  }
+
+  // Faldón trasero (modesty panel) — rigidiza el conjunto a la altura correcta:
+  // pegado bajo el tampo (y = latH − apronH/2). Altura desde SSOT (furnitureMathSpecs).
+  const apronH = FurnitureMath.desk.apronHeight(latH)
+  // ★ FIX 2026-07-23: el faldón debe quedar DENTRO del vano de piernas, entre el
+  //   borde interno del lateral (x=T) y el pedestal — antes estaba corrido ½T y
+  //   pisaba el lateral. Centro del vano = punto medio de sus dos bordes reales.
+  //   right: vano [T, W−pedW] → centro (W−pedW+T)/2 · left: vano [pedW, W−T] → (W+pedW−T)/2
+  const apronCX = hasPedestal
+    ? (pedSide === 'right' ? ((W - pedW + T)/2) : ((W + pedW - T)/2))
+    : W/2
+  pieces.push(makePiece(nextId('TRAV-FALDON'), 'Faldon Trasero', 'tie_strip', kneeSpan, apronH, T, 1, apronCX, latH - apronH/2, D - BT - T/2, 'horizontal', { front: true }, 'Modesty panel — rigidez del vano'))
+
+  // Gavetas del pedestal — AUTO-FIT: se estiran para llenar el pedestal bajo un
+  // TRAVESAÑO de cierre pegado al tampo. Holgura de corredera 26mm (CLEAR/gaveta).
   const CLEAR = 16, MINH = 80
-  const availH = latH - 2 * T
   const reqDrawers = cfg.numDrawers || 0
-  const dh = Math.max(MINH, cfg.drawerHeight || 150)
-  const maxRows = Math.max(0, Math.floor(availH / (dh + CLEAR)))
-  const n = Math.min(reqDrawers, maxRows)
-  const pedCenterX = W - pedW + T + pedInterior/2
+  // ★ TRAVESAÑO 2026-07-23 (drawerRailHeight): tira de cierre superior sobre las
+  //   gavetas, PEGADA al tampo, para privacidad. Estándar 50mm; el usuario puede
+  //   pedir uno MAYOR (nunca menor a 50). drawerPrivacyPanel:false lo elimina.
+  const railH = (hasPedestal && reqDrawers > 0 && cfg.drawerPrivacyPanel !== false)
+    ? Math.max(50, Math.round(cfg.drawerRailHeight || 50))
+    : 0
+  const usableH    = latH - T          // de la base del pedestal (Y=T) al tampo (Y=latH)
+  const drawerZone = usableH - railH   // espacio real para la pila de gavetas
+  // Nº de gavetas que caben con altura mínima; luego se ESTIRAN para llenar la zona.
+  const n = hasPedestal ? Math.min(reqDrawers, Math.max(0, Math.floor(drawerZone / (MINH + CLEAR)))) : 0
+  // Altura de cada gaveta AUTO-AJUSTADA: reparte drawerZone en n filas (sin hueco).
+  const dh = n > 0 ? Math.max(MINH, Math.floor(drawerZone / n) - CLEAR) : 0
   for (let i = 0; i < n; i++) {
     const yPos = T + i * (dh + CLEAR) + dh/2
     const drawerId = `DRW-${i + 1}`
@@ -240,7 +296,7 @@ function generateDeskFurniture(cfg) {
       pedCenterX, yPos, D - T/2, 'horizontal', { all: true }, 'Holgura 2mm/lado', 'drawer_front'), drawerGroupId: drawerId })
     const boxOuterW = FurnitureMath.drawerBox.netWidth(pedInterior)
     const boxInnerW = FurnitureMath.drawerBox.headerWidth(boxOuterW, T)
-    const boxD = pickSlideDepth(D - BT - HARDWARE.DRAWER_BOX_REAR_GAP)
+    const boxD = pickSlideDepth(D - drawerDepthClearance(T, BT, cfg.backStyle, cfg.grooveDepth))
     const boxH = dh - 40
     if (boxOuterW > 2 * T && boxInnerW > 10 && boxH > 20 && boxD > 0) {
       pieces.push({ ...makePiece(nextId('GAV-LAT'), `Lateral Cajon ${i+1}`, 'drawer_box', boxD, boxH, T, 2, pedCenterX, yPos, D/2, 'horizontal', { front: true }), drawerGroupId: drawerId })
@@ -249,15 +305,42 @@ function generateDeskFurniture(cfg) {
     }
   }
 
+  // Travesaño de cierre PEGADO bajo el tampo (tope en latH = cara inferior del tampo).
+  if (railH > 0 && n > 0) {
+    // ★ 2026-07-23: el travesaño de cierre es ESTRUCTURAL — va de lateral a lateral
+    //   (encastrado entre los costados del pedestal), ancho = pedInterior completo,
+    //   NO un frente con holgura. Cierra el vano tocando ambos costados.
+    pieces.push(makePiece(nextId('TRAV-GAV'), 'Travesaño Superior', 'tie_strip',
+      pedInterior, railH, T, 1,
+      pedCenterX, latH - railH / 2, D - T / 2, 'horizontal', { all: true },
+      `Travesaño de cierre ${railH}mm sobre gavetas — privacidad`))
+  }
+
   const specAdjustments = []
-  if (n < reqDrawers) {
+  if (!hasPedestal && reqDrawers > 0) {
+    specAdjustments.push({
+      code: 'DRAWERS_REQUIRE_PEDESTAL', severity: 'critical', field: 'numDrawers',
+      requested: reqDrawers, applied: 0,
+      message: `Se solicitaron ${reqDrawers} gavetas pero el escritorio es SIMPLE (hasPedestal:false). ` +
+               `Las gavetas requieren cajonera/pedestal para fijar las correderas.`
+    })
+  } else if (n < reqDrawers) {
     specAdjustments.push({
       code: 'DRAWER_COUNT_REDUCED', severity: 'critical', field: 'numDrawers',
       requested: reqDrawers, applied: n,
-      message: `Se solicitaron ${reqDrawers} gavetas pero solo caben ${n} en el pedestal (${availH}mm útiles).`
+      message: `Se solicitaron ${reqDrawers} gavetas pero solo caben ${n} en el pedestal (${drawerZone}mm útiles bajo el travesaño).`
+    })
+  }
+  if (railH > 0 && n > 0) {
+    specAdjustments.push({
+      code: 'DRAWER_PRIVACY_PANEL', severity: 'info', field: 'drawerRailHeight',
+      message: `Travesaño de cierre de ${railH}mm pegado al tampo (privacidad); ` +
+               `las gavetas se ajustaron a ${dh}mm de alto para llenar el pedestal.`
     })
   }
   cfg.numDrawers = n
+  cfg.drawerHeight = dh || cfg.drawerHeight   // refleja la altura REAL fabricada (auto-fit)
+  cfg.drawerRailHeight = railH
   cfg.specAdjustments = specAdjustments
 
   return {
@@ -279,7 +362,23 @@ function generateFurniture(params) {
   // ── Base independiente / patas (compat: baseboard:false legacy → 'none') ──
   const legHeight = cfg.legHeight || 100
   let baseType = params.baseType || (params.baseboard === false ? 'none' : (cfg.baseType || 'recessed'))
-  if (cfg.moduleType !== 'aereo') {
+  // ★ INVARIANTE 2026-07-23: un mueble AÉREO (colgado) NUNCA lleva base, patas ni
+  //   zócalo. Antes, si un aéreo llegaba con baseType='legs', la BOM emitía 4 patas
+  //   reguladoras (línea "Pe Nivelador") aunque la geometría no las generara →
+  //   despiece incoherente. Se fuerza baseType='none' para bloquear patas/zócalo en
+  //   geometría Y en BOM. Regla de dominio: aéreo = carcasa cerrada (laterales +
+  //   techo + piso + fondo) + puertas + tamponado opcional, SIN apoyos inferiores.
+  if (cfg.moduleType === 'aereo') {
+    baseType = 'none'
+    cfg.baseboard = false
+    // ★ ADITIVO 2026-07-26: un aéreo SIN altura de instalación explícita salía con
+    //   mountHeight undefined → el plano de conjunto lo dibujaba APOYADO EN EL PISO
+    //   (físicamente falso: un aéreo va colgado). Auto-default al estándar de dominio
+    //   ya definido en constants (AEREO.KITCHEN_MOUNT_HEIGHT = bancada 900 + vano 550).
+    //   Se respeta SIEMPRE el valor explícito del usuario/IA (params.mountHeight).
+    //   No toca geometría: mountHeight es metadato de montaje.
+    if (params.mountHeight == null) cfg.mountHeight = AEREO.KITCHEN_MOUNT_HEIGHT
+  } else {
     if (baseType === 'none') { cfg.baseboard = false }
     else if (baseType === 'legs') { cfg.baseboard = true; cfg.baseboardHeight = legHeight }
   }
@@ -363,9 +462,68 @@ function generateFurniture(params) {
   }
   cfg.specAdjustments = specAdjustments
 
-  const { moduleType, width: W, height: H, depth: D, thickness: T, backThickness: BT,
+  // ★ RULES 2026-07-22 — GUARD DE ESPESOR (diccionario paramétrico):
+  //   solo espesores del catálogo real {15, 18, 25}. Basura (12, 30, NaN) lanza
+  //   ANTES de generar una sola pieza. 25 se admite por decisión explícita:
+  //   feature Pro del cliente + tampo de la topología desk.
+  if (!MATERIAL.THICKNESS_ALLOWED.includes(cfg.thickness)) {
+    const err = new Error(`INVALID_THICKNESS: espesor ${cfg.thickness}mm fuera del catálogo ` +
+      `[${MATERIAL.THICKNESS_ALLOWED.join(', ')}]mm. Use un espesor comercial de MDF/MDP.`)
+    err.statusCode = 400; throw err
+  }
+
+  // ★ RULES 2026-07-22 — FONDO ESTRUCTURAL EN AÉREOS (decisión explícita):
+  //   un colgado transmite TODA la carga a la pared a través del fondo atornillado.
+  //   Fondo ranurado de 3–6mm en aéreo = riesgo de arrancamiento. El motor fuerza
+  //   Tb=15 y lo reporta vía specAdjustments (patrón existente, visible en UI).
+  if (cfg.moduleType === 'aereo' && (cfg.backThickness || 6) < MATERIAL.BACK_AEREO_STRUCTURAL) {
+    const requestedBT = cfg.backThickness || 6
+    cfg.backThickness = MATERIAL.BACK_AEREO_STRUCTURAL
+    cfg.backStyle = 'screwed'   // fondo estructural atornillado, no ranurado
+    specAdjustments.push({
+      code: 'AEREO_BACK_FORCED_STRUCTURAL',
+      severity: 'warning',
+      field: 'backThickness',
+      requested: requestedBT,
+      applied: MATERIAL.BACK_AEREO_STRUCTURAL,
+      message: `Fondo de aéreo elevado de ${requestedBT}mm a ${MATERIAL.BACK_AEREO_STRUCTURAL}mm ` +
+               `(estructural atornillado): el fondo transmite la carga al riel de pared.`
+    })
+  }
+
+  const { moduleType, width: W_FIN, height: H, depth: D, thickness: T, backThickness: BT,
           numShelves, numDrawers, drawerHeight, drawerLayout, baseboard, baseboardHeight,
           hasDoors, numDoors, hasCountertop, topShelf } = cfg
+
+  // ★ TAMPONADO = ANCHO ACABADO 2026-07-20 (decisión explícita del usuario):
+  //   el W pedido INCLUYE los paneles tapatornillos. La carcasa se descuenta
+  //   (900 acabado, tampón 9mm/lado → carcasa 882 — regla del manual del taller).
+  //   Antes los tampones se SUMABAN por fuera: un "mueble de 900" medía 918/930
+  //   reales y no entraba en un vano de obra de 900.
+  //   `tamponadoThickness` default = T (tampón del mismo MDF de la carcasa).
+  //   Sin tamponado ('none') W === W_FIN: cero regresión.
+  const tampMode  = cfg.tamponado || 'none'
+  const tampSides = FurnitureMath.tamponado.sidesFor(tampMode)
+  const tampT     = cfg.tamponadoThickness || T
+  const W = FurnitureMath.tamponado.carcassWidth(W_FIN, tampSides, tampT)
+  cfg.tamponadoThickness = tampT   // persistir el valor aplicado en el JSON (aditivo)
+
+  // ★ MOLDURA FRONTAL 2026-07-20 (opt-in, default off — cero regresión):
+  //   cfg.frontMolding=true → laterales pierden 20mm de profundidad y las piezas
+  //   horizontales (base/techo/repisas) 40mm, para alojar la moldura que define
+  //   la profundidad acabada (600 → laterales 580 · base/repisas 560).
+  const MOLD = cfg.frontMolding ? FurnitureMath.frontMolding.DEFAULT_DEPTH : 0
+
+  // ★ RULES 2026-07-22 — PANEL VISTA ⊥ FIJACIÓN (separación ortogonal):
+  //   `panelVista` ('ninguno'|'uno'|'ambos') = GEOMETRÍA: tapatornillos interiores de
+  //   15mm que reducen el ancho neto Nw de las piezas horizontales (30/15/0mm).
+  //   `fijacion` ('minifix'|'espiga'|'tornillo_visto') = HERRAJE: jamás toca Nw.
+  //   El vano interior Vw = W − 2T queda PURO (internalWidth no se toca).
+  //   Default 'ninguno' → PV=0 → despiece byte-idéntico (cero regresión).
+  const pvMode  = PANEL_VISTA.MODES.includes(cfg.panelVista) ? cfg.panelVista : 'ninguno'
+  const PV      = (pvMode === 'ambos' ? 2 : pvMode === 'uno' ? 1 : 0) * PANEL_VISTA.THICKNESS
+  cfg.panelVista = pvMode
+  cfg.fijacion   = PANEL_VISTA.FIJACIONES.includes(cfg.fijacion) ? cfg.fijacion : 'minifix'
 
   const pieces = []
   let pieceCounter = 1
@@ -436,28 +594,28 @@ function generateFurniture(params) {
   const baseDeduction = cfg.baseThicknessDeduction || 0
   const latH = FurnitureMath.calculatePanelHeight(H, baseDeduction, topT, latBottom)
   const latY = latBottom + baseDeduction + latH/2
-  pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', CD, latH, T, 1, T/2, latY, CD/2, 'vertical', { front: true }))
-  pieces.push(makePiece(nextId('LAT-R'), 'Lateral Derecho', 'lateral', CD, latH, T, 1, W - T/2, latY, CD/2, 'vertical', { front: true }))
+  pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', CD - MOLD, latH, T, 1, T/2, latY, CD/2, 'vertical', { front: true }))
+  pieces.push(makePiece(nextId('LAT-R'), 'Lateral Derecho', 'lateral', CD - MOLD, latH, T, 1, W - T/2, latY, CD/2, 'vertical', { front: true }))
 
   // ── TAMPONADO: panel de acabamiento que tapa tornillos en el costado visible ──
   const tamp = cfg.tamponado || 'none'
   if (tamp === 'left' || tamp === 'both')
-    pieces.push(makePiece(nextId('TAMP-L'), 'Tampão Lateral Izq', 'tamponado', CD, latH, T, 1, -T/2, latY, CD/2, 'vertical', { front: true }, 'Cubre tornillos costado izquierdo'))
+    pieces.push(makePiece(nextId('TAMP-L'), 'Tampão Lateral Izq', 'tamponado', CD - MOLD, latH, tampT, 1, -tampT/2, latY, CD/2, 'vertical', { front: true }, `Tapatornillos ${tampT}mm — incluido en ancho acabado ${W_FIN}mm`))
   if (tamp === 'right' || tamp === 'both')
-    pieces.push(makePiece(nextId('TAMP-R'), 'Tampão Lateral Der', 'tamponado', CD, latH, T, 1, W + T/2, latY, CD/2, 'vertical', { front: true }, 'Cubre tornillos costado derecho'))
+    pieces.push(makePiece(nextId('TAMP-R'), 'Tampão Lateral Der', 'tamponado', CD - MOLD, latH, tampT, 1, W + tampT/2, latY, CD/2, 'vertical', { front: true }, `Tapatornillos ${tampT}mm — incluido en ancho acabado ${W_FIN}mm`))
 
   if (isBase && hasCountertop && moduleType !== 'standard') {
-    pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal', 'tie_strip', internalWidth, 70, T, 1, W/2, H - 70/2, T/2 + 20, 'horizontal', { front: true }, 'Refuerzo Estructural'))
-    pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero', 'tie_strip', internalWidth, 70, T, 1, W/2, H - 70/2, D - BT - T/2, 'horizontal', { front: true }, 'Refuerzo Estructural'))
+    pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal', 'tie_strip', internalWidth - PV, 70, T, 1, W/2, H - 70/2, T/2 + 20, 'horizontal', { front: true }, 'Refuerzo Estructural'))
+    pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero', 'tie_strip', internalWidth - PV, 70, T, 1, W/2, H - 70/2, D - BT - T/2, 'horizontal', { front: true }, 'Refuerzo Estructural'))
   } else {
     // COHERENCIA OBLIGATORIA: si el lateral se acortó (overlay), la tapa se apoya
     // encima y debe cubrir el ancho COMPLETO. Con W−2T quedaría flotando dejando
     // un hueco de T a cada lado sobre el canto del lateral.
-    const topWidth = topT > 0 ? W : internalWidth
-    pieces.push(makePiece(nextId('TAMPO'), 'Techo', 'techo', topWidth, CD, T, 1, W/2, H - T/2, CD/2, 'horizontal', { front: true }))
+    const topWidth = topT > 0 ? W : internalWidth - PV
+    pieces.push(makePiece(nextId('TAMPO'), 'Techo', 'techo', topWidth, CD - 2*MOLD, T, 1, W/2, H - T/2, CD/2, 'horizontal', { front: true }))
   }
 
-  pieces.push(makePiece(nextId('BASE'), 'Base Inferior', 'piso', internalWidth, CD, T, 1, W/2, BH3 + T/2, CD/2, 'horizontal', { front: true }))
+  pieces.push(makePiece(nextId('BASE'), 'Base Inferior', 'piso', internalWidth - PV, CD - 2*MOLD, T, 1, W/2, BH3 + T/2, CD/2, 'horizontal', { front: true }))
 
   // BUG FIX #5 & VULN-05: base+countertop has traversaños (70mm) at top, not a techo (T).
   const topDeduction = (isBase && hasCountertop && moduleType !== 'standard') ? 70 : T
@@ -482,8 +640,8 @@ function generateFurniture(params) {
     const bbNote  = bbInset < BASEBOARD.INSET
       ? `Recuo reducido a ${bbInset}mm (fondo ${D}mm insuficiente para el estándar de ${BASEBOARD.INSET}mm)`
       : `Recuo ${bbInset}mm (estándar marcenaria BR)`
-    pieces.push(makePiece(nextId('RODAPIE-FRONTAL'), 'Zócalo Frontal', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, D - T/2 - bbInset, 'vertical', { front: true }, bbNote))
-    pieces.push(makePiece(nextId('RODAPIE-TRASERO'), 'Zócalo Trasero', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, T/2 + bbInset, 'vertical', { front: true }, bbNote))
+    pieces.push(makePiece(nextId('RODAPIE-FRONTAL'), 'Zócalo Frontal', 'baseboard', internalWidth - PV, BH3, T, 1, W/2, BH3/2, D - T/2 - bbInset, 'vertical', { front: true }, bbNote))
+    pieces.push(makePiece(nextId('RODAPIE-TRASERO'), 'Zócalo Trasero', 'baseboard', internalWidth - PV, BH3, T, 1, W/2, BH3/2, T/2 + bbInset, 'vertical', { front: true }, bbNote))
   }
 
   const safeDrawerHeight = Math.max(100, drawerHeight)
@@ -542,7 +700,7 @@ function generateFurniture(params) {
       const boxOuterW = FurnitureMath.drawerBox.netWidth(drawerW)
       const boxInnerW = FurnitureMath.drawerBox.headerWidth(boxOuterW, T)
       // VULN-03 FIX: Profundidad comercial basada en espacio útil con 20mm de holgura trasera
-      const maxAvailableD = D - BT - HARDWARE.DRAWER_BOX_REAR_GAP
+      const maxAvailableD = D - drawerDepthClearance(T, BT, cfg.backStyle, cfg.grooveDepth)
       const boxD = pickSlideDepth(maxAvailableD)
       const boxH = safeDrawerHeight - 40
       const boxZ = D/2 + BT/2
@@ -578,10 +736,10 @@ function generateFurniture(params) {
   if (numDrawers > 0) {
     const sepY = shelfYStart
     if (sepY < H - 100) {
-      const technicalDepth = hasDoors ? (internalDepth - 20) : internalDepth
+      const technicalDepth = (hasDoors ? (internalDepth - 20) : internalDepth) - 2*MOLD
       pieces.push(makePiece(
         nextId('SEP'), 'Repisa Separadora (encima gavetas)', 'shelf',
-        internalWidth - 2, technicalDepth, T, 1,
+        internalWidth - 2 - PV, technicalDepth, T, 1,
         W/2, sepY, internalDepth/2 + BT, 'horizontal', { front: true },
         'Separador estructural gavetas/estantes'
       ))
@@ -607,13 +765,13 @@ function generateFurniture(params) {
       shelfCompartments.push({ center: (leftEdge + rightEdge) / 2, span: rightEdge - leftEdge })
     }
   } else {
-    shelfCompartments.push({ center: W / 2, span: internalWidth })
+    shelfCompartments.push({ center: W / 2, span: internalWidth - PV })
   }
 
   for (let i = 0; i < numShelves; i++) {
     const yPos = shelfYStart + (i + 1) * shelfSpacing
     if (yPos > shelfYStart && yPos < shelfZoneTop) {
-      const technicalDepth = hasDoors ? (internalDepth - 20) : internalDepth
+      const technicalDepth = (hasDoors ? (internalDepth - 20) : internalDepth) - 2*MOLD
       for (let c = 0; c < shelfCompartments.length; c++) {
         const comp = shelfCompartments[c]
         pieces.push(makePiece(
@@ -857,8 +1015,19 @@ function generateHardwareBOM(cfg) {
   const bom = []
 
   if (numDrawers > 0) {
-    const slideLen = Math.min(500, Math.round((depth - 50) / 50) * 50)
-    bom.push({ type: 'Corredica Telescopica', description: 'Par de corredicas ' + slideLen + 'mm', quantity: numDrawers * 2, unit: 'par' })
+    // ★ SSOT 2026-07-22: el BOM calculaba su propia corredera (cap 500, paso 50)
+    //   divergiendo del despiece. Ahora usa EXACTAMENTE el mismo despeje + catálogo.
+    const slideLen = pickSlideDepth(depth - drawerDepthClearance(cfg.thickness || 18, cfg.backThickness || 6, cfg.backStyle, cfg.grooveDepth))
+    if (slideLen > 0) {
+      bom.push({ type: 'Corredica Telescopica', description: 'Par de corredicas ' + slideLen + 'mm', quantity: numDrawers * 2, unit: 'par' })
+    }
+  }
+
+  // ★ RULES 2026-07-22 — fijación (ortogonal a la geometría, jamás toca Nw):
+  if (cfg.fijacion === 'minifix') {
+    bom.push({ type: 'Minifix', description: 'Excentrico 15mm + perno', quantity: ((numShelves || 0) + 2) * 4, unit: 'un' })
+  } else if (cfg.fijacion === 'espiga') {
+    bom.push({ type: 'Espiga', description: 'Espiga de madera 8x30mm', quantity: ((numShelves || 0) + 2) * 6, unit: 'un' })
   }
 
   if (numShelves > 0) {
@@ -880,7 +1049,8 @@ function generateHardwareBOM(cfg) {
 
   bom.push({ type: 'Parafuso Confirmat', description: 'Confirmat o7x50mm fixacao estrutural', quantity: 24, unit: 'un' })
 
-  if (cfg.baseType === 'legs') {
+  // Defensa en profundidad: aéreo NUNCA lleva patas, aunque baseType llegara 'legs'.
+  if (cfg.baseType === 'legs' && cfg.moduleType !== 'aereo') {
     bom.push({ type: 'Pe Nivelador', description: 'Pata regulable ' + (cfg.legHeight || 100) + 'mm', quantity: 4, unit: 'un' })
   }
 

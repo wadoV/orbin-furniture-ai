@@ -20,6 +20,30 @@ function validateDesign(design) {
     errors.push('Espesor (' + cfg.thickness + 'mm) inválido — debe ser mayor que 0mm. Geometría imposible.')
     return { status: 'RECHAZADO', errors, warnings, summary: errors.length + ' error(es) crítico(s). Corrija antes de producir.' }
   }
+  // ★ RULES 2026-07-22 — aserciones estructurales del diccionario paramétrico.
+  //   El motor ya fuerza/lanza estas condiciones; el validador las RE-VERIFICA como
+  //   segunda barrera independiente (payloads que no pasaron por generateFurniture:
+  //   imports, ediciones manuales, versiones viejas persistidas en Supabase).
+  if (!MATERIAL.THICKNESS_ALLOWED.includes(cfg.thickness)) {
+    errors.push('Espesor ' + cfg.thickness + 'mm fuera del catálogo [' +
+      MATERIAL.THICKNESS_ALLOWED.join(', ') + ']mm.')
+  }
+  if (cfg.moduleType === 'aereo') {
+    // Invariante absoluto: aéreo sin zócalo — se verifica sobre las PIEZAS, no la config.
+    const bbPieces = pieces.filter(p => p.type === 'baseboard').length
+    if (bbPieces > 0) {
+      errors.push('INVARIANTE VIOLADO: módulo aéreo con ' + bbPieces +
+        ' pieza(s) de zócalo. Un mueble colgado NUNCA lleva rodapié.')
+    }
+    if ((cfg.backThickness || 6) < MATERIAL.BACK_AEREO_STRUCTURAL) {
+      errors.push('Fondo de aéreo (' + (cfg.backThickness || 6) + 'mm) por debajo del mínimo ESTRUCTURAL de ' +
+        MATERIAL.BACK_AEREO_STRUCTURAL + 'mm. El fondo atornillado transmite la carga al riel — ' +
+        'riesgo de arrancamiento.')
+    }
+  } else if (cfg.backThickness && cfg.backThickness < 15 && (cfg.backThickness < MATERIAL.BACK_GROOVED_MIN || cfg.backThickness > MATERIAL.BACK_GROOVED_MAX)) {
+    warnings.push('Fondo de ' + cfg.backThickness + 'mm fuera del rango ranurado típico (' +
+      MATERIAL.BACK_GROOVED_MIN + '-' + MATERIAL.BACK_GROOVED_MAX + 'mm).')
+  }
 
   // 1. External dimensions
   if (cfg.width > MATERIAL.PLATE_WIDTH) {
@@ -139,31 +163,39 @@ function validateDesign(design) {
     // mechanism (DRAWER_TOP_CLEARANCE = 16mm). Without this, 20×100mm drawers in
     // a 2264mm cabinet appeared valid (2000 < 2037 threshold) but physically don't fit
     // when slide clearance is added (20 × 116mm = 2320mm > 2264mm → STRUCTURAL_FAIL).
-    const slotHeight = cfg.drawerHeight + STRUCTURAL_LIMITS.DRAWER_TOP_CLEARANCE
-    const drawerStack = drawersPerCol * slotHeight
-    const availableHeight = cfg.height - (cfg.baseboard ? (cfg.baseboardHeight || BASEBOARD.DEFAULT_HEIGHT) : 0) - (2 * cfg.thickness)
-    if (drawerStack > availableHeight) {
-      errors.push(
-        'Cajones acumulados (' + drawersPerCol + ' × ' + slotHeight + 'mm c/holgura = ' + drawerStack + 'mm) ' +
-        'excede la altura interna útil (' + availableHeight + 'mm).'
-      )
-    } else if (drawerStack > availableHeight * 0.85 && (cfg.numShelves > 0 || cfg.numDividers > 0)) {
-      // El usuario pidió estantes/divisores ADEMÁS de gavetas, pero la pila los
-      // deja sin espacio → error de diseño real.
-      errors.push(
-        'Cajones acumulados (' + drawerStack + 'mm) ocupa ' +
-        Math.round(drawerStack/availableHeight*100) + '% de la altura interna — sin espacio para estantes o separador.'
-      )
-    } else if (drawerStack > availableHeight * 0.85) {
-      // [2026-07] Cômoda pura (numShelves === 0, sem divisores): llenar 85-100%
-      // con gavetas ES el diseño buscado. Que quepa físicamente ya lo garantiza
-      // el `if` inicial (drawerStack > availableHeight) → aviso, no rechazo.
-      warnings.push(
-        'Cajones acumulados ocupa ' + Math.round(drawerStack/availableHeight*100) +
-        '% de la altura interna (cómoda de cajones — sin estantes).'
-      )
-    } else if (drawerStack > availableHeight * 0.7) {
-      warnings.push('Cajones acumulados (' + drawerStack + 'mm) ocupa más del 70% de la altura interna.')
+    // ★ FIX 2026-07-23 (falso RECHAZADO del escritorio → bloqueaba la Galería):
+    //   en 'desk' las gavetas viven en el pedestal y el MOTOR hace auto-fit
+    //   determinista (dh calculado para llenar exactamente bajo el travesaño), y
+    //   el escritorio NO tiene zócalo. La regla de pila vertical del armario no
+    //   aplica y daba un falso RECHAZADO (descontaba un baseboard inexistente).
+    //   Se exime al desk; los demás tipos conservan la validación intacta.
+    if (cfg.moduleType !== 'desk') {
+      const slotHeight = cfg.drawerHeight + STRUCTURAL_LIMITS.DRAWER_TOP_CLEARANCE
+      const drawerStack = drawersPerCol * slotHeight
+      const availableHeight = cfg.height - (cfg.baseboard ? (cfg.baseboardHeight || BASEBOARD.DEFAULT_HEIGHT) : 0) - (2 * cfg.thickness)
+      if (drawerStack > availableHeight) {
+        errors.push(
+          'Cajones acumulados (' + drawersPerCol + ' × ' + slotHeight + 'mm c/holgura = ' + drawerStack + 'mm) ' +
+          'excede la altura interna útil (' + availableHeight + 'mm).'
+        )
+      } else if (drawerStack > availableHeight * 0.85 && (cfg.numShelves > 0 || cfg.numDividers > 0)) {
+        // El usuario pidió estantes/divisores ADEMÁS de gavetas, pero la pila los
+        // deja sin espacio → error de diseño real.
+        errors.push(
+          'Cajones acumulados (' + drawerStack + 'mm) ocupa ' +
+          Math.round(drawerStack/availableHeight*100) + '% de la altura interna — sin espacio para estantes o separador.'
+        )
+      } else if (drawerStack > availableHeight * 0.85) {
+        // [2026-07] Cômoda pura (numShelves === 0, sem divisores): llenar 85-100%
+        // con gavetas ES el diseño buscado. Que quepa físicamente ya lo garantiza
+        // el `if` inicial (drawerStack > availableHeight) → aviso, no rechazo.
+        warnings.push(
+          'Cajones acumulados ocupa ' + Math.round(drawerStack/availableHeight*100) +
+          '% de la altura interna (cómoda de cajones — sin estantes).'
+        )
+      } else if (drawerStack > availableHeight * 0.7) {
+        warnings.push('Cajones acumulados (' + drawerStack + 'mm) ocupa más del 70% de la altura interna.')
+      }
     }
   }
 

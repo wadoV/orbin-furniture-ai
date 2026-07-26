@@ -25,7 +25,7 @@ const ENGINE_PARAM_KEYS = [
   'drawerHeight', 'drawerLayout', 'drawerColumns',
   'baseboard', 'baseboardHeight', 'baseType', 'legHeight',
   'hasCountertop', 'countertopMaterial', 'topStyle', 'backStyle',
-  'hasHangingRod', 'hasLed', 'nicheHeight', 'tamponado', 'pedestalWidth',
+  'hasHangingRod', 'hasLed', 'nicheHeight', 'tamponado', 'tamponadoThickness', 'frontMolding', 'panelVista', 'fijacion', 'grooveDepth',  'pedestalWidth', 'hasPedestal', 'pedestalSide', 'drawerPrivacyPanel', 'drawerRailHeight',
   'handleType', 'edgeBandingType', 'materialBody', 'materialFront',
   'mountHeight', 'type',
 ]
@@ -82,15 +82,29 @@ const RANGES = {
   drawerHeight: [80, 400],
   baseboardHeight: [0, 300],
   nicheHeight: [0, 1500],
+  drawerRailHeight: [50, 300],
+  // ★ ADITIVO 2026-07-26: mountHeight estaba en ENGINE_PARAM_KEYS (pasaba el whitelist)
+  //   pero NO acá → era el ÚNICO numérico del contrato sin clamp ni warning. Combinado
+  //   con su ausencia en DIMENSION_KEYS, "colgalo a 1.5" llegaba al motor como 1.5 mm
+  //   (aéreo a ras de piso) sin emitir un solo NLP_VALUE_CLAMPED. Fallo silencioso.
+  //   Piso 0 (no AEREO.MIN_MOUNT_HEIGHT=400) a propósito: 0 es el valor semántico de
+  //   "apoyado en el piso" y es lo que devuelve el motor para base/desk/standard.
+  //   Este contrato valida FORMA; el SENTIDO (un aéreo colgado a 300mm es absurdo) lo
+  //   valida structural_validator. Mezclar ambos hace ilegibles los mensajes de error.
+  mountHeight: [0, 2400],
 }
 
-const BOOL_KEYS = ['hasDoors', 'hasCountertop', 'hasHangingRod', 'hasLed', 'baseboard']
+const BOOL_KEYS = ['hasDoors', 'hasCountertop', 'hasHangingRod', 'hasLed', 'baseboard', 'drawerPrivacyPanel', 'hasPedestal']
 const NUM_KEYS = Object.keys(RANGES)
 
 // Sólo estas llaves son MEDIDAS: admiten unidad y la inferencia "2.4" → 2400mm.
 // Los contadores (numDrawers, numDoors…) NUNCA se escalan: "4" es 4, no 4000.
+// ★ 2026-07-26: mountHeight ES una medida (altura de instalación piso → borde inferior),
+//   no un contador → habilita "1.5" → 1500 mm. Sin esto el LLM que responde "1.5" para
+//   "colgalo a metro y medio" producía un aéreo a 1.5 mm del piso.
 const DIMENSION_KEYS = ['width', 'height', 'depth', 'thickness', 'backThickness',
-                        'drawerHeight', 'baseboardHeight', 'nicheHeight']
+                        'drawerHeight', 'baseboardHeight', 'nicheHeight', 'drawerRailHeight',
+                        'mountHeight']
 
 function toNumberMM(v, isDimension = false) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -149,7 +163,22 @@ function coerceEngineParams(raw, opts = {}) {
   // 2.c — numéricos
   for (const k of NUM_KEYS) {
     if (norm[k] === undefined) continue
-    const n = toNumberMM(norm[k], DIMENSION_KEYS.includes(k))
+    let n = toNumberMM(norm[k], DIMENSION_KEYS.includes(k))
+    // ★ 2026-07-26 — mountHeight en METROS crudos. toNumberMM sólo aplica la inferencia
+    //   "1.5" → 1500 a STRINGS sin unidad; un número JS crudo pasa tal cual (y está bien
+    //   así: `thickness: 18` no puede volverse 18000). Para el resto de medidas el clamp
+    //   inferior atrapa la basura (width 1.5 → 100 con warning), pero mountHeight admite
+    //   0 legítimo, así que 1.5 pasaría silencioso → aéreo a 1.5 mm del piso.
+    //   Dominio DISJUNTO: ninguna altura de instalación real cae entre 0 y 10 mm, así que
+    //   interpretar ese tramo como metros es seguro y no colisiona con el 0 = "apoyado".
+    if (k === 'mountHeight' && n !== null && n > 0 && n < 10) {
+      const asMM = Math.round(n * 1000)
+      specAdjustments.push({
+        code: 'NLP_UNIT_INFERRED', severity: 'warning', field: k,
+        message: `"mountHeight" recibido como ${n} (metros). Se interpretó como ${asMM}mm.`,
+      })
+      n = asMM
+    }
     if (n === null) {
       specAdjustments.push({
         code: 'NLP_VALUE_UNPARSEABLE', severity: 'warning', field: k,

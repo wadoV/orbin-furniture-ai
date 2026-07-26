@@ -9,6 +9,17 @@ const MATERIAL = {
   THICKNESS_STANDARD: 18,
   THICKNESS_THIN: 15,
   THICKNESS_BACK: 6,
+  // ★ RULES 2026-07-22 (diccionario paramétrico industrial):
+  //   Espesores de carcasa admitidos. Decisión explícita: se incluye 25 porque es
+  //   feature Pro del cliente (mdf_25) y la topología desk usa tampo de 25mm —
+  //   el {15,18} literal del diccionario habría matado ambos. Fuera de esta
+  //   lista el motor LANZA (basura tipo 12/30/NaN nunca llega al despiece).
+  THICKNESS_ALLOWED: [15, 18, 25],
+  // Fondo por tipología: aéreo = fondo ESTRUCTURAL atornillado (transmite la
+  //   carga al riel de pared) — mínimo 15mm. Muebles de piso = fondo ranurado 3–6mm.
+  BACK_AEREO_STRUCTURAL: 15,
+  BACK_GROOVED_MIN: 3,
+  BACK_GROOVED_MAX: 6,
   PLATE_WIDTH: 2750,   // regla dura CLAUDE.md (chapa MDF/MDP)
   PLATE_HEIGHT: 1840,  // regla dura CLAUDE.md
   SAW_KERF: 3.2,       // kerf de sierra fina (unificado con el motor de nesting)
@@ -29,9 +40,16 @@ const HARDWARE = {
   // ★ 2026-07-20 (auditoría estructural): longitudes comerciales de corredera
   //   telescópica (mm). NO existe herraje por debajo de 250mm: si el fondo útil
   //   no alcanza 250, la gaveta NO es fabricable (no se debe emitir caja).
-  SLIDE_LENGTHS: [250, 300, 350, 400, 450, 500, 550, 600],
+  // ★ RULES 2026-07-22: catálogo comercial real de correderas telescópicas (+270,
+  //   medida estándar de catálogo que faltaba).
+  SLIDE_LENGTHS: [250, 270, 300, 350, 400, 450, 500, 550, 600],
   SLIDE_LENGTH_MIN: 250,
-  DRAWER_BOX_REAR_GAP: 20,     // holgura trasera caja↔fondo (valor histórico del motor)
+  DRAWER_BOX_REAR_GAP: 20,     // holgura histórica (legacy, ver DRAWER_REAR_CLEARANCE)
+  // ★ RULES 2026-07-22 — despeje de profundidad PRECISO (sustituye al 20 mágico):
+  //   despeje = T(frente) + fondoEfectivo(Tb + ranura si grooved) + holgura trasera 10.
+  //   El modelo viejo (D − Tb − 20) IGNORABA el frente: caja 550 + fondo 6 + holgura +
+  //   frente 18 = 584 > 580 → la caja pisaba 4mm el frente. Interferencia real.
+  DRAWER_REAR_CLEARANCE: 10,
   // ── Fondos ranurados ─────────────────────────────────────────────────────
   BACK_GROOVE_DEPTH: 6,
   BACK_GROOVE_FROM_EDGE: 20,
@@ -72,6 +90,17 @@ const STRUCTURAL_LIMITS = {
 // SEMÁNTICA DE ALTURA (decisión 2026-07-20): H es la altura TOTAL e INCLUYE el
 //   rodapié → structuralHeight = H − BH. Pedir 870mm devuelve un mueble de 870mm.
 //   El rodapié consume espacio interior, NO se suma a H. Cero regresión.
+// ── PANEL VISTA / FIJACIÓN (2026-07-22, diccionario paramétrico) ─────────────
+// SEPARACIÓN ORTOGONAL: `panelVista` es GEOMETRÍA (tapatornillos interiores de
+// 15mm que reducen el ancho neto Nw de las piezas horizontales); `fijacion` es
+// HERRAJE (minifix/espiga/tornillo visto) y NUNCA altera Nw. El vano interior
+// Vw = W − 2T es geometría pura y no depende de ninguno de los dos.
+const PANEL_VISTA = {
+  THICKNESS: 15,               // espesor del panel vista (diccionario: 30mm ambos / 15mm uno)
+  MODES: ['ninguno', 'uno', 'ambos'],
+  FIJACIONES: ['minifix', 'espiga', 'tornillo_visto'],
+}
+
 const BASEBOARD = {
   DEFAULT_HEIGHT: 100,      // altura por defecto del zócalo (mm)
   INSET: 100,               // recuo frontal/trasero desde la cara del mueble (mm)
@@ -134,7 +163,16 @@ const DEFAULTS = {
   hasCountertop: false,
   countertopMaterial: 'none',
   hasLED: false,
-  mountHeight: 1400,
+  // ★ 2026-07-26: era el literal 1400 (y AEREO.KITCHEN_MOUNT_HEIGHT decía 1450 → GET
+  //   /defaults servía un número y el motor generaba con otro). Ahora `null` = NO
+  //   ESPECIFICADO, igual que closetEngine.DEFAULTS.
+  //   NO poner acá el 1450: este objeto siembra el resultado de nlParser y de
+  //   GET /defaults para TODOS los tipos → un ropero heredaría altura de instalación
+  //   1450 y el plano de conjunto lo dibujaría FLOTANDO. El 1450 es exclusivo del
+  //   auto-default del aéreo (closetEngine, bloque INVARIANTE).
+  mountHeight: null,
+  drawerPrivacyPanel: true,
+  drawerRailHeight: 50,
 }
 
-module.exports = { MATERIAL, EDGE_BANDING, HARDWARE, STRUCTURAL_LIMITS, BASEBOARD, DEFAULTS, AEREO }
+module.exports = { MATERIAL, EDGE_BANDING, HARDWARE, STRUCTURAL_LIMITS, BASEBOARD, PANEL_VISTA, DEFAULTS, AEREO }

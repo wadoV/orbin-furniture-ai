@@ -4,6 +4,7 @@ import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { MATERIALS_DB } from '../data/materials.js'
 import { trackEvent, EVENTS } from '../lib/analytics.js'
+import { AEREO_MOUNT } from '../engine/domainConstants.js'
 
 // ─── FIELD ────────────────────────────────────────────────────────────────────
 // Flexible numeric input: allows clearing and re-typing without state locking.
@@ -180,6 +181,37 @@ const DrawerLayoutButtons = ({ value, onChange, t }) => {
   )
 }
 
+// ─── PEDESTAL SIDE BUTTONS ────────────────────────────────────────────────────
+// ★ F2 2026-07-23: segmented control para pedestalSide (desk) — mismo patrón
+// visual que DrawerLayoutButtons (pill buttons, bg-primary activo, focus ring).
+
+const PedestalSideButtons = ({ value, onChange, t }) => {
+  const options = [
+    { value: 'left',  label: t('pedestal_left',  'Izquierda') },
+    { value: 'right', label: t('pedestal_right', 'Derecha')   },
+  ]
+  return (
+    <div>
+      <p className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-2">{t('pedestal_side', 'Lado del gavetero')}</p>
+      <div className="flex gap-2" role="group" aria-label={t('pedestal_side', 'Lado del gavetero')}>
+        {options.map(opt => (
+          <button
+            key={opt.value}
+            aria-pressed={value === opt.value}
+            onClick={() => onChange('pedestalSide', opt.value)}
+            className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary
+              ${value === opt.value
+                ? 'bg-primary text-black border-primary shadow-[0_0_12px_rgba(245,166,35,0.35)]'
+                : 'bg-surface-3 text-muted border-white/5 hover:border-primary/30 hover:text-white'}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ★ PROTECTED: Drawer presets — quick configurations for common drawer layouts
 const DRAWER_PRESETS = [
   { label: '2+2', numDrawers: 4, drawerLayout: 'horizontal', desc: '2 izq + 2 der' },
@@ -230,7 +262,13 @@ const DEFAULTS = {
   hasHangingRod: false,
   doorFinish: null,
   countertopMaterial: null,
-  pedestalWidth: 400
+  pedestalWidth: 400,
+  // ★ F2 2026-07-23: pedestal opcional (desk) — registrados en DEFAULTS para que
+  //   la hidratación de formSeed (filtra por Object.keys(DEFAULTS)) no los descarte.
+  hasPedestal: true,
+  pedestalSide: 'right',
+  drawerPrivacyPanel: true,
+  drawerRailHeight: 50
 }
 
 // ─── InputPanel ───────────────────────────────────────────────────────────────
@@ -323,6 +361,11 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
   const isBase  = params.moduleType === 'base'
   // ★ F1 2026-07-19: topología escritorio (vano de piernas + pedestal de gavetas)
   const isDesk  = params.moduleType === 'desk'
+  // ★ F2 2026-07-23: escritorio simple (sin pedestal) — sin gavetas posibles.
+  //   El engine zeroea numDrawers en este estado (DRAWERS_REQUIRE_PEDESTAL);
+  //   el UI oculta los controles para que el estado sea inalcanzable.
+  const hasPedestal = params.hasPedestal !== false   // undefined = true (retro-compat)
+  const deskNoPedestal = isDesk && !hasPedestal
 
   return (
     <div className="bg-zinc-900/60 backdrop-blur-lg border-r border-zinc-800/50 rounded-2xl p-5 space-y-6">
@@ -471,15 +514,21 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
               </div>
             )}
             {/* ★ AEREO: Mount height control — shown only for wall-mounted modules */}
+            {/* ★ 2026-07-26: el valor era `params.mountHeight || 1400` → el OR colapsaba
+                el 0. Un aéreo puesto explícitamente a 0 (apoyado en el piso) volvía a
+                mostrar 1400 y el número en pantalla dejaba de coincidir con el guardado.
+                `??` sólo suple null/undefined. El fallback pasó a 1450 para alinearse con
+                AEREO.KITCHEN_MOUNT_HEIGHT del motor: antes la UI mostraba 1400 y el motor
+                aplicaba 1450. Pendiente (deuda): unificar los fallbacks de Viewer3D. */}
             {isAereo && (
               <div className="animate-in zoom-in-95 duration-200 space-y-2">
                 <FIELD
                   label={t('mount_height') || 'Altura de instalação (piso → base do módulo)'}
                   name="mountHeight"
-                  value={convert(params.mountHeight || 1400)}
+                  value={convert(params.mountHeight ?? AEREO_MOUNT.DEFAULT)}
                   onChange={setDimParam}
-                  min={convert(400)}
-                  max={convert(2400)}
+                  min={convert(AEREO_MOUNT.MIN)}
+                  max={convert(AEREO_MOUNT.MAX)}
                   step={unit === 'cm' ? 0.1 : 1}
                   suffix={unit}
                 />
@@ -494,22 +543,47 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
             {/* ★ F1 2026-07-19: DESK — ancho del pedestal de gavetas (vano restante = piernas) */}
             {isDesk && (
               <div className="animate-in zoom-in-95 duration-200 space-y-2">
-                <FIELD
-                  label={t('pedestal_width', 'Ancho del gavetero (pedestal)')}
-                  name="pedestalWidth"
-                  value={convert(params.pedestalWidth || 400)}
-                  onChange={setDimParam}
-                  min={convert(300)}
-                  max={convert(Math.max(300, params.width - 600))}
-                  step={unit === 'cm' ? 0.1 : 1}
-                  suffix={unit}
+                {/* ★ F2 2026-07-23: pedestal opcional — OFF = escritorio simple.
+                    Ocultar (no deshabilitar) controles dependientes; el estado
+                    almacenado NO se resetea al apagar (el usuario puede volver). */}
+                <TOGGLE
+                  label={t('has_pedestal', 'Cajonera / Pedestal')}
+                  name="hasPedestal"
+                  value={hasPedestal}
+                  onChange={setParam}
                 />
-                <div className="p-3 bg-sky-500/5 rounded-xl border border-sky-500/20 flex gap-3">
-                  <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-sky-300/80 font-medium leading-relaxed">
-                    {t('desk_tip', 'Vano libre para piernas = ancho − pedestal. Mínimo recomendado: 600mm.')}
-                  </p>
-                </div>
+                {hasPedestal ? (
+                  <>
+                    <PedestalSideButtons
+                      value={params.pedestalSide || 'right'}
+                      onChange={setParam}
+                      t={t}
+                    />
+                    <FIELD
+                      label={t('pedestal_width', 'Ancho del gavetero (pedestal)')}
+                      name="pedestalWidth"
+                      value={convert(params.pedestalWidth || 400)}
+                      onChange={setDimParam}
+                      min={convert(300)}
+                      max={convert(Math.max(300, params.width - 600))}
+                      step={unit === 'cm' ? 0.1 : 1}
+                      suffix={unit}
+                    />
+                    <div className="p-3 bg-sky-500/5 rounded-xl border border-sky-500/20 flex gap-3">
+                      <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
+                      <p className="text-[10px] text-sky-300/80 font-medium leading-relaxed">
+                        {t('desk_tip', 'Vano libre para piernas = ancho − pedestal. Mínimo recomendado: 600mm.')}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-3 bg-sky-500/5 rounded-xl border border-sky-500/20 flex gap-3">
+                    <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-sky-300/80 font-medium leading-relaxed">
+                      {t('simple_desk_tip', 'Escritorio simple: cubierta + laterales + faldón. Sin gavetas.')}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </fieldset>
@@ -565,6 +639,24 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                 onChange={(k, v) => setParam('doorFinish', v ? 'mirror' : null)}
               />
             )}
+            {/* ★ 2026-07-23: privacidad — travesaño de cierre sobre gavetas (solo si hay gavetas) */}
+            {params.numDrawers > 0 && (
+              <TOGGLE
+                label={t('drawer_privacy_panel', 'Travesaño de cierre sobre gavetas (privacidad)')}
+                name="drawerPrivacyPanel"
+                value={params.drawerPrivacyPanel !== false}
+                onChange={(k, v) => setParam('drawerPrivacyPanel', v)}
+              />
+            )}
+            {params.numDrawers > 0 && params.drawerPrivacyPanel !== false && (
+              <FIELD
+                label={t('drawer_rail_height', 'Alto del travesaño (mm)')}
+                name="drawerRailHeight"
+                value={params.drawerRailHeight || 50}
+                onChange={setParam}
+                type="number" min={50} max={300} step={5} suffix="mm"
+              />
+            )}
             {isBase && params.hasCountertop && (
               <SELECT
                 label={t('countertop_material', 'Bancada / encimera')}
@@ -582,6 +674,14 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
           {/* ── Dimensions ────────────────────────────────────────────────── */}
           <fieldset className="space-y-4">
             <legend className="text-[10px] tracking-widest uppercase font-semibold text-zinc-500 mb-4">{t('external_dimensions')}</legend>
+            {/* ★ UX FIX 2026-07-23: sin este aviso, editar dimensiones con un módulo
+                seleccionado pero en modo "Creando nuevo" no modificaba el mueble y no
+                había feedback (parecía roto). Aditivo: NO cambia la lógica de estado. */}
+            {currentConfig && !editMode && (
+              <p className="text-[9px] leading-relaxed text-primary/90 font-semibold uppercase tracking-wide bg-primary/5 border border-primary/20 rounded-xl px-3 py-2">
+                {t('edit_mode_hint') || 'Estás en «Creando nuevo»: estos valores crearán un módulo nuevo. Para modificar el mueble seleccionado, activá «Editar módulo» más abajo.'}
+              </p>
+            )}
             <div className="grid grid-cols-3 gap-3">
               <FIELD label={t('width')}  name="width"  value={convert(params.width)}  onChange={setDimParam} min={convert(300)} max={convert(3000)} step={unit === 'cm' ? 0.1 : 1} suffix={unit} />
               <FIELD label={t('height')} name="height" value={convert(params.height)} onChange={setDimParam} min={convert(300)} max={convert(2800)} step={unit === 'cm' ? 0.1 : 1} suffix={unit} />
@@ -602,7 +702,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                   esa topología) — renderizado condicional, el estado no se toca. */}
               {!isDesk && <FIELD label={t('fixed_shelves')} name="numShelves"  value={params.numShelves}  onChange={setParam} type="number" min={0} max={10} />}
               {!isDesk && <FIELD label={t('num_dividers')}  name="numDividers" value={params.numDividers} onChange={setParam} type="number" min={0} max={10} />}
-              <FIELD label={t('drawers')}        name="numDrawers"  value={params.numDrawers}  onChange={setParam} type="number" min={0} max={10} />
+              {!deskNoPedestal && <FIELD label={t('drawers')}        name="numDrawers"  value={params.numDrawers}  onChange={setParam} type="number" min={0} max={10} />}
             </div>
 
             {params.numDividers > 0 && (
@@ -613,7 +713,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
               </div>
             )}
 
-            {params.numDrawers > 0 && (
+            {params.numDrawers > 0 && !deskNoPedestal && (
               <div className="space-y-4 animate-in zoom-in-95 duration-200">
                 <FIELD
                   label={t('drawer_height')}
@@ -687,7 +787,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
             {/* ★ F1 2026-07-19 (ux_ui_critic APROBADO como cofundador): handleType fuera del
                 guard hasDoors — un módulo solo-gavetas (desk, cómoda) también lleva tirador.
                 Mismo SELECT existente; solo cambia la condición de visibilidad + opción 'bar'. */}
-            {((params.hasDoors && !isDesk) || params.numDrawers > 0) && (
+            {((params.hasDoors && !isDesk) || (params.numDrawers > 0 && !deskNoPedestal)) && (
               <SELECT
                 label={t('handle_type')}
                 name="handleType"

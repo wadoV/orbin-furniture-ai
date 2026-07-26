@@ -787,6 +787,13 @@ export default function App() {
 
   const currentResult = (modules || []).find(m => m.id === selectedModuleId)
 
+  // BUGFIX 2026-07-22 (despiece flujo IA): el chat propone un módulo en `volatileOverlay`
+  // (previsualización HITL) que alimenta el Viewer3D pero NO entra a `modules`, así que
+  // `currentResult` queda undefined y ResultPanel (lista de cortes) no se renderiza.
+  // Aditivo: el despiece refleja el preview activo — overlay volátil si existe, si no el
+  // módulo confirmado. No altera la persistencia (Confirmar sigue siendo el único commit).
+  const shownResult = volatileOverlay || currentResult
+
   if (showWelcome) {
     return (
       <ErrorBoundary>
@@ -1036,12 +1043,12 @@ export default function App() {
               {showExports && (
                 <div id="results">
                   <ResultPanel
-                    design={currentResult}
+                    design={shownResult}
                     selectedPieceIds={selectedPieceIds}
                     onSelectPieces={setSelectedPieceIds}
                     onDeleteModule={handleDeleteModule}
                     onDeletePiece={handleDeletePiece}
-                    onSave={() => { setHasUnsavedChanges(false); if (import.meta.env.DEV) console.log('Saving module', currentResult.id) }}
+                    onSave={() => { setHasUnsavedChanges(false); if (import.meta.env.DEV) console.log('Saving module', shownResult?.id) }}
                   />
                 </div>
               )}

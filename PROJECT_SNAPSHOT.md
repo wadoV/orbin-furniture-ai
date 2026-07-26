@@ -8,6 +8,130 @@
 
 ## CHANGELOG DE AUDITORÍA
 
+### 2026-07-22 (d) — VIEWER: RENDER FIEL DE ESCRITORIOS ✅ 90/90 · build 0 errores
+
+**La inversión recomendada en (c), ejecutada:** `Viewer3D.jsx` gana una rama `desk`
+propia en vez del armado genérico de carcasa (que dibujaba techo/piso/fondo completos
+que el motor NO corta en un escritorio).
+
+- **Rama `isDeskViz`**: tampo sobrepuesto ancho completo, laterales H−T, pedestal en su
+  lado (`pedestalSide` left/right con las MISMAS fórmulas del motor convertidas a
+  coordenadas centradas `x_visor = x_motor − W/2`), PED-DIV/BASE/FONDO, pila de gavetas
+  del pedestal (paso dh+16, animación open/close intacta vía `drawerKey`), faldón pegado
+  bajo el tampo con el mismo clamp [150–300]. **Escritorio simple**: solo tampo +
+  2 laterales + faldón a todo el vano.
+- **Caja de gaveta desde `drawerBox` del motor** (SSOT sesión c): profundidad/ancho
+  reales de la lista de corte; si el motor declara la caja no fabricable, el visor
+  dibuja solo el frente.
+- **Guards aditivos** en el armado genérico: carcasa completa, zócalo/patas y gavetas
+  genéricas ya no se pintan para `desk` (antes un escritorio se renderizaba como un
+  clóset con techo/fondo inexistentes y zócalo que el motor no corta).
+- **PARIDAD VERIFICADA NUMÉRICAMENTE** (réplica de fórmulas del visor en Node vs piezas
+  reales del motor): desviación máx de posición **0.5mm** (redondeo `Math.round` de
+  T/2=12.5 del motor) en pedestal derecha/izquierda/simple; **0.0mm** en el default
+  histórico t18. 10 piezas comparadas por variante.
+- Suite **90/90** · build **exit 0** (10.98s). Cero cambios de contrato JSON.
+- **Nota:** la deuda "visor construye desde cfg y no desde pieces" SIGUE VIVA para
+  closets/aéreos (rewrite consciente, no quirúrgico); el desk queda como la primera
+  topología con render 1:1 verificado contra el despiece.
+
+### 2026-07-22 (c) — ESCRITORIOS v2: simple + pedestal izquierda/derecha ✅ 90/90 · build 0 errores
+
+**Contexto:** la topología `desk` YA existía (tampo sobrepuesto, laterales H−T, faldón,
+pedestal con gavetas). Lo faltante del brief era exactamente dos cosas, ambas aditivas:
+
+- **`hasPedestal`** (default `true` = histórico): `false` → **ESCRITORIO SIMPLE** —
+  cubierta + 2 laterales de apoyo + faldón estructural a todo el vano (`W−2T`, centrado).
+  0 piezas PED-*. Verificado: 1400×750×600/t25 → faldón 1350mm, kneeSpan 1350, VALIDADO.
+- **`pedestalSide: 'left'|'right'`** (default `'right'` = histórico): espejo completo del
+  gavetero (PED-DIV, PED-BASE, PED-FUNDO, gavetas, faldón). Verificado pieza a pieza:
+  x → W−x exacto (PED-DIV difiere 0.5mm por `Math.round` de 387.5 — artefacto de redondeo,
+  física idéntica); los laterales correctamente NO se espejan. VALIDADO.
+- **Gavetas sin pedestal → `DRAWERS_REQUIRE_PEDESTAL` (critical)** en specAdjustments:
+  n=0 reportado, no silenciado (las correderas no tienen dónde fijarse).
+- **SSOT:** `FurnitureMath.desk` nuevo (`apronHeight` [150–300, 35% del lateral] — el motor
+  ahora lo CONSUME en vez de la fórmula inline; `kneeSpan`, defaults 750/600).
+  `paramContract.js` + `hasPedestal`, `pedestalSide`.
+- **Regla estructural verificada:** lateral 725 + tampo 25 = H 750 exacto (la cubierta
+  APOYA sobre los laterales) · tope del faldón = base del tampo (y=725) — rigidiza a la
+  altura correcta. `drawerBox` payload intacto para el visor (SSOT sesión c).
+- **Cero regresión:** con defaults, cada fórmula de posición es la expresión previa
+  literal. Suite **90/90** · build **exit 0** (11.78s) · JSON shape idéntico.
+
+### 2026-07-22 (b) — DICCIONARIO PARAMÉTRICO UNIFICADO ✅ 90/90 · build 0 errores
+
+**Reglas industriales integradas en motor + validador (decisiones explícitas del usuario
+donde el diccionario chocaba con el producto):**
+
+- **Guard de espesor `THICKNESS_ALLOWED [15,18,25]`** — el {15,18} literal del diccionario
+  habría matado la feature Pro (mdf_25) y el tampo del desk; decisión: incluir 25.
+  Espesor fuera de catálogo → `INVALID_THICKNESS` (400 limpio vía `generateProject`,
+  sin stack al cliente). Verificado: 15/18/25 OK, 12 → rechazado.
+- **Fondo ESTRUCTURAL en aéreos (decisión: forzar):** aéreo con Tb<15 → el motor eleva a
+  `BACK_AEREO_STRUCTURAL 15` + `backStyle:'screwed'` y lo reporta vía specAdjustment
+  `AEREO_BACK_FORCED_STRUCTURAL`. Razón: el fondo atornillado transmite la carga al riel;
+  6mm ranurado = riesgo de arrancamiento. **SÍ cambia cutlists de aéreos guardados** (asumido).
+- **Validador como 2ª barrera independiente** (payloads forjados/importados que no pasaron
+  por el motor): espesor fuera de catálogo → error; aéreo con piezas de zócalo → error
+  (invariante verificado sobre `pieces`, no config); aéreo Tb<15 → error. Verificado:
+  payload forjado Tb=6 → **RECHAZADO**; vía motor → corregido y VALIDADO.
+- **`panelVista` ⊥ `fijacion` (separación ortogonal):** `panelVista` ('ninguno'|'uno'|'ambos',
+  panel de 15mm) reduce Nw de las horizontales (base/techo inset/travesaños/repisas/zócalo):
+  870→855→840 verificado. `fijacion` ('minifix'|'espiga'|'tornillo_visto') solo toca BOM
+  (16 minifix / 24 espigas), Nw idéntico. **Vw = W−2T queda PURO** (`internalWidth` intacto
+  = 870 en los tres modos). Default 'ninguno' → byte-idéntico.
+- **Despeje de profundidad PRECISO** (`drawerDepthClearance`): `T + (Tb + ranura si grooved)
+  + 10` sustituye el `D − Tb − 20` mágico. **El modelo viejo ignoraba el FRENTE**: en D=580
+  emitía caja de 550 → 550+6+10+18 = 584 > 580, **4mm de interferencia física real**.
+  ⚠ REGRESIÓN DELIBERADA: D=580 ahora corta caja de **500** (antes 550). Es la corrección
+  del defecto, no un efecto colateral. Catálogo `SLIDE_LENGTHS` +270 (medida comercial).
+  Verificado en 6 fondos: `boxD + despeje ≤ D` siempre.
+- **BOM alineado al despiece:** `generateHardwareBOM` calculaba su PROPIA corredera
+  (`Math.min(500, paso 50)`) — tercera fuente de verdad. Ahora usa `pickSlideDepth +
+  drawerDepthClearance`: cutlist boxD=500 ↔ BOM "corredicas 500mm", mismo número.
+- **`paramContract.js`**: + `panelVista`, `fijacion`, `grooveDepth` (la capa NL los filtraba).
+- **Verificado:** 90/90 · build exit 0 (11.57s) · JSON shape intacto (claves nuevas aditivas
+  en `configuration`; `drawerBox` ya existente sigue alimentando al visor).
+- **Nota:** los mensajes del validador aparecieron traducidos PT→ES fuera de esta sesión;
+  las aserciones nuevas se escribieron en español para mantener consistencia.
+- **DEUDA ABIERTA:** con `numDividers>0` + `panelVista`, los compartimentos extremos
+  deberían perder 15mm cada uno (hoy la deducción aplica solo a repisas de vano completo);
+  `tornillo_visto` no emite línea de BOM (correcto: va en tornillería general).
+
+### 2026-07-22 — TAMPONADO = ANCHO ACABADO + MOLDURA FRONTAL ✅ 90/90 · build 0 errores
+
+**CAMBIO DE SEMÁNTICA (decisión explícita del usuario):** con `tamponado ≠ 'none'`, el W
+pedido pasa a ser el **ancho ACABADO** — incluye los tapatornillos. La carcasa se descuenta:
+`carcassWidth = W − (lados × tamponadoThickness)`. Antes los tampones se sumaban POR FUERA:
+un "mueble de 900" medía 918–930mm reales y **no entraba en un vano de obra de 900**.
+Verificado: extensión física real (laterales+tampones) = **900mm exactos** en ambos modos.
+
+- **Aritmética del manual reconciliada:** el brief mezclaba dos sistemas — "88,2cm para 90"
+  (⇒ tampón de **9mm**/lado: 900−18=882) y "1,5cm por lado" (⇒ tampón **15mm**: 900−30=870).
+  Resolución: nuevo parámetro **`tamponadoThickness`** (default = T, mismo MDF de la carcasa).
+  El manual de 9mm se obtiene con `tamponadoThickness: 9`. El valor aplicado se persiste
+  en `configuration` (aditivo, mismo shape JSON para UI/Supabase).
+- **Cotas verificadas (log de sesión):**
+  · 900 acabado, t15, tampón 9 both → carcasa 882 · base/techo/zócalo **852** · tampón 600×2200×**9**
+  · 900 sin tamponado → base **870** = W − 2T estricto (corte a vista limpia, cero cambio)
+  · 900 tampón default(15) both → carcasa 870 · base **840**
+  · Zócalo frontal SIEMPRE idéntico al ancho de la base (regla 3 — automática: comparte
+    `internalWidth` derivado de la carcasa). VALIDADO 0 errores.
+- **`frontMolding` (opt-in, default off):** moldura frontal de 20mm que define la profundidad
+  acabada → laterales `D−20` (600→**580**) · base/techo `D−40` (→**560**) · repisas con su
+  retranqueo histórico adicional (→534). Nuevas fórmulas SSOT en `furnitureMathSpecs.js`
+  (`tamponado.carcassWidth/sidesFor`, `frontMolding.lateralDepth/horizontalDepth`).
+- **`paramContract.js`**: `tamponadoThickness` y `frontMolding` añadidos al whitelist del
+  contrato IA (sin ellos la capa NL los filtraba en silencio).
+- **Cero regresión:** default (`tamponado:'none'`, sin moldura) byte-idéntico al histórico
+  (lateral 600 prof · base 870×600). Suite **90/90** · `vite build` **exit 0** (26.27s).
+  Tests existentes de tamponado ('both'→2 paneles, 'left'→x<0) siguen en verde.
+- **DEUDA ABIERTA:** (1) `validateDesign` calcula `internalWidth` desde `cfg.width` (acabado),
+  no desde la carcasa — con tamponado sobreestima el vano en 18–30mm en sus checks (conservador
+  en span, laxo en gavetas: revisar si se generaliza el uso de tamponado). (2) `Viewer3D` no
+  dibuja los paneles de tamponado (nunca lo hizo); con la nueva semántica un módulo tamponado
+  se renderiza con la carcasa descontada — fiel al despiece, pero sin los tampones visibles.
+
 ### 2026-07-21 — GALERÍA (Verified Templates Catalog · Fase 1) · additive
 
 **Objetivo:** catálogo navegable de plantillas verificadas (`viable_designs`) con
