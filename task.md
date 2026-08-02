@@ -1,0 +1,364 @@
+# task.md — Registro de bucles autónomos · Orbin AI
+
+Bitácora de los ciclos de verificación y blindaje. Una entrada por bucle.
+Reglas: se registra lo que se **verificó ejecutando**, no lo que se supone.
+Un bucle sin evidencia (salida de test, número, archivo) no se registra como cerrado.
+
+Agentes: [`backend_loop_agent`](.cloud/agents/backend_loop_agent.md) ·
+[`qa_industrial_agent`](.cloud/agents/qa_industrial_agent.md)
+
+---
+
+## 2026-08-02 — BUCLE 001 · BACKEND: deadline en la cascada de IA
+
+**Agente:** `backend_loop_agent`
+**Estado:** ✅ CERRADO — `npm test` **234/234 PASS · 44 suites · 0 fallos · 41.5 s**
+
+### Estado inicial
+
+`npm test` **no terminaba nunca**. No fallaba: colgaba. Suites 1–32 en verde y luego el
+runner quedaba detenido para siempre en `chatDesign.e2e.test.js`.
+
+### Causa raíz — el fallback sólo cubría errores, no cuelgues
+
+`runChain()` en `aiOrchestrator.js` recorre `gemini → vertex → ollama → parser local` y
+avanza al siguiente proveedor **cuando el anterior lanza**. Pero un proveedor que cuelga no
+lanza: es una promesa que nunca resuelve. `geminiClient.js` usaba `fetch()` **sin
+`AbortSignal`**, y `fetch` sin señal no tiene timeout.
+
+Consecuencia en producción, no sólo en tests: ante un corte de red, un DNS blackhole o un
+proveedor que acepta la conexión y no contesta, **la cascada entera queda detenida en el
+primer eslabón**. El piso regex local —diseñado justamente para ese escenario— nunca se
+alcanza, y la petición Express queda tomada hasta que el cliente se rinde.
+
+De los tres clientes, sólo `ollamaClient.js` tenía timeout propio.
+
+### Segunda causa — los tests mentían sobre su propia premisa
+
+Dos tests afirmaban correr "sin proveedores de IA" / "sin API keys" y **no lo establecían**:
+
+- `chatDesign.e2e.test.js` borraba las vars de Supabase pero no las de IA
+- `paramContract.test.js` no tocaba ninguna
+
+`vertexClient.js` hace `require('dotenv').config()` al cargarse, y `aiOrchestrator` lo
+importa. En cualquier máquina con `server/.env`, ambos tests **salían a la red real contra
+Google en cada corrida**: llamadas facturables y resultado dependiente de la conectividad.
+
+**Trampa registrada:** `delete process.env.X` **no alcanza**. `dotenv` sólo respeta las
+claves que ya existen; si la borrás, la repuebla desde `.env` al cargarse `vertexClient` —
+o sea, después del `delete`. Hay que asignar `''`: existe (dotenv no la pisa) y es falsy
+(los clientes la ven como ausente). Se descubrió porque el primer intento con `delete`
+seguía saliendo a la red.
+
+### Parches aplicados (aditivos)
+
+| Archivo | Cambio |
+|---|---|
+| `server/src/ai/aiOrchestrator.js` | `withDeadline()` + `ProviderTimeoutError`. Deadline por proveedor en `runChain` (`AI_PROVIDER_TIMEOUT_MS`, default 12000). Un cuelgue ahora es un fallo → la cascada avanza. |
+| `server/src/ai/geminiClient.js` | `AbortSignal.timeout()` en ambos `fetch` (`GEMINI_TIMEOUT_MS`, default 10000) + `describeHttpError()` para no romper al parsear cuerpos de error no-JSON (un 502 de proxy es HTML). |
+| `server/src/routes/chatDesign.e2e.test.js` | Hermeticidad: claves de IA a `''` antes de los `require`. |
+| `server/src/ai/paramContract.test.js` | Íd. **9,2 s → 0,8 s** y sin red. |
+| `server/src/ai/providerDeadline.test.js` | **NUEVO** — candado de regresión. |
+
+### Autocorrección durante el bucle
+
+El primer parche hacía `timer.unref()` sobre el timer del deadline. Los 3 tests nuevos
+fallaron con `'Promise resolution is still pending but the event loop has already resolved'`:
+con `unref()`, si el proveedor cuelga y nada más sostiene el loop, **Node sale antes de que
+el deadline dispare** y la promesa no resuelve nunca — el mismo cuelgue que el parche venía
+a evitar. Se quitó el `unref()`; el `clearTimeout` del `finally` ya impide que el timer
+alargue el proceso una vez decidida la carrera.
+
+Queda escrito en el código porque es contraintuitivo y se va a querer "optimizar" de nuevo.
+
+### Candado nuevo — `providerDeadline.test.js`
+
+Muta el export del cliente **antes** de `require(aiOrchestrator)` (`PROVIDER_CHAIN` guarda la
+referencia al módulo) e inyecta un proveedor que cuelga para siempre. Verifica:
+
+1. `chatDesign()` devuelve aunque **todos** los proveedores cuelguen, bajo techo de tiempo
+2. El piso regex local **es alcanzable** (`source === 'regex-fallback'`)
+3. `parseDesignIntent()` respeta el mismo invariante y el contrato de params
+
+### Hallazgos NO corregidos (requieren decisión, no código)
+
+**1 · La cadena "Gemini → DeepSeek / OpenRouter" no existe.**
+`openrouterClient.js` es un stub de 12 líneas que lanza `'not implemented yet'` y **no está
+en `PROVIDER_CHAIN`**. No hay cliente DeepSeek. La cadena real es `gemini → vertex → ollama`,
+y **los tres primeros dependen de credenciales de Google**. No hay redundancia de proveedor:
+un incidente de Google tumba los tres y el sistema cae al parser regex local. El deadline
+garantiza que degrada rápido, no que degrade bien.
+
+**2 · El parser offline no entiende el formato dimensional desnudo.**
+`"placard 2000 x 2200"` → cae a defaults **2400×2400 sin emitir ningún `specAdjustment`**.
+El usuario pide 2,00 m y recibe 2,40 m sin aviso. Sólo se dispara con la IA caída — que es
+exactamente cuando nadie está mirando. Documentado con test en `providerDeadline.test.js`.
+Ver `qa_industrial_agent.md` §5 para las dos salidas posibles.
+
+### Nota de método
+
+Los "cuelgues" observados al correr la suite en segundo plano entre llamadas de shell eran
+**el sandbox matando el proceso** (cada llamada corre en su propio PID namespace con
+`--die-with-parent`), no fallos del código. La suite debe correrse **dentro de una sola
+invocación**. Se perdió tiempo diagnosticando esto como si fuera del producto.
+
+### Archivos tocados
+
+```
+M  server/src/ai/aiOrchestrator.js
+M  server/src/ai/geminiClient.js
+M  server/src/ai/paramContract.test.js
+M  server/src/routes/chatDesign.e2e.test.js
+A  server/src/ai/providerDeadline.test.js
+A  .cloud/agents/backend_loop_agent.md
+A  .cloud/agents/qa_industrial_agent.md
+A  task.md
+M  PROJECT_SNAPSHOT.md
+```
+
+⚠️ El árbol tenía cambios **previos y ajenos a este bucle** sin commitear
+(`CLAUDE.md`, `client/src/**`, `server/src/engine/closetEngine.js`). No fueron tocados ni
+verificados acá. **Revisarlos antes de commitear** o el commit va a mezclar dos trabajos.
+
+---
+
+## 2026-08-02 — BUCLE 002 · BACKEND: auth y entitlements
+
+**Agente:** `backend_loop_agent`
+**Estado:** ✅ CERRADO — **247/247 PASS · 47 suites · 0 fallos** (234 → 247, +13)
+
+### Estado inicial
+
+`npm test` en verde (234/234). No había nada que arreglar: había algo que **proteger**.
+
+### Auditoría de `server/src/routes/`
+
+Verificado con `NODE_ENV=production` sobre un servidor efímero real, no leyendo el código:
+
+| Endpoint | Sin token | `Bearer dev-token` |
+|---|---|---|
+| `POST /api/chat/design` | 401 ✔ | 401 ✔ |
+| `POST /api/chat/parse` | 401 ✔ | 401 ✔ |
+| `POST /api/design/generate` | 401 ✔ | 401 ✔ |
+| `POST /api/design/parse` | 401 ✔ | 401 ✔ |
+
+- **`requireAuth` activo en toda ruta mutante.** `chat.js`/`projects.js` vía
+  `router.use(requireAuth)` antes de declarar rutas; `design.js`/`vision.js`/`billing.js`
+  inline. Excepciones correctas: `POST /billing/webhook` (firma HMAC de Stripe; en Mercado
+  Pago **re-consulta el pago contra la API** en vez de confiar en el cuerpo) y `stressTest.js`
+  (require condicional: en producción no se monta).
+- **El plan sale de `app_metadata`** en `requireAuth` y `optionalAuth`; se escribe sólo con
+  `service_role` desde `billing.js`. `user_metadata` guarda únicamente `name` y
+  `company_name` — presentación, no autorización.
+
+### El hallazgo: los fixes vivían en un comentario
+
+Los dos arreglos de seguridad —`user_metadata`→`app_metadata` (2026-06-27) y el gate de
+`dev-token` (2026-07-21)— **no tenían ni una aserción**. Las 234 pruebas seguían en verde si
+alguien quitaba `requireAuth` de una ruta o volvía a leer `user_metadata`. Un comentario no
+impide que un refactor deshaga un fix; sólo impide que se deshaga a propósito.
+
+### Parche: `server/src/routes/authContract.test.js` (+13 tests, aditivo)
+
+1. **Entitlements** — stub de `createClient` inyectado antes de cargar `auth.js`. Un usuario
+   que se autoasigna `user_metadata.plan = 'enterprise'` desde devtools sigue siendo `free`.
+   Sin plan → `free` (fail-closed). `optionalAuth` bajo la misma regla: si no, el bypass
+   sólo se muda de puerta.
+2. **Sin puerta trasera en producción** — `dev-token`/`dev-local-token` rechazados; token
+   inválido no deja `req.user`; el error no filtra `supabase`/`jwt`/stack.
+3. **Barrido estático** — escanea el CÓDIGO FUENTE y exige que toda ruta `post|put|patch|
+   delete` esté guardada. Excepciones sólo vía `OUT_OF_SCOPE` **con motivo escrito**; el test
+   valida que exista, que sea sustantivo y que no queden entradas muertas.
+
+### Verificación por mutación (no por fe)
+
+| Mutación | Resultado |
+|---|---|
+| `auth.js` lee `user_metadata` | **2 fallos** ✔ |
+| Quitar `requireAuth` de `vision.js` | **4 fallos** ✔ |
+
+Ambas revertidas; `git diff` vacío sobre los dos archivos.
+⚠ El repo tiene un `.git/index.lock` colgado: `git checkout` falla. La restauración se hizo
+con `sed` y se verificó con `git diff`. **Borrar el lock manualmente antes de commitear.**
+
+### Hallazgo NO corregido — el paywall casi no existe donde cuesta plata
+
+`req.user.plan` se consulta en **un solo lugar** de todo el backend: `projects.js:47`
+(máx. 3 módulos en free, al guardar). Los endpoints caros — `/api/chat/design` (LLM),
+`/api/design/generate`, `/api/vision/analyze-space` (Gemini Vision, el más caro) — **no
+miran el plan**. Un usuario `free` autenticado tiene IA ilimitada.
+
+Lo único que lo acota es `aiLimiter`: **15 req/min por IP**. Eso es una defensa contra abuso,
+no un entitlement: castiga a una oficina compartida detrás de un NAT y se esquiva rotando IP.
+
+Construiste una arquitectura de planes impecable —`app_metadata`, webhooks firmados,
+`service_role`, promo codes— y después casi no la consultás. Cada diseño de un usuario free
+te cuesta tokens de Gemini a precio de lista. **No lo parcheo unilateralmente**: si es un
+free trial deliberado, es estrategia; si no lo es, es fuga de margen. Es tu decisión, no la
+del agente. → P5.
+
+### Archivos tocados
+
+```
+A  server/src/routes/authContract.test.js
+M  PROJECT_SNAPSHOT.md   (sección nueva: CHANGELOG DE BACKEND)
+M  task.md
+```
+
+Ningún archivo de producción fue modificado en este bucle: el código estaba correcto.
+
+---
+
+## 2026-08-02 — BUCLE 003 · GATE DE PLAN EN LOS ENDPOINTS DE IA (cierra P5)
+
+**Agente:** `backend_loop_agent`
+**Estado:** ✅ CERRADO — **265/265 PASS · 52 suites · 0 fallos** (247 → 265, +18)
+
+### Decisiones de producto (tomadas por el CEO antes de codificar)
+
+| Decisión | Elegido |
+|---|---|
+| Regla free | **Cuota de 5 llamadas de IA/día** (no bloqueo duro del chat) |
+| Persistencia | **Supabase, tabla `ai_usage`** (no en memoria) |
+| Formato de error | **Superset compatible con el contrato de i18n** |
+
+### El hallazgo que cambió el diseño
+
+La instrucción decía "aplicar la guarda en `chat.js` y `design.js`". Auditando antes
+de escribir apareció que **tres de los cinco caminos no consumen IA**:
+
+| Camino | ¿IA? | ¿Cobra? |
+|---|---|---|
+| `chat.js POST /design` (Fase 1) | sí | **sí** |
+| `chat.js POST /design` con `confirmFlow`+`action:'confirm'` | **no** — determinista y stateless | no |
+| `chat.js POST /parse` | sí (`parseDesignIntent`) | **sí** |
+| `design.js POST /generate` con `naturalLanguage` | sí | **sí** |
+| `design.js POST /generate` con `params` | **no** — motor paramétrico puro | no |
+| `design.js POST /parse` | **no** — regex local (`parseNaturalLanguage`) | no |
+
+Una guarda plana habría convertido "5 generaciones con IA por día" en **"5 diseños por
+día en total"**: el usuario free no podría ni usar el formulario manual, que no cuesta un
+centavo. Peor aún con la Fase 2 del HITL: un free que gasta su última llamada proponiendo
+un diseño recibiría **403 al confirmarlo** — se le cobra dos veces la misma intención y se
+queda sin el despiece. Por eso `checkPlanLimit(feature, { when })` acepta un predicado y
+sólo descuenta cuando de verdad va a haber una llamada al modelo.
+
+### Arquitectura
+
+- **`server/supabase/migrations/008_create_ai_usage.sql`** — tabla `ai_usage`
+  (PK `user_id`+`day`), RLS habilitada **sin políticas** (sólo `service_role` entra), y
+  RPC atómico `increment_ai_usage` con `INSERT … ON CONFLICT DO UPDATE … RETURNING`.
+  Un read-then-write desde Node dejaría pasar 6 llamadas si dos peticiones concurrentes
+  leen 4; el RPC resuelve el conteo en una sola sentencia. Día en **UTC**: un usuario en
+  UTC-3 ve su cuota reiniciarse a las 21:00 local (predecible, documentado en el SQL).
+- **`server/src/middleware/planLimits.js`** — `checkPlanLimit(feature, { when })`.
+  Plan desconocido → tratado como `free` (fail-closed en entitlements). Store inyectable
+  vía `setUsageStore()` para tests.
+- **Errores** — `code:'PLAN_LIMIT_REACHED'` (traducido ES/PT/EN en `apiErrors.js`),
+  `error` en español legible, más `action:'UPGRADE_REQUIRED'`, `plan`, `limit`, `used`,
+  `resetAt`. El front pinta el muro sin re-consultar nada.
+  Headers `X-Orbin-AI-Limit` / `X-Orbin-AI-Used` en las respuestas que sí pasan.
+
+### La decisión incómoda: fail-OPEN si el contador se cae
+
+Si Supabase no responde, la petición **pasa** y se loguea. Es una cuota comercial, no un
+control de seguridad: fail-closed convertiría una caída del contador en un **apagón del
+producto para los que pagan**. Durante una caída un `free` no puede volverse `pro` —el plan
+sale del JWT verificado vía `app_metadata`— sólo gastar de más. Se pierde margen un rato;
+no se pierden clientes. Está bajo test.
+
+### Ampliación del contrato de i18n
+
+`i18nContract.test.js` escaneaba **sólo `routes/`**. Un `code:` nacido en un middleware
+entraba a producción sin traducción y sin que nada fallara. Se agregó
+`middleware/planLimits.js` a `API_ERROR_SOURCES`: **un middleware que responde al cliente
+es superficie user-facing.**
+
+### Autocorrecciones durante el bucle
+
+1. **El arnés medía otra cosa.** El primer test inyectaba `req.user` con un middleware
+   previo; `router.use(requireAuth)` lo pisaba con `DEV_USER` (plan `pro`) y los 8 tests de
+   bloqueo daban 200. Se reescribió stubeando `createClient` y dejando correr el
+   `requireAuth` **real**, que resuelve el plan desde `app_metadata` como en producción.
+2. **Mi propio candado se colgaba.** `LIMIT` se lee de la implementación para no
+   desincronizarse; al mutar el límite a `Infinity` los bucles `for (i <= LIMIT)` no
+   fallaban: **se colgaban** (timeout, sin reporte). Se agregó una guarda que exige que
+   `LIMIT` sea finito y razonable. Un cuelgue es un fallo, no una demora.
+
+### Verificación por mutación
+
+| Mutación | Resultado |
+|---|---|
+| `free` → `Infinity` | **falla limpio** con mensaje explicativo ✔ (antes: colgaba) |
+| Quitar `when` de `design/generate` (cobrar el motor puro) | **1 fallo** ✔ |
+
+Ambas revertidas y verificadas por `grep`.
+
+### Archivos tocados
+
+```
+A  server/supabase/migrations/008_create_ai_usage.sql
+A  server/src/middleware/planLimits.js
+A  server/src/routes/aiPlanLimits.test.js
+M  server/src/routes/chat.js          (2 líneas de guarda + predicado)
+M  server/src/routes/design.js        (2 líneas de guarda + predicado)
+M  client/src/engine/apiErrors.js     (PLAN_LIMIT_REACHED ES/PT/EN)
+M  server/src/engine/i18nContract.test.js  (API_ERROR_SOURCES += middleware)
+```
+
+### ⚠ Falta para que esto funcione en producción — NO está hecho
+
+1. **Correr `008_create_ai_usage.sql`** en el SQL Editor de Supabase. Sin la tabla y el
+   RPC, el middleware entra en fail-open: **la cuota no existe y nadie se entera**, porque
+   por diseño no rompe nada. Es el paso que hace real todo lo demás.
+2. **`SUPABASE_SERVICE_KEY`** debe estar en el entorno del server (ya la usa `billing.js`;
+   verificar que esté también donde vaya a correr).
+3. **El front no maneja el 403 todavía.** Hoy un free que agota la cuota ve el error crudo
+   de `api/client.js`. Falta que `ResultPanel`/el chat lean `code:'PLAN_LIMIT_REACHED'` y
+   pinten el muro de upgrade con `used`/`limit`/`resetAt`. → P7.
+
+---
+
+## Pendientes abiertos
+
+| # | Pendiente | Dueño | Bloquea |
+|---|---|---|---|
+| P1 | Decidir redundancia real de IA (¿OpenRouter/DeepSeek de verdad, o asumir Google como único?) | CEO | Resiliencia en producción |
+| P2 | Parser offline: `specAdjustment` de baja confianza al aplicar defaults con números sin interpretar | CEO + `qa_industrial_agent` | Silencio peligroso con IA caída |
+| P3 | Revisar y separar los cambios previos sin commitear del árbol | CEO | Commit limpio |
+| P4 | Verificar arranque real del server (`:3003`) y health check contra Supabase | `backend_loop_agent` | Deploy |
+| ~~P5~~ | ~~Gate de plan en los endpoints de IA~~ | — | ✅ **CERRADO** en el bucle 003 |
+| P6 | Borrar `.git/index.lock` colgado (bloquea toda escritura de git) | CEO | ✅ **CERRADO** en el bucle 004 |
+| P7 | **Correr la migración `008_create_ai_usage.sql` en Supabase.** Sin ella el gate es fail-open y la cuota no existe — sin romper nada, o sea sin avisar | CEO | Que el bucle 003 sirva de algo |
+| P8 | Front: manejar el 403 `PLAN_LIMIT_REACHED` con un muro de upgrade (`used`/`limit`/`resetAt` ya vienen en la respuesta) | CEO | Conversión free → pro |
+
+---
+
+## 2026-08-02 — BUCLE 004 · CLIENTE & 3D: Desbloqueo Git y Posicionamiento Secuencial de Módulos (V4.6)
+
+**Agente:** `qa_industrial_agent` / `Antigravity Automation Engineer`
+**Estado:** ✅ CERRADO — `npm test` **265/265 PASS · 52 suites · 0 fallos** · `npm run build` (Vite) **0 ERRORES · 2033 módulos transformados**
+
+### Resumen del ciclo
+
+1. **Desbloqueo de Git (Cierra P6):**
+   - Eliminación del archivo `.git/index.lock` en entorno Windows/PowerShell via `Remove-Item -Force .git/index.lock`.
+   - Estado del árbol de trabajo verificado con `git status`.
+
+2. **Diagnóstico & Corrección de Layout 3D (Colisión por `position: null`):**
+   - **Causa raíz:** Módulos guardados en `localStorage` ('orbin-autosave') carecían de la propiedad `position` (o venían con `position: null` / `undefined`), provocando que se renderizaran superpuestos en el origen.
+   - **Solución implementada:**
+     - En `client/src/App.jsx`: Se implementó `sanitizeModulesPositions(modules)` que calcula automáticamente la coordenada continua $X_{\text{nuevo}} = X_{\text{anterior}} + \text{Width}_{\text{anterior}}$ para cualquier módulo que no posea posición válida. Integrado en la carga inicial de `localStorage` y en `saveHistory`.
+     - En `client/src/components/Viewer3D.jsx`: Se actualizó la hidratación de `modulePositionsRef` para que lea `design.position` (convertido a escala Three.js `design.position.x * SCALE + W / 2`) si el ref interno aún no se ha instanciado.
+
+3. **Bucle de Verificación Exitoso:**
+   - Server Unit Tests: `npm test` en `server/` -> **265 PASS / 0 FAIL (100% de efectividad en 52 suites)**.
+   - Client Production Build: `npm run build` en `client/` -> **Construcción limpia en 16.09s (0 errores)**.
+
+### Archivos modificados
+
+- `client/src/App.jsx`
+- `client/src/components/Viewer3D.jsx`
+- `task.md`
+- `PROJECT_SNAPSHOT.md`
+

@@ -1,12 +1,156 @@
-# PROJECT_SNAPSHOT.md — Orbin AI v4.5 (COMMERCIAL_READY)
-> Generated: 2026-05-31 | For clean-context resumption
-> ⚠️ Este snapshot está DESACTUALIZADO respecto al código real (HEAD ~jul-2026 ya tiene
->   Stripe+Mercado Pago, Supabase Auth real, exports DXF/DAE/OBJ/GLTF, Plano PDF, PBR).
->   Auditar sobre el código, no sobre este archivo.
+# PROJECT_SNAPSHOT.md — Orbin AI v4.6 (COMMERCIAL_READY)
+> Generated: 2026-08-02 | For clean-context resumption
+> ⚠️ Este snapshot refleja el estado verificado de HEAD v4.6 con 265/265 tests pasando en server y build 100% verde en cliente.
 
 ---
 
-## CHANGELOG DE AUDITORÍA
+## ESTADO DEL SERVIDOR (verificado 2026-08-02)
+
+| Ítem | Valor | Verificado en |
+|---|---|---|
+| Runtime | Node ≥ 20 · Express 4 | `server/package.json` |
+| Puerto | **3003** (`process.env.PORT \|\| 3003`, bind `0.0.0.0`) | `server/src/index.js:53,294` |
+| Suite | `node --test src/{engine,ai,routes}/*.test.js` | `npm test` |
+| **Resultado** | **265/265 PASS · 52 suites · 0 fallos** | corrida 2026-08-02 (c) |
+| Auth | `requireAuth` en toda ruta mutante · plan desde `app_metadata` | `authContract.test.js` |
+| Cuota de IA | `free` 5/día (UTC) · `pro`/`enterprise` ilimitado | `aiPlanLimits.test.js` |
+| Contador | Supabase `ai_usage` + RPC atómico · ⚠ **migración 008 sin correr** | `008_create_ai_usage.sql` |
+| Cascada IA | `gemini → vertex → ollama → parser regex local` | `aiOrchestrator.js` |
+| Deadline IA | `AI_PROVIDER_TIMEOUT_MS` (12000) por proveedor | `aiOrchestrator.js` |
+| Timeout HTTP Gemini | `GEMINI_TIMEOUT_MS` (10000) vía `AbortSignal` | `geminiClient.js` |
+
+⚠️ **`openrouterClient.js` es un stub y NO está en `PROVIDER_CHAIN`. No hay cliente DeepSeek.**
+Los tres proveedores activos usan credenciales de Google: no hay redundancia externa real.
+
+Bitácora de bucles autónomos: [`task.md`](task.md).
+
+---
+
+## CHANGELOG DE BACKEND
+
+### 2026-08-02 (c) — GATE DE PLAN EN LOS ENDPOINTS DE IA ✅ 265/265 tests · cierra P5
+
+**Regla:** `free` = 5 llamadas de IA por día (UTC) · `pro`/`enterprise` = ilimitado.
+Plan desconocido → tratado como `free` (fail-closed en entitlements).
+
+**El hallazgo que cambió el diseño: tres de los cinco caminos no consumen IA.**
+`design.js POST /parse` es regex **local**; `design.js POST /generate` sólo llama al modelo
+si viene `naturalLanguage` (con `params` es motor puro); y la Fase 2 del HITL
+(`confirmFlow` + `action:'confirm'`) es **determinista y stateless**. Una guarda plana
+habría convertido "5 generaciones con IA por día" en **"5 diseños por día en total"** —el
+free ni siquiera podría usar el formulario manual— y le habría devuelto **403 al confirmar**
+a quien gastó su última llamada proponiendo. Por eso `checkPlanLimit(feature, { when })`
+acepta un predicado y sólo descuenta cuando de verdad va a haber una llamada al modelo.
+
+- **`008_create_ai_usage.sql`** — tabla `ai_usage` (PK `user_id`+`day`), RLS habilitada
+  **sin políticas** (sólo `service_role`), y RPC atómico `increment_ai_usage`
+  (`INSERT … ON CONFLICT DO UPDATE … RETURNING`). Un read-then-write desde Node dejaría
+  pasar 6 llamadas si dos peticiones concurrentes leen 4. Día en **UTC**.
+- **`middleware/planLimits.js`** — store inyectable (`setUsageStore`) para tests.
+  **Fail-OPEN deliberado** si el contador se cae: es una cuota comercial, no un control de
+  seguridad; fail-closed convertiría una caída de Supabase en un apagón del producto para
+  los que PAGAN. Un `free` no puede volverse `pro` durante la caída (el plan sale del JWT
+  verificado), sólo gastar de más.
+- **403 con superset compatible:** `code:'PLAN_LIMIT_REACHED'` (traducido ES/PT/EN),
+  `error` legible en español, `action:'UPGRADE_REQUIRED'`, `plan`, `limit`, `used`,
+  `resetAt`. Headers `X-Orbin-AI-Limit`/`X-Orbin-AI-Used` en las respuestas que pasan.
+- **Contrato de i18n ampliado:** `i18nContract.test.js` escaneaba sólo `routes/`; un `code:`
+  nacido en un middleware entraba a producción sin traducción y sin que nada fallara.
+  Un middleware que responde al cliente es superficie user-facing.
+- **`aiPlanLimits.test.js`** (+18): monta los routers reales y golpea por HTTP. Verificado
+  por mutación (`free`→`Infinity` y quitar el predicado `when`): ambas fallan limpio.
+
+⚠ **Falta para que esto exista en producción:** correr `008_create_ai_usage.sql` en
+Supabase y tener `SUPABASE_SERVICE_KEY` en el entorno. Sin la tabla, el middleware queda en
+fail-open: **la cuota no rige y nada falla**, que es justamente lo que la vuelve fácil de
+olvidar. El front tampoco maneja el 403 todavía. → `task.md` P7/P8.
+
+### 2026-08-02 (b) — AUTH & ENTITLEMENTS: candados sobre los fixes de seguridad ✅ 247/247 tests
+
+**Auditoría de `server/src/routes/` — resultado: el código estaba bien; la protección
+contra regresiones NO existía.**
+
+Verificado empíricamente con `NODE_ENV=production` (servidor efímero + `fetch` real):
+`POST /api/chat/design`, `POST /api/chat/parse`, `POST /api/design/generate`,
+`POST /api/design/parse` → **401 sin token**, y `Bearer dev-token` **queda neutralizado**.
+
+- **`requireAuth` está activo en todas las rutas mutantes.** `chat.js` y `projects.js` usan
+  `router.use(requireAuth)` antes de declarar rutas; `design.js`, `vision.js` y `billing.js`
+  lo aplican inline. Únicas excepciones, ambas correctas: `POST /billing/webhook` (lo llama
+  el proveedor de pagos; se autentica por firma HMAC de Stripe y, en Mercado Pago,
+  **re-consultando el pago contra la API en vez de confiar en el cuerpo recibido**) y
+  `stressTest.js` (require condicional + guard: en producción no se monta).
+- **El plan sale de `app_metadata`, nunca de `user_metadata`.** Confirmado en
+  `middleware/auth.js` (`requireAuth` y `optionalAuth`) y en `billing.js` (escritura vía
+  `service_role`). `user_metadata` sólo guarda `name` y `company_name` — datos de
+  presentación, no de autorización.
+
+**El problema real: ambos fixes estaban sostenidos por un comentario.** Los arreglos de
+2026-06-27 (`user_metadata` → `app_metadata`) y 2026-07-21 (gate de `dev-token`) no tenían
+ni una aserción. Las 234 pruebas seguían en verde si alguien quitaba `requireAuth` de una
+ruta o volvía a leer `user_metadata`. Un comentario no impide que un refactor deshaga un
+fix; sólo impide que se deshaga a propósito.
+
+**Nuevo: `server/src/routes/authContract.test.js`** (+13 tests, 0 dependencias)
+
+1. *Entitlements* — stub de `createClient` inyectado antes de cargar `auth.js`: el plan sale
+   de `app_metadata`; un usuario que se autoasigna `user_metadata.plan = 'enterprise'`
+   (ataque real vía `supabase.auth.updateUser()` desde devtools) sigue siendo `free`;
+   sin plan → `free` (fail-closed). `optionalAuth` bajo la misma regla: si no, el bypass
+   sólo se muda de puerta.
+2. *Sin puerta trasera en producción* — `dev-token` y `dev-local-token` rechazados; token
+   inválido no deja `req.user` adjunto; el mensaje de error no filtra `supabase`/`jwt`/stack.
+3. *Barrido estático de `routes/`* — escanea el CÓDIGO FUENTE y exige que toda ruta
+   `post|put|patch|delete` esté guardada. Para quedar fuera hay que declararla en
+   `OUT_OF_SCOPE` **con motivo escrito** (el test valida que exista, que sea sustantivo y
+   que no queden entradas muertas). Misma disciplina que `i18nContract.test.js`.
+
+**El candado se verificó por mutación**, no por fe: leyendo `user_metadata` en `auth.js`
+→ 2 fallos; quitando `requireAuth` de `vision.js` → 4 fallos. Ambas mutaciones revertidas
+(`git diff` vacío).
+
+**Hallazgo NO corregido — el paywall casi no existe donde cuesta plata.**
+`req.user.plan` se consulta en **un solo lugar** de todo el backend: `projects.js:47`
+(máx. 3 módulos en plan free al guardar). Los endpoints caros —`/api/chat/design` (LLM),
+`/api/design/generate`, `/api/vision/analyze-space` (Gemini Vision, el más caro)— **no
+miran el plan**. Un usuario `free` autenticado tiene IA ilimitada. Lo único que lo acota es
+`aiLimiter`: **15 req/min por IP**, que es una defensa contra abuso, no un entitlement —
+castiga a oficinas compartidas detrás de un NAT y se esquiva rotando IP. La arquitectura de
+planes está impecablemente construida y casi nunca se consulta. Decisión de producto
+(¿free trial deliberado o fuga de margen?), no defecto: ver `task.md` P5.
+
+### 2026-08-02 — BACKEND: deadline en la cascada de IA ✅ 234/234 tests
+
+**`npm test` no terminaba nunca.** No fallaba: colgaba en `chatDesign.e2e.test.js` tras 32
+suites verdes. La causa era estructural, no del test.
+
+- **El fallback sólo cubría errores, no cuelgues.** `runChain()` avanza de proveedor cuando
+  el anterior *lanza*. Un proveedor que cuelga no lanza. `geminiClient` usaba `fetch()` sin
+  `AbortSignal` — y `fetch` sin señal no tiene timeout. Ante un corte de red o un proveedor
+  que acepta la conexión y no contesta, **la cascada quedaba detenida en el primer eslabón y
+  el piso regex local nunca se alcanzaba**. Sólo `ollamaClient` tenía timeout propio.
+- **Fix:** `withDeadline()` + `ProviderTimeoutError` en `runChain` (`AI_PROVIDER_TIMEOUT_MS`,
+  default 12000). Un cuelgue se convierte en fallo y la cascada avanza. `AbortSignal.timeout()`
+  en ambos `fetch` de `geminiClient` como defensa en profundidad, más `describeHttpError()`
+  para no romper al parsear cuerpos de error no-JSON (un 502 de proxy es HTML).
+- **Dos tests mentían sobre su premisa.** `chatDesign.e2e` y `paramContract` afirmaban correr
+  "sin API keys" sin quitarlas: `vertexClient` hace `require('dotenv').config()` y
+  `aiOrchestrator` lo importa, así que **salían a la red real contra Google en cada corrida**
+  (facturable y no determinista). Hechos herméticos. `paramContract`: **9,2 s → 0,8 s**.
+- **Trampa que costó un intento:** `delete process.env.X` NO alcanza — dotenv sólo respeta las
+  claves que ya existen y la repuebla después del delete. Hay que asignar `''`.
+- **Autocorrección:** el primer parche hacía `unref()` del timer del deadline. Con `unref()`,
+  si el proveedor cuelga y nada más sostiene el event loop, Node sale **antes** de que el
+  deadline dispare: el mismo cuelgue que venía a evitar. Quitado; documentado en el código.
+- **Candado nuevo:** `server/src/ai/providerDeadline.test.js` — inyecta un proveedor que cuelga
+  para siempre y exige que `chatDesign`/`parseDesignIntent` devuelvan bajo techo de tiempo y
+  que `source === 'regex-fallback'` sea alcanzable.
+- **Deuda documentada (no corregida):** el parser offline no entiende `"2000 x 2200"` y cae a
+  defaults 2400×2400 **sin emitir `specAdjustment`**. Con la IA caída, el usuario pide 2,00 m
+  y recibe 2,40 m sin aviso. Ver `task.md` P2.
+
+Infraestructura agéntica creada: `.cloud/agents/backend_loop_agent.md`,
+`.cloud/agents/qa_industrial_agent.md`, `task.md`.
 
 ### 2026-07-22 (d) — VIEWER: RENDER FIEL DE ESCRITORIOS ✅ 90/90 · build 0 errores
 

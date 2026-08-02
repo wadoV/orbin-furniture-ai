@@ -5,6 +5,22 @@
 
 const { FURNITURE_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT } = require('./systemPrompts')
 
+// ── Red de seguridad de transporte (aditivo 2026-08-02) ─────────────────────
+// fetch() sin señal NO tiene timeout: un socket que no responde cuelga la
+// petición para siempre. El orquestador ya impone un deadline, pero el cliente
+// debe cortar su propio socket para no filtrar conexiones.
+const FETCH_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 10000
+
+/** Lee el cuerpo de error sin asumir que es JSON (un 502 de proxy es HTML). */
+async function describeHttpError(response) {
+  try {
+    const data = await response.json()
+    return data?.error?.message || response.statusText
+  } catch {
+    return `HTTP ${response.status} ${response.statusText}`
+  }
+}
+
 async function callGemini(systemPrompt, userMessage) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY is missing')
@@ -28,12 +44,12 @@ async function callGemini(systemPrompt, userMessage) {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
   })
 
   if (!response.ok) {
-    const errorData = await response.json()
-    throw new Error(`Gemini API Error: ${errorData.error?.message || response.statusText}`)
+    throw new Error(`Gemini API Error: ${await describeHttpError(response)}`)
   }
 
   const data = await response.json()
@@ -71,12 +87,12 @@ async function callGeminiVision(systemPrompt, userPrompt, base64Image, mimeType)
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
   })
 
   if (!response.ok) {
-    const errorData = await response.json()
-    throw new Error(`Gemini API Error: ${errorData.error?.message || response.statusText}`)
+    throw new Error(`Gemini API Error: ${await describeHttpError(response)}`)
   }
 
   const data = await response.json()

@@ -11,6 +11,7 @@ const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
 const { parseNaturalLanguage } = require('../engine/nlParser')
 const { validateDesign } = require('../engine/validator')
 const { requireAuth } = require('../middleware/auth')
+const { checkPlanLimit } = require('../middleware/planLimits')
 const z = require('zod')
 
 const contextSchema = z.object({
@@ -21,7 +22,16 @@ const contextSchema = z.object({
 
 // ─── POST /api/design/generate ────────────────────────────────────────────────
 
-router.post('/generate', requireAuth, async (req, res) => {
+// GATE DE PLAN [2026-08-02]: esta ruta sólo llama al modelo cuando viene
+// `naturalLanguage`. Con `params` es motor paramétrico puro — determinista y
+// gratis de correr. Cobrar cuota en ese caso convertiría "5 generaciones con IA
+// por día" en "5 diseños por día en total", incluidos los que no cuestan un
+// centavo: el usuario free no podría ni usar el formulario manual. Se cobra el
+// camino de IA, no el motor.
+const generateConsumesAI = (req) =>
+  typeof req.body?.naturalLanguage === 'string' && req.body.naturalLanguage.trim().length > 0
+
+router.post('/generate', requireAuth, checkPlanLimit('design.generate', { when: generateConsumesAI }), async (req, res) => {
   try {
     const { params, naturalLanguage } = req.body
 

@@ -2,6 +2,17 @@
  * Orbin AI — Tests del contrato NLP → Paramétrico (ADITIVO 2026-07-20).
  * Runner: node:test (cero dependencias).
  */
+// ── HERMETICIDAD (aditivo 2026-08-02) ───────────────────────────────────────
+// El test "chatDesign nunca lanza (sin API keys)" AFIRMABA no tener claves,
+// pero no las quitaba: vertexClient hace require('dotenv').config() al cargarse
+// y repuebla server/.env. En toda máquina de dev el test salía a la red REAL
+// contra Google en cada corrida (llamadas facturables + resultado dependiente
+// de la conectividad). Tardaba 9,2 s; ahora corre offline en milisegundos.
+// Asignar '' (no `delete`): dotenv sólo respeta las claves que ya existen.
+for (const k of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENROUTER_API_KEY', 'DEEPSEEK_API_KEY']) {
+  process.env[k] = ''
+}
+
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 const {

@@ -13,6 +13,7 @@ import { pieceRectsMM, hasProjectablePieces } from './elevationModel.js'
 //   emitiendo canónicos; acá sólo se presentan. Ver pieceNames.js para la regla de
 //   coherencia con la etiqueta térmica y el CSV.
 import { localizePieceName } from './pieceNames.js'
+import { localizeAdjustment } from './adjustmentMessages.js'
 
 const PALETTES = {
   screen: {
@@ -579,7 +580,7 @@ const scaleLabel = (s) => {
 //   pasó a ocupar 3 líneas (~56px) → OBSERVACIONES se SOLAPABA con LISTA DE CORTES.
 //   Ahora la altura consumida la reporta quien la conoce. Compatible: el `.svg` del
 //   objeto es exactamente lo que se devolvía antes.
-function buildAvisos(adjustments, P, D, box) {
+function buildAvisos(adjustments, P, D, box, lang) {
   const list = (adjustments || []).filter(Boolean)
   if (!list.length) return { svg: '', nextY: box.y }
   const order = { critical: 0, warning: 1, info: 2 }
@@ -607,7 +608,8 @@ function buildAvisos(adjustments, P, D, box) {
     if (y > maxY - 8) break
     const col = a.severity === 'critical' ? '#C0392B' : a.severity === 'warning' ? '#B7791F' : P.muted
     const mark = a.severity === 'critical' ? '!' : '•'
-    const all = wrap(a.message, cols)
+    const msg = localizeAdjustment(a, lang)
+    const all = wrap(msg, cols)
     const lines = all.slice(0, 3)
     if (all.length > 3 && lines.length === 3) lines[2] = lines[2].replace(/\s*\S*$/, '') + ' …'
     g += `<text x="${box.x}" y="${y}" font-size="9.5" font-weight="800" fill="${col}">${mark}</text>`
@@ -824,7 +826,7 @@ export function generateModulePlanSVG(module, options = {}) {
     // ★ 2026-07-26: se usa la altura REAL consumida (av.nextY), no la estimación
     //   `avisos.length * 26` que subestimaba los avisos largos y los hacía chocar
     //   contra el título de LISTA DE CORTES.
-    const av = buildAvisos(avisos, P, D, { x: RX, y: avY + 10, w: RW, h: 88 })
+    const av = buildAvisos(avisos, P, D, { x: RX, y: avY + 10, w: RW, h: 88 }, lang)
     s += av.svg
     avY = Math.max(avY + 18, av.nextY)
   }

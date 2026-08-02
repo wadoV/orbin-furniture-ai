@@ -14,6 +14,20 @@ process.env.NODE_ENV = 'test'
 delete process.env.SUPABASE_URL
 delete process.env.SUPABASE_ANON_KEY
 
+// ── HERMETICIDAD (aditivo 2026-08-02) ───────────────────────────────────────
+// Este test AFIRMA "sin proveedores de IA". Era falso: vertexClient.js hace
+// require('dotenv').config() al cargarse, y aiOrchestrator lo importa. Con
+// server/.env presente (toda máquina de dev), el test salía a la red real
+// contra Google y COLGABA — sin timeout, indefinidamente.
+// OJO: `delete process.env.X` NO alcanza. dotenv sólo respeta las claves que
+// YA EXISTEN en process.env; si la borrás, la repuebla desde server/.env al
+// cargarse vertexClient — o sea, después de este bloque. Hay que asignar ''
+// (existe → dotenv no la pisa; falsy → los clientes la ven como ausente).
+for (const k of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENROUTER_API_KEY', 'DEEPSEEK_API_KEY']) {
+  process.env[k] = ''
+}
+process.env.AI_PROVIDER_TIMEOUT_MS = '1500'  // si algo igual sale a la red, corta rápido
+
 const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
 const http = require('node:http')

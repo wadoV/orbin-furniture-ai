@@ -13,6 +13,7 @@ const { validateDesign } = require('../engine/validator')
 const { detectConfirmation, buildPreviewMessage } = require('./hitlPreview')
 const { TTLStore } = require('./ttlStore')
 const { requireAuth } = require('../middleware/auth')
+const { checkPlanLimit } = require('../middleware/planLimits')
 const z = require('zod')
 
 const contextSchema = z.object({
@@ -90,7 +91,15 @@ const pendingProposals = new TTLStore({ ttlMs: 15 * 60 * 1000, maxEntries: 5000 
 
 // ─── POST /api/chat/design ────────────────────────────────────────────────────
 
-router.post('/design', async (req, res) => {
+// GATE DE PLAN [2026-08-02]: la Fase 2 del HITL (confirmFlow + action:'confirm')
+// es DETERMINISTA y stateless — genera el despiece sin tocar ningún proveedor de
+// IA (contrato congelado en chatDesign.e2e.test.js). Cobrarle cuota sería cobrar
+// por trabajo que no cuesta tokens, y encima rompería la confirmación de un
+// usuario free que ya gastó su llamada en la Fase 1: pediría el diseño, se le
+// propondría, y al confirmar recibiría un 403. Se cobra la Fase 1, no la Fase 2.
+const consumesAI = (req) => !(req.body?.confirmFlow === true && req.body?.action === 'confirm')
+
+router.post('/design', checkPlanLimit('chat.design', { when: consumesAI }), async (req, res) => {
   try {
     const { message, sessionId, autoGenerate = true, lang, userName, company } = req.body
     if (!message || typeof message !== 'string') {
@@ -280,7 +289,9 @@ router.post('/design', async (req, res) => {
 
 // ─── POST /api/chat/parse ─────────────────────────────────────────────────────
 
-router.post('/parse', async (req, res) => {
+// GATE DE PLAN [2026-08-02]: esta ruta SÍ llama al modelo (parseDesignIntent →
+// cascada de proveedores). A diferencia de design.js POST /parse, que es regex local.
+router.post('/parse', checkPlanLimit('chat.parse'), async (req, res) => {
   try {
     const { text } = req.body
     if (!text) return res.status(400).json({ success: false, error: 'El campo "text" es obligatorio.' })

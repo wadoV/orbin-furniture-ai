@@ -8,20 +8,25 @@ export default function CarpentryAdvisor({ design }) {
   const cfg = design.configuration
   const tips = []
 
+  // ★ 2026-08-02 (auditoría E2E) — CONTRATO DE i18n.
+  //   Los 5 consejos estaban HARDCODEADOS en español y se pintaban dentro de un
+  //   panel cuyo título ya venía de t('carpentry_wisdom'). Resultado en pantalla
+  //   con orbin_lang=PT: cabecera "Sabedoria de Carpintaria" y cuerpo en español.
+  //   Ahora cada consejo viaja con su CÓDIGO (cw_*) y se traduce en el cliente.
+  //   Si agregás un cw_ nuevo, agregás su ES/PT/EN en i18n.js.
+
   // 1. Structural tips
   if (cfg.height > 2400) {
     tips.push({
       icon: <AlertTriangle className="text-amber-500" size={16} />,
-      title: 'Altura Crítica',
-      text: 'Muebles de más de 2.40m pueden requerir juntas de expansión o divisiones estructurales para evitar el pandeo de los laterales.'
+      code: 'critical_height'
     })
   }
 
   if (cfg.width > 1200) {
     tips.push({
       icon: <Ruler className="text-blue-500" size={16} />,
-      title: 'Refuerzo Central',
-      text: 'Para anchos mayores a 1.20m, se recomienda un montante central (divisoria) para soportar el peso de los estantes y el techo.'
+      code: 'central_support'
     })
   }
 
@@ -29,22 +34,19 @@ export default function CarpentryAdvisor({ design }) {
   if (cfg.numDrawers > 4) {
     tips.push({
       icon: <Wrench className="text-primary" size={16} />,
-      title: 'Peso de Gavetas',
-      text: 'Demasiadas gavetas en un solo bloque aumentan la carga en los laterales. Asegúrate de usar correderas telescópicas de alta capacidad (45kg+).'
+      code: 'drawer_load'
     })
   }
 
   // 3. Technical Wisdom
   tips.push({
     icon: <CheckCircle2 className="text-green-500" size={16} />,
-    title: 'Fundo Completo (Estándar)',
-    text: 'Por defecto, todos los módulos Orbin incluyen un fondo estructural completo para garantizar la estabilidad lateral del armario.'
+    code: 'full_back'
   })
 
   tips.push({
     icon: <CheckCircle2 className="text-green-500" size={16} />,
-    title: 'Protección de Humedad',
-    text: 'El rodapié con retranqueo y niveladores protege el MDF de la limpieza diaria y posibles filtraciones.'
+    code: 'moisture'
   })
 
   return (
@@ -66,8 +68,8 @@ export default function CarpentryAdvisor({ design }) {
               {tip.icon}
             </div>
             <div className="space-y-1">
-              <h4 className="text-xs font-bold text-white group-hover:text-primary transition-colors">{tip.title}</h4>
-              <p className="text-[11px] text-muted leading-relaxed">{tip.text}</p>
+              <h4 className="text-xs font-bold text-white group-hover:text-primary transition-colors">{t(`cw_h_${tip.code}`)}</h4>
+              <p className="text-[11px] text-muted leading-relaxed">{t(`cw_t_${tip.code}`)}</p>
             </div>
           </div>
         ))}
@@ -75,7 +77,7 @@ export default function CarpentryAdvisor({ design }) {
 
       <div className="p-4 bg-primary/5 border-t border-white/5">
         <p className="text-[10px] text-primary/80 italic text-center">
-          "Un buen diseño empieza por una estructura sólida."
+          {t('cw_quote')}
         </p>
       </div>
     </div>

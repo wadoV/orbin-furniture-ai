@@ -328,12 +328,21 @@ function generateDeskFurniture(cfg) {
     specAdjustments.push({
       code: 'DRAWER_COUNT_REDUCED', severity: 'critical', field: 'numDrawers',
       requested: reqDrawers, applied: n,
+      // ★ 2026-07-26: `drawerZone` distingue la variante ESCRITORIO de este aviso
+      //   (el localizador elige DRAWER_COUNT_REDUCED_DESK cuando está presente).
+      //   Sin él, la hoja en inglés caía al texto español.
+      params: { requested: reqDrawers, applied: n, drawerZone },
       message: `Se solicitaron ${reqDrawers} gavetas pero solo caben ${n} en el pedestal (${drawerZone}mm útiles bajo el travesaño).`
     })
   }
   if (railH > 0 && n > 0) {
     specAdjustments.push({
       code: 'DRAWER_PRIVACY_PANEL', severity: 'info', field: 'drawerRailHeight',
+      // ★ 2026-07-26: `params` expone los valores que hasta ahora sólo existían DENTRO
+      //   del string, para que el cliente pueda re-renderizar el aviso en otro idioma.
+      //   `message` NO se toca: 17 consumidores lo leen y es el fallback si falta una
+      //   traducción. Un aviso en español es aceptable; uno vacío es peligroso.
+      params: { railH, dh },
       message: `Travesaño de cierre de ${railH}mm pegado al tampo (privacidad); ` +
                `las gavetas se ajustaron a ${dh}mm de alto para llenar el pedestal.`
     })
@@ -1131,6 +1140,14 @@ function generateProject(params) {
           code: 'PIECE_EXCEEDS_PLATE',
           severity: 'critical',
           field: 'nesting',
+          // ★ 2026-07-26: params para i18n en presentación (message intacto, es el fallback).
+          params: {
+            count: group.oversizedPieces.length,
+            thickness: group.thickness,
+            plateW: MATERIAL.PLATE_WIDTH,
+            plateH: MATERIAL.PLATE_HEIGHT,
+            pieceList: group.oversizedPieces.map(p => p.id).join(', '),
+          },
           message: `${group.oversizedPieces.length} pieza(s) de ${group.thickness}mm no caben en la ` +
                    `chapa ${MATERIAL.PLATE_WIDTH}×${MATERIAL.PLATE_HEIGHT}mm y quedaron FUERA del ` +
                    `plan de corte: ${group.oversizedPieces.map(p => p.id).join(', ')}. Divida el módulo.`,
@@ -1142,6 +1159,12 @@ function generateProject(params) {
           code: 'BACK_PANEL_SPLIT',
           severity: 'warning',
           field: 'nesting',
+          // ★ 2026-07-26: params para i18n en presentación (message intacto, es el fallback).
+          params: {
+            pieceList: group.splitPieces.join(', '),
+            plateW: MATERIAL.PLATE_WIDTH,
+            plateH: MATERIAL.PLATE_HEIGHT,
+          },
           message: `El fondo (${group.splitPieces.join(', ')}) no cabe entero en la chapa ` +
                    `${MATERIAL.PLATE_WIDTH}×${MATERIAL.PLATE_HEIGHT}mm: se cortará en 2 partes ` +
                    `para unir con regla de MDF. El material ya está contabilizado.`,

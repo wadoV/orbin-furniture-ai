@@ -59,3 +59,37 @@ Canonical URL pattern: `orbin.app/pt/armario-sob-medida` | `/es/armario-a-medida
 - Max span without support: 900mm (MDF 18mm shelf).
 - Output format: always structured JSON ready for nesting optimization.
 - Language: Spanish for UI copy · English for code identifiers and API outputs.
+
+## CONTRATO DE i18n (regla dura — hay un test que la hace cumplir)
+
+**Todo texto que ve el usuario se emite con un CÓDIGO estable y se traduce en el cliente.
+El servidor NUNCA traduce: emite español + código. El cliente traduce por código.**
+
+Tres diccionarios, misma arquitectura, todos en `client/src/engine/`:
+
+| Qué | Diccionario | Función |
+|---|---|---|
+| Nombres de pieza | `pieceNames.js` | `localizePieceName(name, lang)` |
+| Observaciones del plano | `adjustmentMessages.js` | `localizeAdjustment(adj, lang)` |
+| Errores de API | `apiErrors.js` | `localizeApiError(err, lang)` |
+
+**Si agregás un `code:` nuevo, agregás su traducción ES/PT/EN.** No hay opción de
+"después lo traduzco": `server/src/engine/i18nContract.test.js` escanea el CÓDIGO FUENTE
+y falla nombrando el código y el archivo. Si de verdad no es user-facing, declaralo en
+`OUT_OF_SCOPE` de ese test **con el motivo escrito** — el test también valida que el
+motivo exista y que el código no aparezca en una superficie user-facing.
+
+Reglas de implementación que ya costaron caro:
+
+1. **El motor NUNCA traduce.** Los nombres de pieza son identificadores (nesting, BOM,
+   hash, tests golden). Traducir en el motor rompe la correspondencia.
+2. **NUNCA borres `message` de un specAdjustment.** 17 archivos lo leen y es el fallback.
+   Se le AGREGA `params` con los valores que hoy quedan atrapados dentro del string.
+3. **El fallback esconde la falta de traducción.** Devolver el español es lo correcto
+   (un aviso vacío es peligroso), pero hace INVISIBLE que falte la plantilla. Por eso la
+   cobertura se verifica con un test estático, no mirando la pantalla.
+4. **Coherencia de taller:** plano, CSV y etiqueta térmica se pegan a la misma pieza
+   física. Los tres deben nombrarla IGUAL, o el operario no puede emparejarlos.
+5. **Un test que no puede ejecutarse debe FALLAR, no saltarse.** Para cargar código del
+   cliente desde tests del server usá `server/src/engine/clientBundle.helper.js`; nunca
+   `try/catch` + `return` (dos candados reportaron "pass" sin correr durante horas).

@@ -19,6 +19,11 @@ import PresentationMode from './PresentationMode.jsx'
 import AIVisualStylist from './AIVisualStylist.jsx'
 import ViralShare from './ViralShare.jsx'
 import { getPBRMaterial } from '../engine/materialLibrary.js'
+// ★ 2026-08-02 (auditoría E2E) — COHERENCIA DE TALLER (regla dura de CLAUDE.md):
+//   plano, CSV y visor deben nombrar la MISMA pieza física IGUAL. El visor mostraba
+//   el nombre crudo del motor ("Puerta 2", español) mientras el PDF/CSV ya pasaban
+//   por localizePieceName y mostraban "Porta". El operario no puede emparejarlos.
+import { localizePieceName } from '../engine/pieceNames.js'
 import { AEREO_MOUNT } from '../engine/domainConstants.js'
 
 // Captura técnica (plano gris CAD): esconde y restaura las texturas PBR (bumpMap)
@@ -186,12 +191,28 @@ export default function Viewer3D({
     stateRef.current = { exploded, wireframe, selectedPieceIds, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints }
   }, [exploded, wireframe, selectedPieceIds, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints])
 
-  // A1 FIX: resetear el estado de cajones al cambiar de módulo seleccionado.
-  // Sin este reset, el Set openDrawers heredaba el estado del módulo anterior,
-  // causando que cajones del nuevo módulo aparecieran animados como "ya abiertos".
+  // ★ 2026-07-26 — REGRESIÓN CORREGIDA: clic en frente de gaveta no abría al primer clic.
+  //
+  // El "A1 FIX" original hizo DOS cosas: (a) namespacear la clave de gaveta con
+  // `design.id` — correcto, y (b) además vaciar `openDrawers` cuando cambia
+  // `selectedModuleId` — destructivo y ya innecesario tras (a).
+  //
+  // Por qué rompía: al clicar el frente de una gaveta de un módulo NO seleccionado,
+  // el handler hace `onSelectModule(moduleId)` Y `setOpenDrawers(toggle)` en el mismo
+  // batch. React re-renderiza, este efecto detecta que `selectedModuleId` cambió y
+  // vacía el Set → borra la gaveta que se acababa de abrir. Resultado: el primer clic
+  // no hacía nada y el segundo sí. Con las claves ya namespaceadas (`${design.id}-d${i}`)
+  // no hay colisión posible entre módulos, así que el reset total sobra.
+  //
+  // Se conserva la intención de (b) — no arrastrar estado viejo — pero de forma NO
+  // destructiva: se descartan sólo las claves de módulos que ya no están en escena.
   useEffect(() => {
-    setOpenDrawers(new Set())
-  }, [selectedModuleId])
+    const vivos = new Set(modules.map((m, i) => String(m.id || `MOD-${i + 1}`)))
+    setOpenDrawers(prev => {
+      const next = new Set([...prev].filter(k => vivos.has(String(k).replace(/-d\d+(-\d+)?$/, ''))))
+      return next.size === prev.size ? prev : next   // sin cambios → misma referencia (no re-render)
+    })
+  }, [modules])
 
   // ★ PROTECTED: Magnetic snap detection between modules during drag
   const performSnapDetection = useCallback((mGroup, moduleId) => {
@@ -272,7 +293,13 @@ export default function Viewer3D({
     // --- Renderer — usa el canvas de React directamente para evitar conflictos DOM ---
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setSize(canvas.clientWidth || 800, canvas.clientHeight || 600)
+    // ★ 2026-08-02 (auditoría E2E) — updateStyle=false: el canvas ya se estira con
+    //   Tailwind (`absolute inset-0 w-full h-full`). Si dejamos que three escriba
+    //   `style.width/height` en px, ESE inline gana sobre las clases y el canvas
+    //   queda CONGELADO en la medida del primer layout. Síntoma medido: canvas de
+    //   903px dentro de un contenedor de 1055px → franja muerta de 152px a la
+    //   derecha del visor. Con `false` three sólo toca el drawing buffer.
+    renderer.setSize(canvas.clientWidth || 800, canvas.clientHeight || 600, false)
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -405,10 +432,21 @@ export default function Viewer3D({
       if (w === 0 || h === 0) return
       cam.aspect = w / h
       cam.updateProjectionMatrix()
-      renderer.setSize(w, h)
+      renderer.setSize(w, h, false)   // ★ ver nota en la creación del renderer
       if (composerRef.current) composerRef.current.setSize(w, h)
     }
     window.addEventListener('resize', onResize)
+
+    // ★ 2026-08-02 (auditoría E2E) — `window.resize` NO alcanza. El contenedor del
+    //   visor cambia de ancho sin que la ventana cambie: al plegar "Ocultar Listas",
+    //   al abrir/cerrar el panel de documentos, o cuando el layout reflowea después
+    //   de cargar datos. En esos casos el canvas se quedaba con el tamaño viejo.
+    //   El ResizeObserver escucha al contenedor real, que es quien manda.
+    let _ro = null
+    try {
+      _ro = new ResizeObserver(() => onResize())
+      _ro.observe(canvas.parentElement || canvas)
+    } catch (_) { /* navegador sin ResizeObserver: queda el listener de window */ }
 
     // --- Mouse tracking ---
     const onMouseMove = (e) => {
@@ -1010,10 +1048,46 @@ export default function Viewer3D({
       if (composerRef.current) { try { composerRef.current.dispose() } catch (_) {} composerRef.current = null }
       if (frameRef.current) { cancelAnimationFrame(frameRef.current); frameRef.current = null }
       window.removeEventListener('resize', onResize)
+      if (_ro) { try { _ro.disconnect() } catch (_) {} _ro = null }
       canvas.removeEventListener('mousemove', onMouseMove)
       canvas.removeEventListener('mousedown', onMouseDown)
       canvas.removeEventListener('touchstart', onTouchStart)
       canvas.removeEventListener('touchmove', onTouchMove)
+
+      // ★ 2026-08-02 (auditoría E2E) — FUGA DE CONTEXTO WEBGL.
+      //   Este cleanup cancelaba el RAF y los listeners, pero NUNCA liberaba el
+      //   renderer, los controles ni el environment map. Cada ciclo montar/desmontar
+      //   (navegar /app → landing → /app) dejaba un contexto WebGL vivo. Chrome corta
+      //   en ~16: a partir de ahí mata los viejos y el visor queda NEGRO con
+      //   "THREE.WebGLRenderer: Context Lost". Se reproduce entre tomas de video.
+      //
+      //   Se difiere un tick a propósito: en el doble montaje de StrictMode React
+      //   conserva el <canvas> en el DOM y vuelve a montar. Si perdiéramos el contexto
+      //   ahí, el remount crearía un WebGLRenderer sobre un canvas ya muerto. La
+      //   guarda `isConnected` distingue desmontaje REAL de re-ejecución de StrictMode.
+      const _canvas = canvas, _renderer = renderer, _scene = scene, _controls = controls
+      setTimeout(() => {
+        if (_canvas.isConnected) return   // sigue en el DOM → StrictMode, no desmontaje
+        try { _controls?.dispose?.() } catch (_) {}
+        try {
+          _scene?.traverse(obj => {
+            if (obj.geometry) obj.geometry.dispose()
+            const mats = Array.isArray(obj.material) ? obj.material : (obj.material ? [obj.material] : [])
+            mats.forEach(m => {
+              // las texturas también ocupan VRAM y no se liberan solas
+              for (const k of ['map', 'bumpMap', 'roughnessMap', 'metalnessMap', 'normalMap', 'envMap', 'alphaMap']) {
+                if (m[k]?.dispose) m[k].dispose()
+              }
+              m.dispose()
+            })
+          })
+          if (_scene?.environment?.dispose) _scene.environment.dispose()  // PMREM
+          if (_scene?.background?.dispose) _scene.background.dispose()
+          _scene?.clear?.()
+        } catch (_) {}
+        try { _renderer?.dispose?.() } catch (_) {}
+        try { _renderer?.forceContextLoss?.() } catch (_) {}
+      }, 0)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -1135,7 +1209,13 @@ export default function Viewer3D({
       const cfg = design?.configuration
       if (!cfg) return
       const W = (cfg.width || 600) * SCALE
-      const saved = modulePositionsRef.current[design.id]
+      let saved = modulePositionsRef.current[design.id]
+      if (!saved && design?.position && typeof design.position === 'object' && typeof design.position.x === 'number' && !isNaN(design.position.x)) {
+        saved = {
+          x: design.position.x * SCALE + W / 2,
+          z: (design.position.z || 0) * SCALE
+        }
+      }
       if (saved) {
         const rightEdge = saved.x + W / 2
         if (rightEdge > maxRightEdge) maxRightEdge = rightEdge
@@ -1189,6 +1269,11 @@ export default function Viewer3D({
         const edgeHelper = new THREE.LineSegments(edgesGeo, edgesMat)
         edgeHelper.userData._isEdge = true
 
+        // ★ 2026-07-26 (auditoría CAD): GLTFExporter escribe node.name desde object.name,
+        //   NO desde userData. Sin esto el .glb de AR/3D salía con nodos "Object_0",
+        //   "Object_1"… y el mueble llegaba a Blender/SketchUp sin identificar piezas.
+        //   Aditivo: no altera geometría, materiales ni picking (que usa userData).
+        mesh.name = `${design.id}__${pieceName.replace(/\s+/g, '_')}`
         mesh.userData = {
           id: `${design.id}::${type}::${pieceName.replace(/\s+/g, '_')}`,
           moduleId: design.id,
@@ -1206,6 +1291,7 @@ export default function Viewer3D({
       }
 
       const mGroup = new THREE.Group()
+      mGroup.name = String(design.id || `MOD-${dIdx + 1}`)  // ★ jerarquía nombrada en el .glb
       // ★ PROTECTED: Position module using saved location or place after rightmost module
       // ★ AEREO FIX: Wall-mounted modules are elevated by mountHeight (piso → borde inferior).
       // ★ 2026-07-26: el literal 1400 pasó a AEREO_MOUNT.DEFAULT (=1450, el que usa el
@@ -1213,7 +1299,15 @@ export default function Viewer3D({
       //   volvía a elevarse 1450mm y el 3D contradecía la config guardada.
       const isAereoModule = cfg.moduleType === 'aereo'
       const mountY = isAereoModule ? ((cfg.mountHeight ?? AEREO_MOUNT.DEFAULT) * SCALE) : 0
-      const saved = modulePositionsRef.current[design.id]
+      let saved = modulePositionsRef.current[design.id]
+      if (!saved && design?.position && typeof design.position === 'object' && typeof design.position.x === 'number' && !isNaN(design.position.x)) {
+        saved = {
+          x: design.position.x * SCALE + W / 2,
+          z: (design.position.z || 0) * SCALE,
+          y: design.position.y !== undefined && design.position.y !== null ? design.position.y * SCALE : mountY
+        }
+        modulePositionsRef.current[design.id] = saved
+      }
       if (saved) {
         mGroup.position.x = saved.x
         mGroup.position.z = saved.z
@@ -1808,6 +1902,7 @@ export default function Viewer3D({
     const scene = sceneRef.current
 
     const mGroup = new THREE.Group()
+    mGroup.name = String(design.id || `MOD-${dIdx + 1}`)  // ★ jerarquía nombrada en el .glb
     mGroup.position.x = xOff
 
     pieces.forEach((p, i) => {
@@ -1828,8 +1923,19 @@ export default function Viewer3D({
       edgeHelper.userData._isEdge = true
 
       const pos = mesh.position.clone()
+      // ★ 2026-07-26 (auditoría CAD): igual que el builder principal — GLTFExporter
+      //   lee object.name, no userData. Sin esto el .glb sale con nodos anónimos.
+      mesh.name = `${design.id || `MOD-${dIdx + 1}`}__${String(p.name || p.type || `piece-${i}`).replace(/\s+/g, '_')}`
+      // ★ 2026-07-26: el builder fallback (diseños legacy sin `configuration`) no
+      //   asignaba drawerKey → en esos módulos el clic en el frente no abría la gaveta.
+      //   Se deriva del número que ya trae el nombre de la pieza ("Frente Gaveta 2"),
+      //   para que frente y caja de la MISMA gaveta compartan clave y se muevan juntos.
+      const _n = String(p.name || '').match(/(\d+)\s*$/)
+      const _isDrawer = /drawer_front|drawer_box|drawer_bottom/.test(p.type || '')
+      const _drawerKey = _isDrawer ? `${design.id || `MOD-${dIdx + 1}`}-d${_n ? _n[1] : i}` : null
       mesh.userData = {
         id: p.id || `piece-${dIdx}-${i}`,
+        drawerKey: _drawerKey,
         moduleId: design.id,
         w: p.width, h: p.height, d: p.thickness,
         name: p.name || p.type,
@@ -1951,7 +2057,7 @@ export default function Viewer3D({
       {isDragMoving && (
         <div className="absolute top-4 right-16 bg-[#00AAFF]/20 backdrop-blur-md border border-[#00AAFF]/40 px-3 py-1.5 rounded-full z-30 pointer-events-none">
           <span className="text-[#00AAFF] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-            <GripVertical size={12} /> Moviendo módulo
+            <GripVertical size={12} /> {t('moving_module', 'Moviendo módulo')}
           </span>
         </div>
       )}
@@ -1991,10 +2097,14 @@ export default function Viewer3D({
           <div className="flex items-center gap-2 mb-1">
             <div className={`w-2 h-2 rounded-full ${selectedPieceIds.size > 0 ? 'bg-primary animate-pulse' : 'bg-muted'}`} />
             <span className="text-[10px] font-bold text-muted uppercase tracking-wider">
-              {selectedPieceIds.size > 1 ? `${selectedPieceIds.size} piezas` : (hoveredInfo?.type || 'info')}
+              {selectedPieceIds.size > 1 ? `${selectedPieceIds.size} ${t('pieces', 'piezas')}` : (hoveredInfo?.type || 'info')}
             </span>
           </div>
-          <h4 className="text-sm font-bold text-white">{hoveredInfo?.name || 'Pieza'}</h4>
+          {/* ★ El motor NUNCA traduce (los nombres son identificadores de nesting/BOM).
+              La traducción es responsabilidad del cliente, en el punto de pintado. */}
+          <h4 className="text-sm font-bold text-white">
+            {hoveredInfo?.name ? localizePieceName(hoveredInfo.name, lang) : t('piece', 'Pieza')}
+          </h4>
           <div className="mt-2 grid grid-cols-3 gap-2">
             {[
               { l: 'W', v: hoveredInfo?.w },

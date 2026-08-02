@@ -6,6 +6,8 @@ import CutListTable from './CutListTable.jsx'
 import ValidationReport from './ValidationReport.jsx'
 import { calculateCostEstimation } from '../data/materials.js'
 import { GALLERY_CATEGORIES, suggestCategory } from '../data/galleryCategories.js'
+import { localizeAdjustment } from '../engine/adjustmentMessages.js'
+import { localizeApiError } from '../engine/apiErrors.js'
 
 // ─── Viability Gate ─────────────────────────────────────────────────────────
 // Espejo EXACTO del guard del backend (server/src/routes/design.js → /save-viable).
@@ -52,7 +54,9 @@ function SaveViableButton({ design, t }) {
       await api.saveViableDesign(name.trim(), design.configuration, category || null)
       setStatus({ type: 'ok', msg: t('viable_saved') || 'Guardado en la Biblioteca Verificada.' })
     } catch (err) {
-      setStatus({ type: 'error', msg: err?.message || 'No pudimos guardar el diseño verificado.' })
+      // ★ 2026-07-26: se traduce por código de dominio del backend. Antes se mostraba
+      //   `err.message` tal cual — español a usuarios PT/EN.
+      setStatus({ type: 'error', msg: localizeApiError(err, lang) || 'No pudimos guardar el diseño verificado.' })
     } finally {
       setSaving(false)
     }
@@ -346,7 +350,7 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
                           </span>
                         )}
                       </p>
-                      <p className="text-[11px] text-white/75 font-medium leading-snug">{a.message}</p>
+                      <p className="text-[11px] text-white/75 font-medium leading-snug">{localizeAdjustment(a, lang)}</p>
                     </div>
                   </div>
                 )

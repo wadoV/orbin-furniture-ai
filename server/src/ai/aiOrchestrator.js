@@ -90,12 +90,50 @@ const PROVIDER_CHAIN = [
     { name: 'ollama', client: ollamaClient },
 ];
 
+// ── DEADLINE POR PROVEEDOR (aditivo 2026-08-02) ─────────────────────────────
+// Sin esto, el fallback SOLO se dispara ante un error explícito. Un proveedor
+// que CUELGA (socket sin respuesta, DNS blackhole, corte de red) bloquea la
+// cadena entera para siempre: el piso regex local nunca se alcanza y la
+// petición Express queda tomada hasta que el cliente se rinde.
+// Reproducido en chatDesign.e2e.test.js: colgaba indefinidamente.
+const PROVIDER_TIMEOUT_MS = Number(process.env.AI_PROVIDER_TIMEOUT_MS) || 12000;
+
+class ProviderTimeoutError extends Error {
+    constructor(name, ms) {
+        super(`${name} no respondió en ${ms}ms (deadline del orquestador)`);
+        this.name = 'ProviderTimeoutError';
+        this.code = 'AI_PROVIDER_TIMEOUT';
+    }
+}
+
+/**
+ * Corre `promise` con deadline.
+ *
+ * El timer NO se hace unref(): debe retener el event loop mientras el deadline
+ * esté pendiente. Con unref(), si el proveedor cuelga y nada más sostiene el
+ * loop (un job, un test), Node sale ANTES de que el deadline dispare y la
+ * promesa no resuelve nunca — el mismo cuelgue que este código viene a evitar.
+ * El clearTimeout del finally es lo que impide que el timer alargue el proceso
+ * una vez que la carrera ya se decidió.
+ */
+function withDeadline(promise, providerName, ms = PROVIDER_TIMEOUT_MS) {
+    let timer;
+    const guard = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new ProviderTimeoutError(providerName, ms)), ms);
+    });
+    return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
+}
+
 async function runChain(method, args) {
     const errors = [];
     for (const { name, client } of PROVIDER_CHAIN) {
         if (typeof client?.[method] !== 'function') continue;
         try {
-            const out = await client[method](...args);
+            // El deadline convierte "cuelgue" en "fallo" → la cascada avanza.
+            const out = await withDeadline(
+                Promise.resolve(client[method](...args)),
+                name,
+            );
             if (out) return { out, provider: name };
         } catch (err) {
             errors.push(`${name}: ${err.message}`);

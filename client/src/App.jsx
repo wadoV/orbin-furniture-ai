@@ -111,7 +111,9 @@ export default function App() {
   const [modules,   setModules]   = useState(() => {
     try {
       const saved = localStorage.getItem('orbin-autosave')
-      return saved ? JSON.parse(saved) : []
+      if (!saved) return []
+      const parsed = JSON.parse(saved)
+      return Array.isArray(parsed) ? sanitizeModulesPositions(parsed) : []
     } catch { return [] }
   })
   // ★ FIX: ref siempre actualizado para evitar stale closure en saveHistory/undo
@@ -258,19 +260,20 @@ export default function App() {
   }, [modules])
 
   const saveHistory = (newModules, label, isRemote = false) => {
+    const sanitized = sanitizeModulesPositions(newModules)
     setHistory(prev => [...prev, modulesRef.current].slice(-20))  // ★ FIX: usar ref para evitar stale closure
     setRedoStack([])
-    setModules(newModules)
+    setModules(sanitized)
     setHasUnsavedChanges(true)
 
     if (!isRemote) {
       const sock = getSocket()
-      if (sock) sock.emit('state-change', newModules)
+      if (sock) sock.emit('state-change', sanitized)
     }
 
     try {
       const mem = loadMemory()
-      saveVersion(mem, newModules, label || '')
+      saveVersion(mem, sanitized, label || '')
       refreshMemory()
     } catch {}
   }
