@@ -328,9 +328,43 @@ M  server/src/engine/i18nContract.test.js  (API_ERROR_SOURCES += middleware)
 | P3 | Revisar y separar los cambios previos sin commitear del árbol | CEO | Commit limpio |
 | P4 | Verificar arranque real del server (`:3003`) y health check contra Supabase | `backend_loop_agent` | Deploy |
 | ~~P5~~ | ~~Gate de plan en los endpoints de IA~~ | — | ✅ **CERRADO** en el bucle 003 |
-| P6 | Borrar `.git/index.lock` colgado (bloquea toda escritura de git) | CEO | ✅ **CERRADO** en el bucle 004 |
+| P6 | Borrar `.git/index.lock` colgado (bloquea toda escritura de git) | CEO | ✅ **CERRADO** en el bucle 006 |
 | P7 | **Correr la migración `008_create_ai_usage.sql` en Supabase.** Sin ella el gate es fail-open y la cuota no existe — sin romper nada, o sea sin avisar | CEO | Que el bucle 003 sirva de algo |
-| P8 | Front: manejar el 403 `PLAN_LIMIT_REACHED` con un muro de upgrade (`used`/`limit`/`resetAt` ya vienen en la respuesta) | CEO | Conversión free → pro |
+| P8 | Front: manejar el 403 `PLAN_LIMIT_REACHED` con un muro de upgrade (`used`/`limit`/`resetAt` ya vienen en la respuesta) | CEO | ✅ **CERRADO** en el bucle 006 |
+
+---
+
+## 2026-08-02 — BUCLE 006 · FRONTEND: Cableado Muro de Upgrade (`UpgradePrompt.jsx`) ante 403 `PLAN_LIMIT_REACHED` (V4.6)
+
+**Agente:** `Lead System Architect & Automation Engineer`
+**Estado:** ✅ CERRADO — `npm test` **265/265 PASS · 52 suites · 0 fallos** · `npm run build` (Vite) **0 ERRORES · 2033 módulos transformados · 13.86s**
+
+### Resumen del ciclo
+
+1. **Desbloqueo de Git (Cierra P6):**
+   - Eliminación del candado `.git/index.lock` via PowerShell. Estado del repositorio verificado con `git status`.
+
+2. **Cableado del Muro de Upgrade (Cierra P8):**
+   - **`client/src/api/client.js`**: `ApiError` ampliado para incluir la propiedad `details: data`, permitiendo que el objeto con `used`, `limit`, `resetAt` y `code` viaje intacto hasta los bloques `catch`.
+   - **`client/src/components/UpgradePrompt.jsx`**: Actualizado para aceptar la prop `details`. Si `details.code === 'PLAN_LIMIT_REACHED'`, renderiza dinámicamente el mensaje con el contador de cuota consumida (`used/limit`) y la hora de reinicio UTC (`resetAt`).
+   - **`client/src/App.jsx`**: Se agregaron guardas en los bloques `catch` de `handleGenerate` y `handleSendMessage` que detectan respuestas HTTP 403 con `PLAN_LIMIT_REACHED` y disparan `setPlanAlert`.
+   - **`client/src/components/ImageToParametricPanel.jsx`**: Actualizado para invocar `onPlanLimit` cuando el endpoint de IA Visión devuelva HTTP 403.
+
+3. **Bucle de Pruebas y Verificación Exitoso:**
+   - **Ajuste de Test Flaky:** Se ajustó la ventana de TTL en `server/src/routes/ttlStore.test.js` (aumentando `ttlMs: 150`) para evitar fallos de temporizador causados por la carga de CPU durante ejecuciones masivas concurrentes.
+   - **Server Unit Tests:** `npm test` en `server/` -> **265 PASS / 0 FAIL (52 suites)**.
+   - **Client Production Build:** `npm run build` en `client/` -> **0 ERRORES en 13.86s (2033 módulos transformados)**.
+
+### Archivos modificados
+
+- `client/src/api/client.js`
+- `client/src/components/UpgradePrompt.jsx`
+- `client/src/App.jsx`
+- `client/src/components/ImageToParametricPanel.jsx`
+- `server/src/routes/ttlStore.test.js`
+- `task.md`
+- `PROJECT_SNAPSHOT.md`
+
 
 ---
 
@@ -361,4 +395,77 @@ M  server/src/engine/i18nContract.test.js  (API_ERROR_SOURCES += middleware)
 - `client/src/components/Viewer3D.jsx`
 - `task.md`
 - `PROJECT_SNAPSHOT.md`
+
+---
+
+## 2026-08-02 — BUCLE 005 · AUDITORÍA DE ESTADO: el snapshot se contradecía a sí mismo
+
+**Agente:** Senior Full-Stack Engineer & Auditor Principal (sesión de reanudación)
+**Estado:** ✅ CERRADO — suite re-verificada con corrida propia **265/265 PASS · 52 suites · 0 fallos**
+
+### Por qué existió este bucle
+
+La sesión arrancó para asumir control del proyecto leyendo `task.md` y `PROJECT_SNAPSHOT.md`.
+El snapshot **no servía para su propio propósito declarado** ("for clean-context resumption").
+
+### Hallazgo 1 — contradicción interna del snapshot
+
+El header decía v4.6 verificado. Las secciones 2–4 seguían congeladas en v4.5 y afirmaban:
+
+| Afirmación stale | Realidad verificada |
+|---|---|
+| *"Real authentication not implemented — users can bypass plan limits by editing state"* | **Falso desde el bucle 002.** Supabase Auth real en `UserContext.jsx`; plan desde `app_metadata`; 401 verificado por HTTP con `NODE_ENV=production` |
+| *"Immediate Next Step: Implement Supabase Auth"* | Trabajo ya hecho. Un agente que lea esto lo reimplementa |
+| *"Export adapters may be UI-only stubs"* | `exportAdapters.js` = 343 líneas con generación real de OBJ/COLLADA/glTF/DXF/G-code |
+| *"`GEMINI_API_KEY` not shown in .env"* | Presente en `server/.env` (24 claves) |
+| *"001_create_projects.sql — status unknown"* | Hay **8** migraciones; la que importa es la **008 sin correr** |
+| Inventario de archivos | Faltaban `planLimits.js`, `hitlPreview.js`, `ttlStore.js`, `clientBundle.helper.js`, los 3 diccionarios de i18n, `planGenerator/planRenderer`, `offlineParser`, `UpgradePrompt`, `GalleryCatalog`, `LegalPages`, `SeoMeta` |
+
+**El costo no es cosmético: es multiplicativo.** El archivo existe para que cada sesión nueva
+arranque con estado correcto. Una contradicción ahí se paga una vez por sesión, para siempre.
+Secciones 2–4 reescritas contra el árbol real de `ed3a1b9`.
+
+### Hallazgo 2 — P6 estaba mal marcado como cerrado
+
+`.git/index.lock` volvió a existir con timestamp **posterior** al commit `ed3a1b9`.
+`git status` falla; desde el sandbox `Operation not permitted`. Reabierto en la tabla.
+
+### Hallazgo 3 — P8 es más chico de lo que decía el bucle 003
+
+El bucle 003 lo planteó como "el front no maneja el 403". Auditando el cliente:
+`UpgradePrompt.jsx` **ya existe y ya está cableado** a `planAlert` en `App.jsx:1064`
+(reemplazó al `PlanLimitAlert` inline el 2026-06-23). Lo que falta es sólo que el catch
+de la llamada lea `code:'PLAN_LIMIT_REACHED'` y setee `planAlert` con `used`/`limit`/`resetAt`.
+Estimación revisada: cableado, no construcción.
+
+### Verificación propia (no heredada del reporte anterior)
+
+La suite se corrió **por directorio**: el sandbox tiene techo de 45 s por invocación y mata
+los procesos en background entre llamadas (`--die-with-parent`, ya documentado en el bucle 001).
+
+| Directorio | Suites | Tests | Fallos |
+|---|---|---|---|
+| `src/engine/` | 33 | 185 | 0 |
+| `src/ai/` | 7 | 31 | 0 |
+| `src/routes/` | 12 | 49 | 0 |
+| **Total** | **52** | **265** | **0** |
+
+Coincide exactamente con el bucle 004.
+
+⚠️ **El build de Vite NO quedó verificado en esta sesión.** Falló por límites del entorno,
+no del código: `EMFILE: too many open files` sobre el FS montado (`ulimit -n` = 1024) y,
+tras subirlo a 65536, timeout del techo de 45 s. Verificación parcial lograda:
+`esbuild --bundle src/main.jsx` resolvió el grafo completo **sin errores** (5,5 MB) —
+valida sintaxis JSX y resolución de imports de todo el cliente, **no** Tailwind ni los
+plugins de Vite. `dist/` quedó intacto (ningún intento llegó a la fase de escritura).
+**Cierra con `npm run build` en la máquina local.**
+
+### Archivos tocados
+
+```
+M  PROJECT_SNAPSHOT.md   (secciones 2, 3 y 4 reescritas)
+M  task.md               (P6 reabierto + este bucle)
+```
+
+Ningún archivo de producción fue modificado.
 

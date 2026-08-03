@@ -363,6 +363,18 @@ export default function App() {
       }
     } catch (err) {
       console.error('[App/Generate] Connection Error:', err)
+      if (err.status === 403 && (err.serverCode === 'PLAN_LIMIT_REACHED' || err.details?.code === 'PLAN_LIMIT_REACHED')) {
+        const details = err.details || {}
+        setPlanAlert({
+          feature: 'Generación con IA',
+          code: 'PLAN_LIMIT_REACHED',
+          message: err.message || 'Cuota diaria de IA alcanzada',
+          description: `Alcanzaste el límite de ${details.limit || 5} solicitudes de IA por día para tu plan Gratuito.`,
+          used: details.used,
+          limit: details.limit,
+          resetAt: details.resetAt
+        })
+      }
       setError(err.message || 'Error connecting to server.')
       // ★ FIX [presets-silenciosos] 2026-07-19: el banner de error vive debajo del
       //   formulario; sin este scroll el fallo era invisible al clicar un preset.
@@ -612,6 +624,18 @@ export default function App() {
         }
         handleChatDesign({ design: offlineDesign })
       } else {
+        if (err.status === 403 && (err.serverCode === 'PLAN_LIMIT_REACHED' || err.details?.code === 'PLAN_LIMIT_REACHED')) {
+          const details = err.details || {}
+          setPlanAlert({
+            feature: 'Chat de IA',
+            code: 'PLAN_LIMIT_REACHED',
+            message: err.message || 'Cuota diaria de IA alcanzada',
+            description: `Alcanzaste el límite de ${details.limit || 5} solicitudes de IA por día para tu plan Gratuito.`,
+            used: details.used,
+            limit: details.limit,
+            resetAt: details.resetAt
+          })
+        }
         setChatMessages(prev => [...prev, {
           role: 'assistant',
           content: 'Error: ' + err.message,
@@ -965,7 +989,7 @@ export default function App() {
                     onUndoModule={discardVolatileModule}
                   />
                 )}
-                {activeTab === 'vision' && <ImageToParametricPanel onApplyDesign={handleGenerateFromVision} />}
+                {activeTab === 'vision' && <ImageToParametricPanel onApplyDesign={handleGenerateFromVision} onPlanLimit={setPlanAlert} />}
                 {activeTab === 'projects' && (
                   <ProjectsPanel
                     modules={modules}
@@ -1065,6 +1089,7 @@ export default function App() {
             featureName={planAlert.feature}
             requiredPlan="Pro"
             price="R$99/mês"
+            details={planAlert}
             onClose={() => setPlanAlert(null)}
           />
         )}

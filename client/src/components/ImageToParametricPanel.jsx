@@ -3,7 +3,7 @@ import { UploadCloud, Camera, Wand2, Loader2, AlertCircle } from 'lucide-react'
 import { api } from '../api/client'
 import { usePreferences } from '../context/PreferencesContext'
 
-export default function ImageToParametricPanel({ onApplyDesign }) {
+export default function ImageToParametricPanel({ onApplyDesign, onPlanLimit }) {
   const { t } = usePreferences()
   const [image, setImage] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -27,9 +27,9 @@ export default function ImageToParametricPanel({ onApplyDesign }) {
     }
 
     const reader = new FileReader()
-    reader.onload = (e) => {
-      setImage(e.target.result)
-      setPreviewUrl(e.target.result)
+    reader.onload = () => {
+      setImage(reader.result)
+      setPreviewUrl(reader.result)
       setError(null)
     }
     reader.readAsDataURL(file)
@@ -54,6 +54,18 @@ export default function ImageToParametricPanel({ onApplyDesign }) {
       }
     } catch (err) {
       console.error(err)
+      if (err.status === 403 && (err.serverCode === 'PLAN_LIMIT_REACHED' || err.details?.code === 'PLAN_LIMIT_REACHED')) {
+        const details = err.details || {}
+        onPlanLimit?.({
+          feature: 'IA Visión',
+          code: 'PLAN_LIMIT_REACHED',
+          message: err.message || 'Cuota diaria de IA alcanzada',
+          description: `Alcanzaste el límite de ${details.limit || 5} solicitudes de IA por día para tu plan Gratuito.`,
+          used: details.used,
+          limit: details.limit,
+          resetAt: details.resetAt
+        })
+      }
       setError(err.message || 'No se pudo conectar con el servidor de IA Visión.')
     } finally {
       setLoading(false)

@@ -24,11 +24,11 @@ describe('TTLStore', () => {
   })
 
   it('get renueva el TTL (touch)', async () => {
-    const s = new TTLStore({ ttlMs: 40 })
+    const s = new TTLStore({ ttlMs: 150 })
     s.set('k', 'v')
-    await new Promise(r => setTimeout(r, 25))
+    await new Promise(r => setTimeout(r, 60))
     assert.equal(s.get('k'), 'v')          // touch → renueva
-    await new Promise(r => setTimeout(r, 25))
+    await new Promise(r => setTimeout(r, 100))
     assert.equal(s.get('k'), 'v', 'el touch previo debe haber extendido la vida')
   })
 

@@ -13,17 +13,15 @@ const BASE_URL = import.meta.env.VITE_API_URL || '/api'
 // `.code` / `.status` para que el código que llama pueda distinguir casos
 // (red caída vs. error de servidor) sin parsear el texto del mensaje.
 class ApiError extends Error {
-  constructor(message, { code, status, serverCode } = {}) {
+  constructor(message, { code, status, serverCode, details } = {}) {
     super(message)
     this.name = 'ApiError'
     this.code = code     // 'NETWORK' | 'SERVER' | 'CLIENT'
     this.status = status // HTTP status, si aplica
     // ★ 2026-07-26: código de DOMINIO del backend ('BAD_INPUT', 'NOT_VIABLE',
-    //   'ENGINE_FAIL', 'STORAGE_UNAVAILABLE'). Antes se descartaba —`code` se pisaba
-    //   con 'SERVER'— y por eso el cliente NO PODÍA traducir el error: solo le quedaba
-    //   el string en español del backend, que se mostraba tal cual a usuarios PT/EN.
-    //   `message` se conserva intacto como fallback.
+    //   'ENGINE_FAIL', 'STORAGE_UNAVAILABLE', 'PLAN_LIMIT_REACHED').
     this.serverCode = serverCode || null
+    this.details = details || null
   }
 }
 
@@ -74,7 +72,7 @@ async function request(method, path, body) {
     console.error(`[api] Request failed on ${method} ${path}: HTTP ${res.status}`, data)
     // data.error ya viene en español y apto para el usuario (lo garantiza el backend);
     // si no vino, usamos un mensaje genérico en vez de exponer "HTTP 500" crudo.
-    throw new ApiError(data?.error || friendlyMessageForStatus(res.status), { code: 'SERVER', status: res.status, serverCode: data?.code })
+    throw new ApiError(data?.error || friendlyMessageForStatus(res.status), { code: 'SERVER', status: res.status, serverCode: data?.code, details: data })
   }
   return data
 }

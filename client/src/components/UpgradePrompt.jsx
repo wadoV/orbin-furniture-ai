@@ -21,7 +21,7 @@ function detectRegion() {
   return undefined
 }
 
-export const UpgradePrompt = ({ featureName, requiredPlan = 'Pro', price = 'R$99/mês', onClose }) => {
+export const UpgradePrompt = ({ featureName, requiredPlan = 'Pro', price = 'R$99/mês', onClose, details }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -47,6 +47,8 @@ export const UpgradePrompt = ({ featureName, requiredPlan = 'Pro', price = 'R$99
     }
   };
 
+  const isLimitReached = details?.code === 'PLAN_LIMIT_REACHED' || details?.used !== undefined
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden relative border border-white/10">
@@ -57,9 +59,24 @@ export const UpgradePrompt = ({ featureName, requiredPlan = 'Pro', price = 'R$99
           <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-5">
             <Lock className="w-6 h-6 text-primary" />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Recurso {requiredPlan}</h2>
+          <h2 className="text-2xl font-bold text-white mb-2">
+            {isLimitReached ? 'Límite de Cuota Alcanzado' : `Recurso ${requiredPlan}`}
+          </h2>
           <p className="text-zinc-300 mb-8 leading-relaxed">
-            O recurso <strong className="text-white">{featureName}</strong> é exclusivo para assinantes do plano {requiredPlan}. Atualize agora para desbloquear esta funcionalidade.
+            {isLimitReached ? (
+              <>
+                Usaste <strong className="text-white">{details?.used ?? 5}/{details?.limit ?? 5}</strong> solicitudes diarias de IA de tu plan Gratuito.
+                {details?.resetAt && (
+                  <span className="block mt-2 text-[12px] text-zinc-400">
+                    Tu cuota se reinicia a las {new Date(details.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC.
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                O recurso <strong className="text-white">{featureName}</strong> é exclusivo para assinantes do plano {requiredPlan}. Atualize agora para desbloquear esta funcionalidade.
+              </>
+            )}
           </p>
           {error && (
             <p className="text-[12px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2 mb-4 text-center">{error}</p>

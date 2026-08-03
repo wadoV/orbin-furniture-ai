@@ -28,6 +28,15 @@ Bitácora de bucles autónomos: [`task.md`](task.md).
 
 ## CHANGELOG DE BACKEND
 
+### 2026-08-02 (d) — CABLEADO DE MURO DE UPGRADE EN FRONTEND (BUCLE 006) ✅ 265/265 tests · build 100% verde · cierra P8
+
+**Manejo de HTTP 403 `PLAN_LIMIT_REACHED`:**
+- **`client/src/api/client.js`**: `ApiError` ahora propaga `details` con los metadatos de la cuota (`used`, `limit`, `resetAt`, `code`).
+- **`client/src/components/UpgradePrompt.jsx`**: Acepta `details` y despliega la UI indicando exactamente el consumo de la cuota gratuita (`used/limit`) y la hora del reseteo en UTC.
+- **`client/src/App.jsx` & `ImageToParametricPanel.jsx`**: Interceptan respuestas 403 en `/api/design/generate`, `/api/chat/design` y `/api/vision/analyze-space` para mostrar el modal de upgrade.
+
+---
+
 ### 2026-08-02 (c) — GATE DE PLAN EN LOS ENDPOINTS DE IA ✅ 265/265 tests · cierra P5
 
 **Regla:** `free` = 5 llamadas de IA por día (UTC) · `pro`/`enterprise` = ilimitado.
@@ -666,128 +675,186 @@ Fuentes: [Guia da Marcenaria — rodapés, alturas padrão](https://www.guiadama
 
 ## 2. CURRENT STATE OF THE CODEBASE
 
+> Reescrito 2026-08-02 contra el árbol real de HEAD `ed3a1b9` (rama `design/presets-2026`).
+> Las secciones 2–4 habían quedado congeladas en v4.5 y **contradecían el header**: afirmaban
+> que la autenticación era simulada y que el usuario podía saltarse los límites de plan
+> editando estado, cosa que el BUCLE 002 refutó ejecutando (`401` real con `NODE_ENV=production`
+> y candado `authContract.test.js`). Un snapshot cuyo propósito es la reanudación en contexto
+> limpio y que se contradice a sí mismo hace que cada sesión nueva reimplemente trabajo hecho.
+
 ### Root: `C:\Users\Azomarg\Documents\Claude_projects\Orbin\`
 
-### Server (`server/src/`)
+### Server (`server/src/`) — 29 módulos de producción · 22 archivos de test
 
 | File | Function |
 |---|---|
-| `index.js` | Express entry point, Socket.IO init, CORS, routes mount |
-| `engine/closetEngine.js` | **CORE** — Parametric furniture engine v4.5.0. Generates full cut list, validates geometry. DNA V1 rules: sides floor-to-top, internal top/bottom = W-2T, 13mm slide clearance, vertical grain on plinths. Supports 15/18/25mm MDF. |
-| `engine/validator.js` | Structural validation → returns VALIDADO / RECHAZADO + warnings |
-| `engine/nlParser.js` | Regex NL parser ES/PT/EN. Normalizes units (cm→mm, inches→mm). Used as Gemini fallback. |
-| `engine/constants.js` | Brazilian MDF/MDP standards: plate 2800×2070mm, kerf 3.2mm, margin 50mm |
-| `routes/design.js` | `POST /api/design/generate`, `POST /api/design/parse`, `GET /api/design/defaults` |
-| `routes/projects.js` | CRUD persistence — Supabase primary, in-memory fallback. `POST /save`, `GET /`, `GET /:id`, `DELETE /:id` |
-| `routes/chat.js` | AI chat endpoint, routes through aiOrchestrator |
-| `routes/vision.js` | Image-to-parametric vision endpoint |
-| `routes/stressTest.js` | Load testing route (dev only) |
-| `ai/aiOrchestrator.js` | Multi-provider AI router: Gemini → Ollama → Claude fallback chain |
-| `ai/systemPrompts.js` | Carpentry-specific system prompts for each AI provider |
+| `index.js` | Entry point Express, init Socket.IO, CORS, montaje de rutas. Puerto **3003**, bind `0.0.0.0` |
+| **Engine** | |
+| `engine/closetEngine.js` | **CORE** — motor paramétrico. Cut list completa + validación geométrica. Reglas DNA V1: laterales piso-a-techo, tapas internas `W-2T`, holgura 13mm por lado para correderas, veta vertical en rodapiés. Soporta MDF 15/18/25mm |
+| `engine/validator.js` | Validación estructural → `VALIDADO` / `RECHAZADO` + warnings |
+| `engine/nlParser.js` | Parser NL regex ES/PT/EN. Normaliza unidades (cm→mm, pulgadas→mm). Piso de la cascada de IA |
+| `engine/constants.js` | Estándares MDF/MDP BR: chapa, kerf, márgenes |
+| `engine/clientBundle.helper.js` | Carga código del cliente desde tests del server. **Obligatorio**: nunca `try/catch + return` (dos candados reportaron *pass* sin correr) |
+| `engine/_videoPrompts.probe.js` | Sonda reproducible de los 14 prompts del guion de video |
+| **AI** | |
+| `ai/aiOrchestrator.js` | Router multi-proveedor. `PROVIDER_CHAIN` real: **`gemini → vertex → ollama → parser regex local`**. `withDeadline()` + `ProviderTimeoutError` por proveedor (`AI_PROVIDER_TIMEOUT_MS`, default 12000) |
+| `ai/geminiClient.js` | `AbortSignal.timeout()` en ambos `fetch` (`GEMINI_TIMEOUT_MS`, default 10000) + `describeHttpError()` |
+| `ai/vertexClient.js` | Vertex AI. ⚠ hace `require('dotenv').config()` al cargarse — ver trampa de hermeticidad abajo |
+| `ai/ollamaClient.js` | Ollama local (`deepseek-r1:7b`). Único cliente con timeout propio desde siempre |
+| `ai/claudeClient.js` | Cliente Claude — existe, **fuera de `PROVIDER_CHAIN`** |
+| `ai/openrouterClient.js` | ⚠ **STUB de 12 líneas** que lanza `'not implemented yet'`. **Fuera de `PROVIDER_CHAIN`**. No hay cliente DeepSeek |
+| `ai/paramContract.js` | Contrato de params entre IA y motor |
+| `ai/furnitureMathSpecs.js` · `ai/systemPrompts.js` | Specs matemáticas y prompts de carpintería por proveedor |
+| **Middleware** | |
+| `middleware/auth.js` | `requireAuth` / `optionalAuth`. **El plan sale de `app_metadata`**, nunca de `user_metadata`. Sin plan → `free` (fail-closed) |
+| `middleware/planLimits.js` | `checkPlanLimit(feature, { when })`. Cuota `free` 5 IA/día (UTC). Store inyectable (`setUsageStore`). **Fail-OPEN deliberado** si el contador se cae |
+| **Routes** | |
+| `routes/design.js` | `POST /generate`, `POST /parse`, `GET /defaults`. Gate de plan sólo cuando viene `naturalLanguage` |
+| `routes/chat.js` | `POST /design` (Fase 1 HITL), `POST /parse`. `router.use(requireAuth)` |
+| `routes/projects.js` | CRUD. Supabase primario + fallback en memoria. Único lugar del backend que consultaba `req.user.plan` antes del bucle 003 |
+| `routes/billing.js` | Stripe + Mercado Pago. `POST /webhook` sin `requireAuth` **por diseño**: firma HMAC (Stripe) y re-consulta del pago contra la API (MP) |
+| `routes/hitlPreview.js` · `routes/ttlStore.js` | Preview stateless del flujo HITL de 2 fases + store con TTL |
+| `routes/vision.js` | Image-to-parametric (Gemini Vision) — el endpoint más caro |
+| `routes/stressTest.js` | Carga. `require` condicional: **en producción no se monta** |
 
-### Client (`client/src/`)
+**Trampa registrada (`dotenv`):** `delete process.env.X` **no alcanza** para aislar un test de
+la red. `dotenv` sólo respeta claves que ya existen; si la borrás, la repuebla al cargarse
+`vertexClient`. Hay que **asignar `''`**: existe (dotenv no la pisa) y es falsy.
+
+### Client (`client/src/`) — 28 componentes · 17 módulos de engine
 
 | File | Function |
 |---|---|
-| `App.jsx` | Main orchestrator. Manages global state: design, modules, activeTab, plan limits, undo/redo, Socket.IO collaboration lifecycle |
-| `main.jsx` | React entry, Router, context providers wrapping |
-| `index.css` | Full design system (Tailwind layers + custom component classes) |
-| `api/client.js` | Axios wrapper → `http://localhost:3003/api` |
-| `context/UserContext.jsx` | **SaaS plan system** — `free | pro | enterprise`. Defines limits: maxModules, export permissions, AI access, allowed thicknesses. Simulated auth (no real backend auth yet). |
-| `context/PreferencesContext.jsx` | User preferences: language, units, UI settings |
-| `components/LandingPage.jsx` | Marketing landing page. Entry point for unauthenticated users. |
-| `components/AuthPages.jsx` | Login + Register with plan injection (`?plan=pro` param). Routes to `/app` after auth. |
-| `components/PricingDisplay.jsx` | Pricing table: Free / Pro (R$99/U$19) / Enterprise (R$249/U$49) |
-| `components/InputPanel.jsx` | Main design input: dimensions, module type, NL input field |
-| `components/ResultPanel.jsx` | Renders validation badge + design summary |
-| `components/CutListTable.jsx` | Cut list UX: synchronized selection, delete by piece, Ctrl+Z undo, eye toggle per piece |
-| `components/Viewer3D.jsx` | Three.js 3D visualization of generated module |
-| `components/ChatPanel.jsx` | AI chat assistant panel (Pro/Enterprise gated) |
-| `components/CarpentryAdvisor.jsx` | Specialized carpentry advice AI component |
-| `components/ExportPanel.jsx` | Export to PDF/CSV/CNC/BOM (plan-gated) |
-| `components/ProjectsPanel.jsx` | Project save/load/delete UI (calls /api/projects) |
-| `components/MemoryPanel.jsx` | Project memory/version history UI |
-| `components/DesignHealthPanel.jsx` | Visual design quality metrics panel |
-| `components/ValidationReport.jsx` | Detailed structural validation display |
-| `components/AIVisualStylist.jsx` | AI-powered visual style suggestions |
-| `components/ImageToParametricPanel.jsx` | Image → parametric params via vision AI |
-| `components/MultiplayerLayer.jsx` | Socket.IO real-time collaboration cursor overlay |
-| `components/PresentationMode.jsx` | Client presentation / full-screen mode |
-| `components/OnboardingFlow.jsx` | New user onboarding steps |
-| `components/WelcomeScreen.jsx` | First-run welcome screen |
-| `components/ViralShare.jsx` | Social sharing component |
-| `components/Header.jsx` | Top nav: plan badge, tab navigation, undo/redo controls |
-| `engine/CutlistGenerator.js` | Client-side cut list generation utilities |
-| `engine/PricingEngine.js` | Material cost estimation engine |
-| `engine/designAnalyzer.js` | Design health scoring logic |
-| `engine/materialLibrary.js` | Materials catalog with prices |
-| `engine/exportAdapters.js` | PDF/CSV/CNC export format adapters |
-| `engine/projectMemory.js` | Version history, undo stack, project snapshots, localStorage |
-| `engine/collaboration.js` | Socket.IO client — room join, cursor broadcast, design sync |
-| `data/materials.js` | Brazilian market material prices |
-| `i18n.js` | i18next setup, ES/PT/EN namespaces |
+| `App.jsx` | Orquestador. Estado global, undo/redo, ciclo de Socket.IO, `planAlert` → `UpgradePrompt`. **`sanitizeModulesPositions()`**: calcula `X_nuevo = X_anterior + W_anterior` para módulos sin `position` válida (fix de colisión 3D, bucle 004) |
+| `main.jsx` · `i18n.js` · `index.css` | Entry + React Router · i18next ES/PT/EN · design system Tailwind |
+| `api/client.js` | Wrapper Axios → `http://localhost:3003/api` |
+| `lib/supabase.js` · `lib/analytics.js` · `lib/stackingMath.js` | Cliente Supabase · analytics · matemática de apilado |
+| `context/UserContext.jsx` | **Auth REAL de Supabase**: `signInWithPassword`, `signUp`, `signInWithOAuth`, `getSession`, `onAuthStateChange`. `localStorage` es **sólo hint de pintado inicial**, no fuente de verdad; el bypass por `localStorage` está acotado a `import.meta.env.DEV` |
+| `context/PreferencesContext.jsx` | Idioma, unidades, preferencias de UI |
+| **Contrato i18n** (ver CLAUDE.md) | |
+| `engine/pieceNames.js` | `localizePieceName(name, lang)` — el motor **nunca** traduce: los nombres son identificadores (nesting, BOM, hash, tests golden) |
+| `engine/adjustmentMessages.js` | `localizeAdjustment(adj, lang)`. **Nunca borrar `message`**: 17 archivos lo leen y es el fallback |
+| `engine/apiErrors.js` | `localizeApiError(err, lang)`. Incluye `PLAN_LIMIT_REACHED` ES/PT/EN |
+| **Engine cliente** | |
+| `engine/planGenerator.js` · `engine/planRenderer.js` | Plano ejecutivo (página completa por módulo) + conjunto SVG con espacios respetados |
+| `engine/elevationModel.js` · `engine/domainConstants.js` | Modelo de alzado · constantes de dominio (SSOT) |
+| `engine/exportAdapters.js` | **343 líneas, generación real** (no stub): OBJ, COLLADA 1.4.1, glTF 2.0, DXF R12 con capas, G-code CNC. `nestPieces()` incluido |
+| `engine/offlineParser.js` | Espejo cliente del parser NL, con candado de paridad (`parserMirror.test.js`) |
+| `engine/CutlistGenerator.js` · `PricingEngine.js` · `designAnalyzer.js` · `materialLibrary.js` · `projectMemory.js` · `collaboration.js` | Cut list · costos · scoring de salud · catálogo · historial/localStorage · Socket.IO |
+| **Componentes destacados** | |
+| `components/Viewer3D.jsx` | Three.js. Hidrata `modulePositionsRef` desde `design.position` (`* SCALE + W/2`). ResizeObserver + teardown de memoria verificados |
+| `components/UpgradePrompt.jsx` | **Muro de upgrade real, ya cableado** a `planAlert` en `App.jsx:1064`. ⚠ **No se dispara con el 403 `PLAN_LIMIT_REACHED`** — ver P8 |
+| `components/GalleryCatalog.jsx` | Galería de Verified Templates (Fase 1) |
+| `components/OnboardingWizard.jsx` · `OnboardingFlow.jsx` | Wizard conservado en la purga de presets · flujo de alta |
+| `components/LegalPages.jsx` · `SeoMeta.jsx` | Legales · meta tags SEO |
+| `components/ResultPanel.jsx` | Validación + resumen. **Único consumidor de `localizeApiError`** |
+| `components/ExportPanel.jsx` · `CutListTable.jsx` · `InputPanel.jsx` · `ChatPanel.jsx` · `ProjectsPanel.jsx` | Export gated por plan · cut list con selección sincronizada y Ctrl+Z · params (incl. `hasPedestal`/`pedestalSide`) · chat IA · proyectos |
+| `pages/blog/` | Contenido para SEO |
+
+⚠️ **`FurniturePresets` fue eliminado del UI** en la purga de producción (2026-07-20).
+`DrawerPresets` y `OnboardingWizard` se conservaron.
 
 ### Infra
+
 | File | Notes |
 |---|---|
-| `server/.env` | `SUPABASE_URL` ✅ `SUPABASE_ANON_KEY` ✅ `SUPABASE_SERVICE_KEY` ✅ `GEMINI_MODEL=gemini-2.5-flash` ✅ `OLLAMA_MODEL=deepseek-r1:7b` ✅ |
-| `server/supabase/migrations/001_create_projects.sql` | Migration SQL created — **status unknown if executed against live DB** |
-| `start.bat` | One-click launcher: installs deps, starts server + client, opens browser |
-| `.cloud/agents/orbin_engine.md` | Agent definition for Orbin engine cloud operations |
+| `server/.env` | 24 claves. `SUPABASE_URL` · `SUPABASE_ANON_KEY` · `SUPABASE_SERVICE_KEY` · `GEMINI_API_KEY` ✅ (sí está presente) · `GEMINI_MODEL` · `OLLAMA_MODEL=deepseek-r1:7b` · `STRIPE_*` · `GCP_*`. ⚠ `OPEN_ROUTER_API_KEY` y `DEEPSEEK_API_KEY` existen **pero ningún cliente las usa** |
+| `server/supabase/migrations/` | **8 migraciones**: 001 projects · 002 material_prices · 003 promo_redemptions · 004 projects_owner_and_lockdown · 005 viable_designs · 006 viable_designs_reconcile · 007 viable_designs_category · **008 create_ai_usage ⚠ SIN CORRER** |
+| `start.bat` / `ARRANCAR.bat` | Lanzadores. Server 3003 + client 5173 |
+| `.cloud/agents/` | `orbin_engine.md` · `backend_loop_agent.md` · `qa_industrial_agent.md` |
 
 ---
 
 ## 3. RECENT CHANGES & LOGS
 
-### Git History (chronological):
+### Git History (últimos commits, `design/presets-2026`)
+
 ```
-da141e0  Initial commit
-dcce563  feat(ai): Ollama llama3.2:1b + Gemini fallback + precision fixes v3.1.0
-77ccd83  feat: Vertex AI integration + AI Orchestrator + carpentry stabilization v3.5
-013f06f  Orbin v2.6.0 — Fabrication Intelligence Phase 1
-d3cd5ba  feat(v2.7): Visual Intelligence + Project Memory evolution
-c779302  feat(v4.0): CutList UX — synchronized selection, delete by piece, Ctrl+Z, eye button
-98ec9f2  feat(v4.5): COMMERCIAL_READY — Landing, Auth, SaaS plan system [LATEST]
+ed3a1b9  fix(3d-layout): resolve module overlap by computing sequential X-offsets  [HEAD]
+8b11574  feat(i18n): nombres de pieza traducidos + escritorio en el parser + candados de espejo
+823bdd8  feat(planos): conjunto reacotado, aereo colgado y escala real en papel
+01b4fe8  fix(i18n): finish Spanish validator copy (D6 remainder)
+563ad2f  fix(qa): Spanish validator copy, auth dev bypass & full E2E QA stability [DoD D1-D9]
 ```
 
-### v4.5 Critical Changes (last commit — LATEST):
-- **LandingPage.jsx** — Full marketing landing page added (public entry point)
-- **AuthPages.jsx** — Login/Register pages with `?plan=` query param injection
-- **UserContext.jsx** — Complete SaaS plan system: `free | pro | enterprise` with feature gates
-- **PricingDisplay.jsx** — Pricing table component (BRL + USD pricing)
-- **App.jsx** — Integrated plan-limit enforcement: `PlanLimitAlert` modal, plan-gated features
-- **React Router** — Added routes: `/` (Landing), `/login`, `/register`, `/app` (main tool)
+Historial completo de bucles autónomos con evidencia: [`task.md`](task.md).
+Changelog de backend detallado: sección **CHANGELOG DE BACKEND** arriba en este mismo archivo.
 
-### v4.0 Critical Changes:
-- **CutListTable.jsx** — Rewritten UX: click-to-select synced with 3D viewer, per-piece delete, Ctrl+Z undo stack, eye visibility toggle
-- **closetEngine.js** — `[LEGACY_RESTORATION]` tag: DNA V1 rules restored: sides floor-to-top, internal plates at W-2T, 13mm slide clearance hardcoded in HARDWARE constants
+### Verificación de la suite — corrida propia 2026-08-02 (sesión de auditoría)
 
-### Supabase Status (verified 2026-05-17):
-- SELECT ✅ INSERT ✅ GET ✅ DELETE ✅ — **Fully operational**
-- Both ANON_KEY and SERVICE_KEY configured (both point to anon key — valid for MVP with RLS allow_all policy)
+Ejecutada **por directorio** porque el sandbox tiene techo de 45 s por invocación y los
+procesos en background mueren entre llamadas (`--die-with-parent`). Números reales:
+
+| Directorio | Suites | Tests | Fallos |
+|---|---|---|---|
+| `src/engine/*.test.js` | 33 | 185 | 0 |
+| `src/ai/*.test.js` | 7 | 31 | 0 |
+| `src/routes/*.test.js` | 12 | 49 | 0 |
+| **Total** | **52** | **265** | **0** |
+
+Coincide exactamente con lo reportado por el bucle 004. ✅
+
+⚠️ **El build de Vite NO fue re-verificado en esta sesión.** Dos intentos fallaron por
+límites del sandbox, no del código: `EMFILE: too many open files` sobre el FS montado
+(`ulimit -n` = 1024) y, tras subir el límite, timeout del techo de 45 s. Verificación
+parcial que **sí** se logró: `esbuild --bundle` sobre `src/main.jsx` resolvió el grafo
+completo de módulos **sin errores** (5,5 MB), lo que valida sintaxis JSX y resolución de
+imports de todo el cliente — **no** valida la compilación de Tailwind ni los plugins de Vite.
+`dist/` quedó intacto (timestamp 20:26, del build verde de Antigravity): ninguno de los
+intentos fallidos llegó a la fase de escritura.
+**Para cerrarlo hace falta `npm run build` en la máquina local.**
+
+### Supabase
+
+- CRUD de `projects` operativo (verificado 2026-05-17: SELECT · INSERT · GET · DELETE).
+- ⚠️ **`008_create_ai_usage.sql` no fue ejecutada.** Sin la tabla y el RPC
+  `increment_ai_usage`, `planLimits.js` entra en **fail-open**: la cuota no rige, nada
+  falla y nada avisa. Es el pendiente que vuelve real todo el bucle 003. → **P7**
 
 ---
 
 ## 4. ACTIVE BACKLOG & IMMEDIATE NEXT STEPS
 
-### 🔴 Critical / Blockers
-- **Real authentication not implemented** — `UserContext.jsx` simulates auth state locally (no JWT, no Supabase Auth). Users can bypass plan limits by editing state. Next: implement Supabase Auth (`supabase.auth.signUp`, `signIn`, session persistence).
-- **Migration execution unknown** — `001_create_projects.sql` was created but confirm via Supabase dashboard whether it was run. If not, run it before any data persistence testing.
+> Fuente de verdad de los pendientes: tabla **Pendientes abiertos** de [`task.md`](task.md).
+> Esta sección los ordena por impacto comercial, no por orden de descubrimiento.
 
-### 🟡 Pending / Medium Priority
-- **`GEMINI_API_KEY` not shown in .env** — Key is described as configured but not visible in env dump (may be present but masked). Verify key is active in `server/.env`.
-- **Vertex AI / Claude client** — `vertexClient.js` and `claudeClient.js` exist but likely have no credentials configured. Low priority for MVP.
-- **Export adapters** — PDF/CSV export components exist but export functionality may be UI-only stubs without real file generation logic. Needs audit of `exportAdapters.js`.
-- **OnboardingFlow.jsx** — Created but integration into routing flow needs verification.
-- **ViralShare.jsx** — Created, integration status unknown.
+### 🔴 Bloqueantes reales
 
-### 🟢 Immediate Next Step (Start Here)
-**Implement Supabase Auth** — This is the critical path to a real commercial product:
-1. `server/.env`: add `SUPABASE_ANON_KEY` to client-side (already have it)
-2. `client/src/context/UserContext.jsx`: replace mock auth with `supabase.auth.signUp()` / `signIn()` / `onAuthStateChange()`
-3. Store `plan` field in Supabase `users` table or `user_metadata`
-4. Gate `UserContext` plan state on real session — not localStorage
-5. Add `supabase.auth.signOut()` to Header logout button
+| # | Pendiente | Por qué bloquea |
+|---|---|---|
+| **P7** | **Correr `008_create_ai_usage.sql` en Supabase** + confirmar `SUPABASE_SERVICE_KEY` en el entorno donde corra el server | Sin esto la cuota de IA **no existe**. Por diseño (fail-open) no rompe nada, así que la ausencia es invisible: cada usuario `free` tiene IA ilimitada a costo de tokens de Gemini. Los 18 tests del bucle 003 protegen un candado que no está instalado en la puerta |
+| **P6** | **Borrar `.git/index.lock`** (`Remove-Item -Force .git/index.lock` en PowerShell) | Reapareció con timestamp posterior a `ed3a1b9`. `git status` falla; no hay commit posible ni forma de separar P3 |
+| **P3** | Revisar y separar los cambios previos sin commitear del árbol | Depende de P6. Un commit ahora mezclaría dos trabajos |
+
+### 🟡 Producto / conversión
+
+| # | Pendiente | Estado real |
+|---|---|---|
+| **P8** | Disparar el muro de upgrade con el 403 `PLAN_LIMIT_REACHED` | **Más chico de lo que parece**: `UpgradePrompt.jsx` ya existe y ya está cableado a `planAlert` en `App.jsx:1064`. Falta que el catch de la llamada a la API lea `code:'PLAN_LIMIT_REACHED'` y setee `planAlert` con `used`/`limit`/`resetAt` (ya vienen en la respuesta). Hoy `ResultPanel` sólo pinta el texto traducido |
+| **P1** | Decidir redundancia real de IA | `openrouterClient.js` es un stub fuera de la cadena; no hay cliente DeepSeek; las claves `OPEN_ROUTER_API_KEY`/`DEEPSEEK_API_KEY` están en `.env` sin consumidor. **Los 3 proveedores activos son de Google**: un incidente los tumba a los tres y el sistema cae al parser regex. El deadline garantiza que degrade *rápido*, no que degrade *bien*. Decisión de CEO |
+| **P2** | Parser offline: emitir `specAdjustment` de baja confianza | `"placard 2000 x 2200"` → defaults 2400×2400 **sin ningún aviso**. Sólo se dispara con la IA caída, o sea exactamente cuando nadie está mirando |
+| **P4** | Verificar arranque real en `:3003` + health check contra Supabase | Precondición de deploy y de la grabación promocional |
+
+### 🟠 Defecto de motor conocido — visible en demo
+
+`GUION_VIDEO_PROMOCIONAL.md` documenta que un closet de 2,40 m con cajones produce frentes
+de **2360 × 176 mm** (ratio 13:1). Ninguna corredera telescópica comercial pasa de ~1200 mm.
+Agregar divisores **no** lo corrige: el motor no acota las gavetas a los vanos.
+La mitigación vigente es una **regla de guion** ("cajones sólo en muebles ≤ 1,0 m"), no un fix.
+Un marceneiro lo detecta en dos segundos. → decidir si se corrige antes o después del lanzamiento.
+
+### 🟢 Cerrados (no reabrir)
+
+- ~~**Auth real no implementada**~~ — **Falso desde el bucle 002.** Supabase Auth está
+  operativa en `UserContext.jsx`; el plan sale de `app_metadata` verificado en el JWT;
+  `requireAuth` cubre toda ruta mutante (401 verificado por HTTP con `NODE_ENV=production`);
+  `dev-token` neutralizado en producción. Protegido por `authContract.test.js` (+13),
+  verificado **por mutación**, no por lectura.
+- ~~**Export adapters posiblemente stubs**~~ — `exportAdapters.js` genera OBJ, COLLADA,
+  glTF, DXF y G-code reales (343 líneas).
+- ~~**`GEMINI_API_KEY` no visible en `.env`**~~ — está presente en `server/.env`.
+- ~~**P5 · gate de plan en endpoints de IA**~~ — cerrado en el bucle 003.
+- ~~**Colisión de módulos en el visor 3D**~~ — cerrado en el bucle 004.
 
 ---
 
