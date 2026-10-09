@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Lock, ArrowRight, X, Loader2 } from 'lucide-react';
 import { trackEvent, EVENTS } from '../lib/analytics.js';
 import { api } from '../api/client.js';
+import { usePreferences } from '../context/PreferencesContext.jsx';
+import { localizePlanLimit, formatResetAt } from '../engine/apiErrors.js';
 
 // RECOVERY [2026-06-26]: handleUpgradeClick redirigía a /pricing (placeholder).
 // Ahora dispara un checkout real vía POST /billing/checkout (Stripe/Mercado Pago)
@@ -21,16 +23,21 @@ function detectRegion() {
   return undefined
 }
 
-export const UpgradePrompt = ({ featureName, requiredPlan = 'Pro', price = 'R$99/mês', onClose, details }) => {
+export const UpgradePrompt = ({ featureName, featureCode, requiredPlan = 'Pro', price = 'R$99/mês', onClose, details }) => {
+  const { lang } = usePreferences()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // La etiqueta de la superficie llega como CÓDIGO (`featureCode`) y se traduce acá.
+  // `featureName` se mantiene como fallback para las llamadas viejas que pasan texto.
+  const featureLabel = featureCode ? localizePlanLimit(featureCode, lang) : featureName
+
   useEffect(() => {
-    trackEvent(EVENTS.PLAN_GATE_VIEWED, { feature: featureName, required_plan: requiredPlan });
-  }, [featureName, requiredPlan]);
+    trackEvent(EVENTS.PLAN_GATE_VIEWED, { feature: featureCode || featureName, required_plan: requiredPlan });
+  }, [featureCode, featureName, requiredPlan]);
 
   const handleUpgradeClick = async () => {
-    trackEvent(EVENTS.UPGRADE_CTA_CLICKED, { feature: featureName, target_plan: requiredPlan });
+    trackEvent(EVENTS.UPGRADE_CTA_CLICKED, { feature: featureCode || featureName, target_plan: requiredPlan });
     setError('')
     setLoading(true)
     try {
@@ -48,6 +55,7 @@ export const UpgradePrompt = ({ featureName, requiredPlan = 'Pro', price = 'R$99
   };
 
   const isLimitReached = details?.code === 'PLAN_LIMIT_REACHED' || details?.used !== undefined
+  const resetLabel = isLimitReached ? formatResetAt(details?.resetAt, lang) : null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -60,21 +68,26 @@ export const UpgradePrompt = ({ featureName, requiredPlan = 'Pro', price = 'R$99
             <Lock className="w-6 h-6 text-primary" />
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">
-            {isLimitReached ? 'Límite de Cuota Alcanzado' : `Recurso ${requiredPlan}`}
+            {isLimitReached
+              ? localizePlanLimit('PLAN_LIMIT_TITLE', lang)
+              : `Recurso ${requiredPlan}`}
           </h2>
           <p className="text-zinc-300 mb-8 leading-relaxed">
             {isLimitReached ? (
               <>
-                Usaste <strong className="text-white">{details?.used ?? 5}/{details?.limit ?? 5}</strong> solicitudes diarias de IA de tu plan Gratuito.
-                {details?.resetAt && (
+                {localizePlanLimit('PLAN_LIMIT_BODY', lang, {
+                  used: details?.used ?? '—',
+                  limit: details?.limit ?? '—',
+                })}
+                {resetLabel && (
                   <span className="block mt-2 text-[12px] text-zinc-400">
-                    Tu cuota se reinicia a las {new Date(details.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC.
+                    {localizePlanLimit('PLAN_LIMIT_RESET', lang, { time: resetLabel })}
                   </span>
                 )}
               </>
             ) : (
               <>
-                O recurso <strong className="text-white">{featureName}</strong> é exclusivo para assinantes do plano {requiredPlan}. Atualize agora para desbloquear esta funcionalidade.
+                O recurso <strong className="text-white">{featureLabel}</strong> é exclusivo para assinantes do plano {requiredPlan}. Atualize agora para desbloquear esta funcionalidade.
               </>
             )}
           </p>
