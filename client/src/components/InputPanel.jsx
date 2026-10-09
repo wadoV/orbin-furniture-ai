@@ -273,7 +273,7 @@ const DEFAULTS = {
 
 // ─── InputPanel ───────────────────────────────────────────────────────────────
 
-export default function InputPanel({ onGenerate, loading, currentConfig, onUpdateConfig, formSeed = null }) {
+export default function InputPanel({ onGenerate, loading, currentConfig, onUpdateConfig, formSeed = null, moduleId = undefined }) {
   const { t, unit, convert } = usePreferences()
   const { isFree, allowedThicknesses } = useUser()
   const [mode,   setMode]   = useState('manual')
@@ -299,9 +299,14 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
   }, [currentConfig, editMode])
 
   // When selected module changes, exit edit mode (user must explicitly re-enter)
+  // ★ FIX 2026-10-09 (piloto): la dependencia era `currentConfig?.id || currentConfig`.
+  //   `configuration` no tiene `id`, así que dependía de la IDENTIDAD del objeto: cada
+  //   edición crea una config nueva → el panel salía de edición tras el PRIMER cambio
+  //   y las siguientes medidas ya no llegaban al módulo. Ahora depende del id del
+  //   módulo seleccionado (prop `moduleId`); sin prop, conserva el comportamiento viejo.
   useEffect(() => {
     setEditMode(false)
-  }, [currentConfig?.id || currentConfig])
+  }, [moduleId !== undefined ? moduleId : (currentConfig?.id || currentConfig)])
 
   // ★ FIX [form-sync]: hidrata el formulario con la config del módulo RECIÉN CREADO.
   //   Corre solo cuando cambia el token (una generación nueva), NO en cada selección

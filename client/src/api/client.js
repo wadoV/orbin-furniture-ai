@@ -3,6 +3,7 @@
  * Adds chat, projects and billing endpoints.
  */
 import { supabase } from '../lib/supabase.js'
+import { DEMO_MODE, DEMO_TOKEN } from '../config/demoMode.js'
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
@@ -44,7 +45,11 @@ async function request(method, path, body) {
     // con 401 silencioso. Se adjunta el access_token de la sesión activa si existe;
     // no afecta rutas con optionalAuth ni el fallback DEV_USER en local.
     const headers = { 'Content-Type': 'application/json' }
-    try {
+    if (DEMO_MODE) {
+      // Piloto: nunca tocar Supabase (sin red = sin latencia ni 401). El server
+      // acepta este token solo con DEMO_MODE=true o fuera de producción.
+      headers['Authorization'] = `Bearer ${DEMO_TOKEN}`
+    } else try {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`
     } catch {}

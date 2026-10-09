@@ -19,6 +19,7 @@ import { UpgradePrompt } from './components/UpgradePrompt.jsx'
 import { api } from './api/client.js'
 import { parseNaturalLanguage, buildOfflineReply } from './engine/offlineParser.js'
 import { initCollaboration, getSocket, disconnectCollaboration } from './engine/collaboration.js'
+import { planAlertFrom } from './engine/apiErrors.js'
 import {
   loadMemory, saveMemory, saveVersion, revertToVersion,
   getVersionHistory, logPrompt, logAction, logExport,
@@ -29,6 +30,8 @@ import { Sliders, MessageSquare, FolderOpen, Box, RotateCcw, Undo2, Redo2, Users
 import { usePreferences } from './context/PreferencesContext.jsx'
 import { useUser } from './context/UserContext.jsx'
 import { calculateAerialAlignment, findBaseForAerial, isAerialModule } from './lib/stackingMath.js'
+import { DEMO_MODE } from './config/demoMode.js'
+import DEMO_BASE_MODULE from './data/demoBaseModule.js'
 
 // ── Plan Upgrade Banner ────────────────────────────────────────────────────────
 // [2026-06-23] Inline PlanLimitAlert replaced by real UpgradePrompt component
@@ -68,9 +71,10 @@ class ErrorBoundary extends Component {
             </div>
             <div className="space-y-2">
               <h2 className="text-white text-xl font-bold tracking-tight">Error en el Motor Visual</h2>
-              <p className="text-muted text-sm leading-relaxed">
-                {this.state.error?.message || 'Algo salió mal durante el renderizado 3D.'}
-              </p>
+              <div className="text-left bg-black/60 border border-red-500/30 rounded-lg p-3 text-red-400 font-mono text-[11px] leading-relaxed overflow-auto max-h-60 select-text whitespace-pre-wrap">
+                <p className="font-bold text-red-300 mb-1">{this.state.error?.name}: {this.state.error?.message}</p>
+                {this.state.error?.stack}
+              </div>
             </div>
             <button
               onClick={() => window.location.reload()}
@@ -84,6 +88,40 @@ class ErrorBoundary extends Component {
     }
     return this.props.children;
   }
+}
+
+// ★ 2026-10-09: el flag `_demoSnapshot` sobrevive a ediciones por spread ({...mod}),
+//   así que NO basta para decidir la re-hidratación: se exige además que config y
+//   cantidad de piezas sigan idénticas al snapshot. Nunca se pisa trabajo del usuario.
+function isPristineDemoModule(m) {
+  if (!m?._demoSnapshot) return false
+  const a = m.configuration || {}, b = DEMO_BASE_MODULE.configuration
+  return ['moduleType', 'width', 'height', 'depth', 'thickness', 'numShelves', 'numDrawers', 'hasDoors']
+    .every(k => a[k] === b[k]) && (m.pieces?.length === DEMO_BASE_MODULE.pieces.length)
+}
+
+function sanitizeModulesPositions(mods) {
+  if (!Array.isArray(mods)) return []
+  let currentX = 0
+  return mods.map((mod, idx) => {
+    if (!mod || typeof mod !== 'object') return mod
+    const width = mod.configuration?.width || 600
+    if (!mod.position || typeof mod.position.x !== 'number' || Number.isNaN(mod.position.x)) {
+      const updated = {
+        ...mod,
+        position: {
+          x: currentX,
+          y: mod.position?.y || 0,
+          z: mod.position?.z || 0
+        }
+      }
+      currentX += width + 50
+      return updated
+    } else {
+      currentX = Math.max(currentX, mod.position.x + width + 50)
+      return mod
+    }
+  })
 }
 
 export default function App() {
@@ -103,25 +141,52 @@ export default function App() {
   // ★ Captura CAD unificada (front/top/iso) para el Plano de Montaje
   const cadCaptureRef = useRef(null)
   const handleCadCaptureReady = useCallback(fn => { cadCaptureRef.current = fn }, [])
+  // DEMO_MODE: ni WelcomeScreen ni wizard — el taller abre directo al visor.
   const [showWelcome, setShowWelcome] = useState(() => {
+    if (DEMO_MODE) return false
     try { return !localStorage.getItem('orbin_onboarded') } catch { return false }
   })
+  // ★ 2026-10-09 (piloto): el módulo base ya NO es una lista de piezas escrita a mano
+  //   (le faltaban las cajas de cajón y los frentes no respetaban la holgura). Ahora es
+  //   el snapshot real del motor (data/demoBaseModule.js) → despiece exacto desde el
+  //   primer frame, con o sin backend. Clon profundo: el estado nunca muta el import.
+  const DEFAULT_INITIAL_MODULE = JSON.parse(JSON.stringify(DEMO_BASE_MODULE))
+
   const [activeTab, setActiveTab] = useState('params')
   const [loading,   setLoading]   = useState(false)
   const [modules,   setModules]   = useState(() => {
     try {
+      // ★ 2026-10-09 (piloto): `/app?reset` en DEMO_MODE descarta el autosave y arranca
+      //   limpio con el módulo base — botón de pánico antes de mostrarle la pantalla al cliente.
+      if (DEMO_MODE && new URLSearchParams(window.location.search).has('reset')) {
+        localStorage.removeItem('orbin-autosave')
+        localStorage.removeItem('orbin-autosave-ts')
+        const url = new URL(window.location.href); url.searchParams.delete('reset')
+        window.history.replaceState({}, '', url)
+        return [DEFAULT_INITIAL_MODULE]
+      }
       const saved = localStorage.getItem('orbin-autosave')
-      if (!saved) return []
+      if (!saved) return [DEFAULT_INITIAL_MODULE]
       const parsed = JSON.parse(saved)
-      return Array.isArray(parsed) ? sanitizeModulesPositions(parsed) : []
-    } catch { return [] }
+      if (!Array.isArray(parsed) || parsed.length === 0) return [DEFAULT_INITIAL_MODULE]
+      const valid = parsed
+        .filter(m => m && typeof m === 'object' && (m.configuration || m.pieces))
+        // ★ 2026-10-09: migra el placeholder viejo escrito a mano (piezas 'mod-base-demo-*',
+        //   sin cajas de cajón) que pudo quedar en autosave → snapshot real del motor.
+        .map(m => (m.id === 'mod-base-demo' && Array.isArray(m.pieces) && m.pieces.length > 0 &&
+                   m.pieces.every(p => String(p?.id || '').startsWith('mod-base-demo-')))
+          ? { ...DEFAULT_INITIAL_MODULE, position: m.position }
+          : m)
+      return valid.length > 0 ? sanitizeModulesPositions(valid) : [DEFAULT_INITIAL_MODULE]
+    } catch { return [DEFAULT_INITIAL_MODULE] }
   })
   // ★ FIX: ref siempre actualizado para evitar stale closure en saveHistory/undo
   const modulesRef = useRef([])
   const [history,   setHistory]   = useState([])
   const [redoStack, setRedoStack] = useState([])
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [selectedModuleId, setSelectedModuleId] = useState(null)
+  const [selectedModuleId, setSelectedModuleId] = useState('mod-base-demo')
+
   // ★ FIX [form-sync]: el formulario de InputPanel mantiene su propio estado local y
   //   solo se sincroniza con el módulo seleccionado si editMode está activo (protección
   //   deliberada contra edición accidental). Efecto colateral: tras generar un módulo
@@ -135,10 +200,12 @@ export default function App() {
   const [show3D,    setShow3D]    = useState(true)
   // ★ Server health tracking — enables offline fallback in handleSendMessage
   const [serverOnline, setServerOnline] = useState(true)
+  const [healthTick, setHealthTick] = useState(0)
   const [mobileView, setMobileView] = useState('panel')
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [pasteToast, setPasteToast] = useState(null) // { type:'ok'|'error', msg }
   const [showOnboardingWizard, setShowOnboardingWizard] = useState(() => {
+    if (DEMO_MODE) return false
     try { return !localStorage.getItem('orbin_onboarded') } catch { return false }
   })
   const [showUndoToast, setShowUndoToast] = useState(false)
@@ -236,6 +303,9 @@ export default function App() {
       try {
         const res = await fetch('/api/health', { method: 'GET', signal: AbortSignal.timeout(3000) })
         if (mounted) setServerOnline(res.ok)
+        // ★ 2026-10-09: un reinicio corto del backend (< 15 s) nunca pone serverOnline en
+        //   false; el tick garantiza que los despieces pendientes se reintenten igual.
+        if (mounted && res.ok) setHealthTick(n => n + 1)
       } catch {
         if (mounted) setServerOnline(false)
       }
@@ -243,6 +313,26 @@ export default function App() {
     ping()
     const interval = setInterval(ping, 15000)
     return () => { mounted = false; clearInterval(interval) }
+  }, [])
+
+  // ★ 2026-10-09 (piloto): re-hidrata el módulo base contra el motor vivo.
+  //   Solo si sigue siendo el snapshot intacto (nunca pisa trabajo del usuario) y en
+  //   silencio: si el server no responde, el snapshot embebido ya es exacto.
+  useEffect(() => {
+    const only = modulesRef.current.length ? modulesRef.current : modules
+    if (only.length !== 1 || !isPristineDemoModule(only[0])) return
+    let cancelled = false
+    api.generateDesign({ params: { ...DEMO_BASE_MODULE.configuration } })
+      .then(data => {
+        const fresh = data?.design
+        if (cancelled || !fresh?.pieces?.length) return
+        setModules(cur => (cur.length === 1 && isPristineDemoModule(cur[0]))
+          ? [{ ...fresh, id: cur[0].id, position: cur[0].position, _demoSnapshot: true }]
+          : cur)
+      })
+      .catch(() => { /* offline → snapshot embebido */ })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -363,18 +453,8 @@ export default function App() {
       }
     } catch (err) {
       console.error('[App/Generate] Connection Error:', err)
-      if (err.status === 403 && (err.serverCode === 'PLAN_LIMIT_REACHED' || err.details?.code === 'PLAN_LIMIT_REACHED')) {
-        const details = err.details || {}
-        setPlanAlert({
-          feature: 'Generación con IA',
-          code: 'PLAN_LIMIT_REACHED',
-          message: err.message || 'Cuota diaria de IA alcanzada',
-          description: `Alcanzaste el límite de ${details.limit || 5} solicitudes de IA por día para tu plan Gratuito.`,
-          used: details.used,
-          limit: details.limit,
-          resetAt: details.resetAt
-        })
-      }
+      const quotaAlert = planAlertFrom(err, 'FEATURE_AI_GENERATION')
+      if (quotaAlert) setPlanAlert(quotaAlert)
       setError(err.message || 'Error connecting to server.')
       // ★ FIX [presets-silenciosos] 2026-07-19: el banner de error vive debajo del
       //   formulario; sin este scroll el fallo era invisible al clicar un preset.
@@ -572,6 +652,7 @@ export default function App() {
           configuration: parsed.params,
           pieces: [],
           cutList: [],
+          _cutListStale: true,   // ★ se recalcula con el motor al volver el backend
         }
         handleChatDesign({ design: offlineDesign })
         try { const mem = loadMemory(); logPrompt(mem, text, reply, 'offline', true); refreshMemory() } catch {}
@@ -621,21 +702,12 @@ export default function App() {
           configuration: parsed.params,
           pieces: [],
           cutList: [],
+          _cutListStale: true,   // ★ se recalcula con el motor al volver el backend
         }
         handleChatDesign({ design: offlineDesign })
       } else {
-        if (err.status === 403 && (err.serverCode === 'PLAN_LIMIT_REACHED' || err.details?.code === 'PLAN_LIMIT_REACHED')) {
-          const details = err.details || {}
-          setPlanAlert({
-            feature: 'Chat de IA',
-            code: 'PLAN_LIMIT_REACHED',
-            message: err.message || 'Cuota diaria de IA alcanzada',
-            description: `Alcanzaste el límite de ${details.limit || 5} solicitudes de IA por día para tu plan Gratuito.`,
-            used: details.used,
-            limit: details.limit,
-            resetAt: details.resetAt
-          })
-        }
+        const quotaAlert = planAlertFrom(err, 'FEATURE_AI_CHAT')
+        if (quotaAlert) setPlanAlert(quotaAlert)
         setChatMessages(prev => [...prev, {
           role: 'assistant',
           content: 'Error: ' + err.message,
@@ -649,10 +721,57 @@ export default function App() {
     }
   }
 
+  // ★ 2026-10-09 (piloto) — DESPIECE EN VIVO.
+  //   BUG: editar medidas solo fusionaba `configuration`. El 3D (que se construye desde
+  //   la config) cambiaba, pero `pieces/cutList/nesting` quedaban del tamaño ANTERIOR:
+  //   con ancho 1000 la tabla seguía mostrando frente 760 y caja 738. Para un taller
+  //   eso es un despiece falso. Ahora:
+  //     1. el módulo editado queda marcado `_cutListStale` (la UI lo avisa, nunca miente)
+  //     2. se recalcula contra el motor real con debounce de 350 ms
+  //     3. si el server no responde, queda marcado y se reintenta al volver online
+  //   Guardas anti-carrera: token por módulo + la config debe seguir siendo la misma.
+  const regenTimersRef = useRef({})
+  const regenTokensRef = useRef({})
+  const scheduleRegen = useCallback((id, cfg) => {
+    if (!id || !cfg) return
+    clearTimeout(regenTimersRef.current[id])
+    const token = (regenTokensRef.current[id] || 0) + 1
+    regenTokensRef.current[id] = token
+    const cfgKey = JSON.stringify(cfg)
+    regenTimersRef.current[id] = setTimeout(async () => {
+      try {
+        const data = await api.generateDesign({ params: { ...cfg } })
+        const fresh = data?.design
+        if (!fresh?.pieces || regenTokensRef.current[id] !== token) return
+        setModules(cur => cur.map(m => (m.id === id && JSON.stringify(m.configuration) === cfgKey)
+          ? { ...m, ...fresh, id: m.id, position: m.position, _cutListStale: false, _demoSnapshot: false }
+          : m))
+        setServerOnline(true)
+      } catch (err) {
+        console.warn('[App/regen] despiece pendiente (server no disponible):', err?.message)
+      } finally {
+        if (regenTokensRef.current[id] === token) delete regenTimersRef.current[id]
+      }
+    }, 350)
+  }, [])
+
   const handleUpdateModule = (id, newConfig) => {
     if (!id) return
-    saveHistory(modules.map(m => m.id === id ? { ...m, configuration: { ...m.configuration, ...newConfig } } : m))
+    const target = modulesRef.current.find(m => m.id === id) || modules.find(m => m.id === id)
+    if (!target) return
+    const merged = { ...target.configuration, ...newConfig }
+    saveHistory(modules.map(m => m.id === id ? { ...m, configuration: merged, _cutListStale: true } : m))
+    scheduleRegen(id, merged)
   }
+
+  // Reintento: módulos que quedaron desactualizados (server caído, undo/redo, reload
+  // con autosave viejo, diseño offline del chat) se recalculan al volver el backend.
+  useEffect(() => {
+    if (!serverOnline) return
+    modules.forEach(m => {
+      if (m?._cutListStale && m.configuration && !regenTimersRef.current[m.id]) scheduleRegen(m.id, m.configuration)
+    })
+  }, [modules, serverOnline, healthTick, scheduleRegen])
 
   // ★ Delete a single piece from a module — undoable with Ctrl+Z
   const handleDeletePiece = (moduleId, pieceId) => {
@@ -966,6 +1085,7 @@ export default function App() {
                       loading={loading}
                       currentConfig={currentResult && currentResult.configuration}
                       formSeed={formSeed}
+                      moduleId={selectedModuleId ?? null}
                       onUpdateConfig={(newConfig) => handleUpdateModule(selectedModuleId, newConfig)}
                     />
                     {error && (
@@ -1022,7 +1142,7 @@ export default function App() {
             </aside>
 
             <div className={`space-y-4 xl:space-y-6 ${mobileView === 'panel' ? 'hidden xl:block' : 'block'}`}>
-              <div className="card p-0 overflow-hidden border-primary/10 shadow-2xl shadow-primary/5 relative" style={{ minHeight: 'clamp(280px, 50vw, 600px)' }}>
+              <div className="relative w-full h-full min-h-[500px] flex-1 overflow-hidden card p-0 border-primary/10 shadow-2xl shadow-primary/5" style={{ minHeight: 'clamp(500px, 50vw, 600px)' }}>
                 {show3D ? (
                   <Suspense fallback={
                     <div className="flex items-center justify-center h-full min-h-[280px] gap-3 text-muted">
@@ -1069,6 +1189,12 @@ export default function App() {
 
               {showExports && (
                 <div id="results">
+                  {shownResult?._cutListStale && (
+                    <div role="status" className="mb-3 flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300 text-[11px] font-black uppercase tracking-widest">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      {serverOnline ? 'Recalculando despiece…' : 'Despiece desactualizado — motor offline, se recalcula al reconectar'}
+                    </div>
+                  )}
                   <ResultPanel
                     design={shownResult}
                     selectedPieceIds={selectedPieceIds}
@@ -1084,9 +1210,11 @@ export default function App() {
         </main>
 
         {/* ── Plan Limit Alert ──────────────────────────────────────────── */}
-        {planAlert && (
+        {/* DEMO_MODE: sin modales comerciales en la demo de taller */}
+        {planAlert && !DEMO_MODE && (
           <UpgradePrompt
             featureName={planAlert.feature}
+            featureCode={planAlert.featureCode}
             requiredPlan="Pro"
             price="R$99/mês"
             details={planAlert}

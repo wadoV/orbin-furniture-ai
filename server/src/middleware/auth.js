@@ -32,18 +32,49 @@ function getAuthClient() {
 
 const DEV_USER = {
   id:    'dev-local-user',
+  name:  'Demo Taller Pro',
   email: 'dev@localhost',
   plan:  'pro',
+  role:  'admin',
+}
+
+// ─── Demo / piloto (bypass condicional, nunca destructivo) ────────────────────
+// DEMO_MODE=true en server/.env → auth no consulta Supabase para tokens demo y
+// cualquier caída/timeout de Supabase degrada a DEV_USER en lugar de 401/503.
+function demoBypassAllowed() {
+  return process.env.DEMO_MODE === 'true' || process.env.NODE_ENV !== 'production'
+}
+
+// Supabase colgado = request colgado. Se corta a los N ms.
+const AUTH_TIMEOUT_MS = Number(process.env.AUTH_TIMEOUT_MS) || 3000
+function withTimeout(promise, ms, label) {
+  let t
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => { t = setTimeout(() => rej(new Error(label + ' timeout ' + ms + 'ms')), ms) }),
+  ]).finally(() => clearTimeout(t))
 }
 
 // ─── requireAuth ──────────────────────────────────────────────────────────────
 
 async function requireAuth(req, res, next) {
+  // ── Short-circuit Demo Mode ──────────────────────────────────────────────────
+  const authHeader = req.headers ? (req.headers.authorization || '') : ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
+
+  // ★ SECURITY 2026-10-09: el bypass por token demo estaba ABIERTO también en
+  //   producción (cualquiera con `Bearer demo-token` obtenía Pro/admin). Ahora solo
+  //   aplica con DEMO_MODE=true o fuera de producción — reactivable sin tocar código.
+  if (demoBypassAllowed() && (req.isDemoMode || token === 'demo-local-token' || token === 'demo-token')) {
+    req.user = DEV_USER
+    return next()
+  }
+
   const sb = getAuthClient()
 
-  // ── Local-dev fallback — NUNCA en producción (fail-closed) ───────────────────
+  // ── Local-dev & Demo fallback ───────────────────
   if (!sb) {
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === 'production' && process.env.DEMO_MODE !== 'true') {
       console.error('[requireAuth] Supabase no configurado en producción — acceso denegado.')
       return res.status(503).json({ error: 'Servicio de autenticación no disponible. Intentá de nuevo en unos minutos.' })
     }
@@ -51,11 +82,11 @@ async function requireAuth(req, res, next) {
     return next()
   }
 
-  // ── Extract Bearer token ─────────────────────────────────────────────────────
-  const authHeader = req.headers.authorization || ''
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
-
   if (!token) {
+    if (process.env.DEMO_MODE === 'true') {
+      req.user = DEV_USER
+      return next()
+    }
     if (process.env.NODE_ENV !== 'production') {
       req.user = DEV_USER
       return next()
@@ -63,22 +94,21 @@ async function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Tu sesión expiró o no es válida. Volvé a iniciar sesión.' })
   }
 
-  // Dev token bypass (QA testing & local dev) — HARD-GATED to non-production.
-  // SECURITY [2026-07-21]: sin este gate, `Authorization: Bearer dev-token`
-  // autenticaba como usuario 'pro' en PRODUCCIÓN (bypass de auth + escalada de
-  // entitlements). El gate por NODE_ENV lo neutraliza fuera de dev/QA.
-  if (process.env.NODE_ENV !== 'production' && (token === 'dev-local-token' || token === 'dev-token')) {
+  // Dev token bypass (QA testing & local dev) — HARD-GATED to non-production (unless DEMO_MODE)
+  if ((process.env.NODE_ENV !== 'production' || process.env.DEMO_MODE === 'true') && (token === 'dev-local-token' || token === 'dev-token')) {
     req.user = DEV_USER
     return next()
   }
 
   // ── Verify token with Supabase ───────────────────────────────────────────────
   try {
-    const { data, error } = await sb.auth.getUser(token)
+    const { data, error } = await withTimeout(sb.auth.getUser(token), AUTH_TIMEOUT_MS, 'supabase.auth.getUser')
 
     if (error || !data?.user) {
+      if (process.env.DEMO_MODE === 'true') { req.user = DEV_USER; return next() }
       return res.status(401).json({ error: 'Tu sesión expiró o no es válida. Volvé a iniciar sesión.' })
     }
+
 
     // SECURITY [2026-06-27]: el plan se lee de app_metadata, NUNCA de
     // user_metadata. user_metadata es escribible por el propio usuario vía
@@ -96,6 +126,8 @@ async function requireAuth(req, res, next) {
     next()
   } catch (err) {
     console.error('[requireAuth] Unexpected error:', err.message)
+    // DEMO_MODE: Supabase caído/lento no debe expulsar al taller de la demo.
+    if (process.env.DEMO_MODE === 'true') { req.user = DEV_USER; return next() }
     return res.status(401).json({ error: 'Tu sesión expiró o no es válida. Volvé a iniciar sesión.' })
   }
 }
@@ -114,13 +146,18 @@ async function optionalAuth(req, res, next) {
   const authHeader = req.headers.authorization || ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
 
+  if (demoBypassAllowed() && (token === 'demo-local-token' || token === 'demo-token')) {
+    req.user = DEV_USER
+    return next()
+  }
+
   if (!token) {
     req.user = { id: null, plan: 'free' }
     return next()
   }
 
   try {
-    const { data, error } = await sb.auth.getUser(token)
+    const { data, error } = await withTimeout(sb.auth.getUser(token), AUTH_TIMEOUT_MS, 'supabase.auth.getUser')
     if (error || !data?.user) {
       req.user = { id: null, plan: 'free' }
       return next()

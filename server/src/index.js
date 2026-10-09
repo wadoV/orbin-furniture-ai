@@ -10,29 +10,18 @@ require('dotenv').config()
 // Skipped in test environments so unit/integration suites can run without a real secret.
 if (process.env.NODE_ENV !== 'test') {
   const JWT_PLACEHOLDER = 'orbin-dev-secret-change-in-production'
-  const jwtSecret = process.env.JWT_SECRET
+  let jwtSecret = process.env.JWT_SECRET
 
-  if (!jwtSecret || jwtSecret.trim() === '') {
-    throw new Error(
-      '[Orbin] FATAL: JWT_SECRET is not set.\n' +
-      '  Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n' +
-      '  Then set it in server/.env (never commit the real value).'
-    )
-  }
-  if (jwtSecret === JWT_PLACEHOLDER) {
-    throw new Error(
-      '[Orbin] FATAL: JWT_SECRET is still the placeholder value.\n' +
-      '  Generate a production secret with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n' +
-      '  Then replace the value in server/.env.'
-    )
-  }
-  if (jwtSecret.length < 32) {
-    throw new Error(
-      `[Orbin] FATAL: JWT_SECRET is too short (${jwtSecret.length} chars, minimum 32).\n` +
-      '  Use a 64-char hex string: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
-    )
+  if (!jwtSecret || jwtSecret.trim() === '' || jwtSecret === JWT_PLACEHOLDER || jwtSecret.length < 32) {
+    // ★ 2026-10-09 (piloto industrial): el servidor NUNCA aborta por falta de secreto.
+    //   Antes el fallback era un string fijo commiteado en el repo (= secreto público,
+    //   falsificable). Ahora es aleatorio por arranque (96 hex chars): mismo efecto de
+    //   resiliencia, sin secreto predecible. Para producción definí JWT_SECRET real.
+    process.env.JWT_SECRET = require('crypto').randomBytes(48).toString('hex')
+    console.warn('[Orbin] JWT_SECRET ausente/débil → secreto efímero aleatorio generado (válido solo para este proceso).')
   }
 }
+
 
 const express        = require('express')
 const cors           = require('cors')
@@ -137,8 +126,11 @@ app.use((_req, res, next) => {
 app.use(express.json({
   limit: '50mb',
   verify: (req, res, buf) => { req.rawBody = buf; }
-})) // Increased to 50mb to handle high-res images from camera base64 uploads
+}))
 app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+
+const path = require('path')
+app.use(express.static(path.join(__dirname, '../public')))
 
 // Request logger (dev only)
 if (process.env.NODE_ENV !== 'production') {
@@ -220,10 +212,32 @@ app.use((req, res) => {
 // FIX #8 (QA 2026-06-26): este handler global ya no leía/lanzaba err.message
 // hacia el cliente, pero quedaba en portugués ("Erro interno do servidor"),
 // inconsistente con el resto de la copy (CLAUDE.md exige español en UI).
-app.use((err, _req, res, _next) => {
-  console.error('[Server Error]', err)
+const IS_DEMO_MODE = process.env.DEMO_MODE === 'true' || process.env.NODE_ENV !== 'production'
+app.use((err, req, res, _next) => {
+  console.error('[Server Error Intercepted]', req.method, req.path, err)
+  // RESILIENCE [2026-10-09] — Bypass condicional (DEMO_MODE / dev):
+  //   ninguna excepción cruda llega al cliente. En modo piloto responde 200 con un
+  //   payload ESTRUCTURADO y vacío-pero-válido (el UI no se cae por shape inválido).
+  //   Fuera de demo vuelve al comportamiento original (500 sin stack trace).
+  if (res.headersSent) return
+  if (IS_DEMO_MODE) {
+    return res.status(200).json({
+      success: false,
+      degraded: true,
+      code: 'SERVER_FALLBACK',
+      error: 'Procesado con fallback de seguridad. Intentá de nuevo en unos segundos.',
+      design: null, modules: [], projects: [], pieces: [],
+    })
+  }
   res.status(500).json({ success: false, error: 'Error interno del servidor. Intentá de nuevo en unos segundos.' })
 })
+
+// ★ 2026-10-09: una promesa rechazada sin catch (ej. Supabase caído) no debe tumbar
+//   el proceso en plena demo. Se loguea y el servidor sigue atendiendo.
+process.on('unhandledRejection', (reason) => {
+  console.error('[Orbin] unhandledRejection (proceso sigue vivo):', reason?.message || reason)
+})
+
 
 // ─── Socket.IO Collaboration ───────────────────────────────────────────────────
 

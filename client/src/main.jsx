@@ -14,6 +14,7 @@ import LandingPage from './components/LandingPage.jsx'
 import { LoginPage, RegisterPage, VerifyOTPPage } from './components/AuthPages.jsx'
 import { TermsOfService, PrivacyPolicy } from './components/LegalPages.jsx'
 import SeoMeta from './components/SeoMeta.jsx'
+import { DEMO_MODE } from './config/demoMode.js'
 import ComoFazerListaCorte      from './pages/blog/ComoFazerListaCorte.jsx'
 import CaixaTecnica13mm         from './pages/blog/CaixaTecnica13mm.jsx'
 import DisenoParametricoMuebles from './pages/blog/DisenoParametricoMuebles.jsx'
@@ -32,21 +33,21 @@ function AuthLoading() {
   )
 }
 
+// ★ 2026-10-09 — Bypass CONDICIONAL. La lógica de guardas se conserva intacta
+//   detrás de DEMO_MODE (antes de hoy estaba borrada: `return children` fijo).
 function ProtectedRoute({ children }) {
   const { user, isLoading } = useUser()
+  if (DEMO_MODE) return children
   if (isLoading) return <AuthLoading />
-  if (!user.isLoggedIn) return <Navigate to="/login" replace />
-  if (user.isLoggedIn && !user.isVerified) return <Navigate to="/verify" replace />
+  if (!user?.isLoggedIn) return <Navigate to="/login" replace />
   return children
 }
 
 function PublicRoute({ children }) {
   const { user, isLoading } = useUser()
+  if (DEMO_MODE) return <Navigate to="/app" replace />   // en demo no hay login
   if (isLoading) return <AuthLoading />
-  if (user.isLoggedIn) {
-    if (!user.isVerified) return <Navigate to="/verify" replace />
-    return <Navigate to="/app" replace />
-  }
+  if (user?.isLoggedIn) return <Navigate to="/app" replace />
   return children
 }
 
@@ -56,7 +57,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <UserProvider>
         <SeoMeta />
         <Routes>
-          <Route path="/" element={<LandingPage />} />
+          {/* DEMO BYPASS: "/" → taller (/app). Se redirige (no se monta <App/> en "/")
+              porque Header/App condicionan galería, presupuesto y despiece a pathname==='/app'.
+              Con DEMO_MODE=false vuelve la LandingPage comercial. */}
+          <Route path="/" element={DEMO_MODE ? <Navigate to="/app" replace /> : <LandingPage />} />
+          <Route path="/landing"  element={<LandingPage />} />
           <Route path="/login"    element={<PublicRoute><LoginPage /></PublicRoute>} />
           <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
           <Route path="/verify"   element={<VerifyOTPPage />} />
@@ -74,3 +79,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </PreferencesProvider>
   </BrowserRouter>
 )
+

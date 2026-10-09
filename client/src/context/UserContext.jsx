@@ -23,6 +23,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { api } from '../api/client.js'
+import { DEMO_MODE, DEMO_TALLER_USER } from '../config/demoMode.js'
 
 // Código promocional ingresado ANTES de tener una sesión real (ej. durante el
 // formulario de registro, previo a confirmar el email). Solo guarda el texto
@@ -51,34 +52,28 @@ export const PLANS = {
   },
 }
 
-// DEV BYPASS [2026-07-22]: allows automated smoke-tests to reach /app without a
-// real Supabase account. Activated ONLY when Vite is running in development mode.
-const _IS_DEV_BYPASS =
-  typeof import.meta !== 'undefined' &&
-  import.meta.env?.DEV === true
+// ★ DEMO BYPASS CONDICIONAL [2026-10-09] — piloto industrial.
+// Antes (mismo día) el perfil demo estaba CABLEADO: defaultUser era siempre el demo
+// y planFromSession() caía a 'pro' sin sesión → en producción cualquier visitante
+// veía UI Pro. Ahora todo cuelga de DEMO_MODE (config/demoMode.js): con el flag
+// apagado se restaura el flujo Supabase real sin reconstruir nada.
+const _IS_DEV_BYPASS = DEMO_MODE
 
-const defaultUser = {
+const GUEST_USER = {
   id: null,
-  name: '',
   email: '',
-  plan: _IS_DEV_BYPASS ? 'pro' : 'free',
+  name: '',
+  plan: 'free',
   company_name: '',
   isLoggedIn: false,
-  isVerified: true,
-  loading: true
+  isVerified: false,
+  loading: true,
 }
+
+const defaultUser = DEMO_MODE ? DEMO_TALLER_USER : GUEST_USER
 const UserContext = createContext(null)
 
-const DEV_MOCK_USER = {
-  id: 'dev-local-user',
-  name: 'Dev User',
-  email: 'dev@localhost',
-  plan: 'pro',
-  company_name: 'Dev Corp',
-  isLoggedIn: true,
-  isVerified: true,
-  loading: false,
-}
+const DEV_MOCK_USER = DEMO_TALLER_USER
 
 function planFromSession(session) {
   if (!session) return 'free'
@@ -87,19 +82,8 @@ function planFromSession(session) {
 }
 
 export function UserProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    if (_IS_DEV_BYPASS) return DEV_MOCK_USER
-    try {
-      const saved = localStorage.getItem('orbin-user-session')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (parsed.isLoggedIn) {
-          return { ...parsed, loading: false }
-        }
-      }
-    } catch {}
-    return defaultUser
-  })
+  const [user, setUser] = useState(defaultUser)
+
 
   useEffect(() => {
     try {
@@ -142,7 +126,7 @@ export function UserProvider({ children }) {
   useEffect(() => {
     // DEV BYPASS: skip Supabase entirely, stay logged-in as dev-local-user.
     if (_IS_DEV_BYPASS) {
-      console.warn('[UserContext] DEV_BYPASS active — using mock dev-local-user session. Never enable in production.')
+      console.info('[UserContext] DEMO_MODE activo — sesión local "Demo Taller" (Pro), sin Supabase.')
       setUser(DEV_MOCK_USER)
       return  // no Supabase subscription needed
     }
@@ -253,6 +237,8 @@ export function UserProvider({ children }) {
   const logout = useCallback(async () => {
     localStorage.removeItem('orbin-user-session')
     redeemedPendingRef.current = false
+    // DEMO_MODE: no hay sesión real que cerrar — el taller sigue dentro.
+    if (DEMO_MODE) { setUser(DEMO_TALLER_USER); return }
     await supabase.auth.signOut().catch(() => {})
     setUser({ ...defaultUser, loading: false })
   }, [])

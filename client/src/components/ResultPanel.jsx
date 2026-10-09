@@ -8,6 +8,7 @@ import { calculateCostEstimation } from '../data/materials.js'
 import { GALLERY_CATEGORIES, suggestCategory } from '../data/galleryCategories.js'
 import { localizeAdjustment } from '../engine/adjustmentMessages.js'
 import { localizeApiError } from '../engine/apiErrors.js'
+import { plateOverflow, plateOverflowLabel, plateOverflowTitle } from '../engine/plateFit.js'
 
 // ─── Viability Gate ─────────────────────────────────────────────────────────
 // Espejo EXACTO del guard del backend (server/src/routes/design.js → /save-viable).
@@ -402,16 +403,20 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
                     const isSelected = selectedPieceIds instanceof Set
                       ? selectedPieceIds.has(pKey)
                       : Array.isArray(selectedPieceIds) && selectedPieceIds.includes(pKey)
+                    const plateIssue = plateOverflow(p.width, p.height)
+                    const exceedsMdf = plateIssue !== null
                     return (
                     <tr
                       key={idx}
                       onClick={() => onSelectPieces && onSelectPieces(new Set([pKey]))}
                       className={`group transition-all cursor-pointer border border-white/5 ${
-                        isSelected
+                        exceedsMdf
+                          ? 'bg-amber-500/15 border-l-4 border-amber-400 font-bold'
+                          : isSelected
                           ? 'bg-primary/20 border-primary/40 shadow-[0_0_12px_rgba(245,166,35,0.15)]'
                           : 'bg-surface-3/30 hover:bg-surface-3'
                       }`}
-                      title="Click para resaltar en 3D"
+                      title={exceedsMdf ? plateOverflowTitle(plateIssue) : 'Click para resaltar en 3D'}
                     >
                       <td className="py-3.5 pl-4 rounded-l-2xl">
                         <div className="flex items-center gap-3">
@@ -423,12 +428,18 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
                             'bg-muted/30'
                           }`} />
                           <span className={`text-[11px] font-black tracking-tight uppercase transition-colors ${isSelected ? 'text-primary' : 'text-white group-hover:text-primary'}`}>{p.name}</span>
+                          {exceedsMdf && (
+                            <span className="ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                              {plateOverflowLabel(plateIssue)}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="py-3.5 text-center text-[11px] font-black text-white/60">{p.quantity}</td>
-                      <td className="py-3.5 text-right text-[11px] font-mono font-bold text-white tracking-tighter">{convert(p.width)}</td>
-                      <td className="py-3.5 text-right text-[11px] font-mono font-bold text-white tracking-tighter">{convert(p.height)}</td>
+                      <td className={`py-3.5 text-right text-[11px] font-mono font-bold tracking-tighter ${exceedsMdf ? 'text-amber-400 font-black' : 'text-white'}`}>{convert(p.width)}</td>
+                      <td className={`py-3.5 text-right text-[11px] font-mono font-bold tracking-tighter ${exceedsMdf ? 'text-amber-400 font-black' : 'text-white'}`}>{convert(p.height)}</td>
                       <td className="py-3.5 text-right pr-2 text-[10px] font-black text-muted">{p.thickness}mm</td>
+
                       <td className="py-3.5 pr-3 rounded-r-2xl">
                         <button
                           onClick={e => { e.stopPropagation(); onDeletePiece && onDeletePiece(design.id, p.id) }}

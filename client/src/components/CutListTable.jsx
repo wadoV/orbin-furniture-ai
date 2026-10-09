@@ -3,6 +3,7 @@ import { Download, Filter, ArrowUpDown, FileText, X, Eye, EyeOff } from 'lucide-
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import { plateOverflow, plateOverflowLabel, plateOverflowTitle, PLATE_LONG_MM, PLATE_SHORT_MM } from '../engine/plateFit.js'
 
 const EDGE_LABEL = (eb) => {
   if (!eb) return '—'
@@ -299,22 +300,36 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
             ) : filtered.map((p, i) => {
               const selected = isPieceSelected(p)
               const key = pieceKey(p)
+              const w = p.cutWidth ?? p.width
+              const h = p.cutHeight ?? p.height
+              const plateIssue = plateOverflow(w, h)
+              const exceedsMdfPlate = plateIssue !== null
               return (
               <tr
                 key={key + i}
                 onClick={() => onSelectPiece && onSelectPiece(new Set([key]))}
                 className={`group transition-all cursor-pointer ${
-                  selected
+                  exceedsMdfPlate
+                    ? 'bg-amber-500/15 border-l-4 border-amber-400 font-bold'
+                    : selected
                     ? 'bg-primary/15 border-l-2 border-primary shadow-[inset_0_0_8px_rgba(245,166,35,0.08)]'
                     : 'hover:bg-surface-2 border-l-2 border-transparent'
                 }`}
-                title={t('cl_row_title')}
+                title={exceedsMdfPlate ? plateOverflowTitle(plateIssue) : t('cl_row_title')}
               >
                 <td className={`px-3 py-2.5 font-mono text-xs ${selected ? 'text-primary font-bold' : 'text-muted'}`}>{p.id}</td>
-                <td className={`px-3 py-2.5 font-medium ${selected ? 'text-primary' : 'text-white'}`}>{p.name}</td>
+                <td className={`px-3 py-2.5 font-medium ${selected ? 'text-primary' : 'text-white'}`}>
+                  {p.name}
+                  {exceedsMdfPlate && (
+                    <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                      {plateOverflowLabel(plateIssue)}
+                    </span>
+                  )}
+                </td>
                 <td className={`px-3 py-2.5 text-xs font-mono ${TYPE_COLOR[p.type] || 'text-muted'}`}>{typeLabel(p.type)}</td>
-                <td className="px-3 py-2.5 font-mono text-right">{f(p.cutWidth ?? p.width)}</td>
-                <td className="px-3 py-2.5 font-mono text-right">{f(p.cutHeight ?? p.height)}</td>
+                <td className={`px-3 py-2.5 font-mono text-right ${exceedsMdfPlate && (w > PLATE_LONG_MM || (plateIssue === 'SHORT' && w > PLATE_SHORT_MM)) ? 'text-amber-400 font-black' : ''}`}>{f(w)}</td>
+                <td className={`px-3 py-2.5 font-mono text-right ${exceedsMdfPlate && (h > PLATE_LONG_MM || (plateIssue === 'SHORT' && h > PLATE_SHORT_MM)) ? 'text-amber-400 font-black' : ''}`}>{f(h)}</td>
+
                 <td className="px-3 py-2.5 font-mono text-right text-muted">{p.thickness}</td>
                 <td className="px-3 py-2.5 text-xs text-muted capitalize">{p.grainDirection}</td>
                 <td className="px-3 py-2.5 font-mono text-xs text-primary">{EDGE_LABEL(p.edgeBanding)}</td>

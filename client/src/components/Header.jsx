@@ -10,6 +10,7 @@ import { useUser, PLANS } from '../context/UserContext.jsx'
 import PricingDisplay from './PricingDisplay.jsx'
 import { api } from '../api/client.js'
 import OrbinLogo from './OrbinLogo.jsx'
+import { DEMO_MODE } from '../config/demoMode.js'
 
 function UpgradeModal({ onClose }) {
   const { upgradePlan, applyPromoCode, plan } = useUser()
@@ -206,14 +207,16 @@ function UserDropdown({ onClose, onUpgrade, onSettings }) {
           label={keepSession ? "Mantener sesión abierta" : "Cerrar sesión al salir"} 
           onClick={toggleSession} 
         />
-        <div className="h-px bg-white/5 my-1" />
-        <MenuItem icon={Crown}  label="Mejorar Plan"   accent  onClick={() => { onClose(); onUpgrade() }} />
+        {/* DEMO BYPASS (condicional): upgrade oculto solo con DEMO_MODE */}
+        {!DEMO_MODE && <div className="h-px bg-white/5 my-1" />}
+        {!DEMO_MODE && <MenuItem icon={Crown}  label="Mejorar Plan"   accent  onClick={() => { onClose(); onUpgrade() }} />}
         <div className="h-px bg-white/5 my-1" />
         <MenuItem icon={LogOut} label="Cerrar Sesion"  danger  onClick={handleLogout} />
       </div>
     </div>
   )
 }
+
 
 function PlanBadge({ plan }) {
   const MAP = {
@@ -436,7 +439,7 @@ export default function Header({ modules, serverOnline = true, onPasteModule, on
                 <span className="hidden sm:block text-[8px] text-muted font-bold tracking-[0.28em] uppercase opacity-50 leading-none">Furniture Engine</span>
               </div>
             </button>
-            {location.pathname === '/app' && (
+            {!DEMO_MODE && location.pathname === '/app' && (
               <button onClick={() => navigate('/')}
                 className="flex items-center justify-center w-8 h-8 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 hover:border-white/25 hover:bg-white/10 text-white transition-all duration-300 active:scale-95 shadow-sm"
                 title="Volver">
@@ -512,14 +515,14 @@ export default function Header({ modules, serverOnline = true, onPasteModule, on
               </div>
             )}
 
-            {!isLoading && !user.isLoggedIn && (
+            {!DEMO_MODE && !isLoading && !user.isLoggedIn && (
               <button onClick={() => navigate('/login')}
                 className="flex items-center gap-1.5 bg-primary/10 text-primary border border-primary/25 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all">
                 <Zap size={11} />Entrar
               </button>
             )}
 
-            {location.pathname === '/app' && (
+            {!DEMO_MODE && location.pathname === '/app' && (
               <button onClick={handleHeaderLogout}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-950/40 backdrop-blur-md border border-red-900/30 hover:border-red-500 hover:bg-red-500/10 text-[10px] font-black uppercase tracking-widest text-red-400 hover:text-white hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all duration-300 active:scale-95"
                 title="Cerrar Sesión / Sair">
@@ -529,7 +532,7 @@ export default function Header({ modules, serverOnline = true, onPasteModule, on
           </div>
         </div>
       </header>
-      {upgradeOpen && <UpgradeModal onClose={() => setUpgradeOpen(false)} />}
+      {!DEMO_MODE && upgradeOpen && <UpgradeModal onClose={() => setUpgradeOpen(false)} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </>
   )

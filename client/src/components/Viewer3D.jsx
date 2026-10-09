@@ -185,11 +185,15 @@ export default function Viewer3D({
   // groupRef/meshesRef -> invisible a selección, raycasting, export y captura CAD.
   const overlayGroupRef = useRef(null)
 
+  const pieceSet = selectedPieceIds instanceof Set
+    ? selectedPieceIds
+    : new Set(Array.isArray(selectedPieceIds) ? selectedPieceIds : [])
+
   // Keep reactive state in a ref for the animation loop
-  const stateRef = useRef({ exploded, wireframe, selectedPieceIds, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints })
+  const stateRef = useRef({ exploded, wireframe, selectedPieceIds: pieceSet, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints })
   useEffect(() => {
-    stateRef.current = { exploded, wireframe, selectedPieceIds, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints }
-  }, [exploded, wireframe, selectedPieceIds, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints])
+    stateRef.current = { exploded, wireframe, selectedPieceIds: pieceSet, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints }
+  }, [exploded, wireframe, pieceSet, selectedModuleId, openDrawers, orbitMode, rulerMode, rulerPoints])
 
   // ★ 2026-07-26 — REGRESIÓN CORREGIDA: clic en frente de gaveta no abría al primer clic.
   //
@@ -207,7 +211,7 @@ export default function Viewer3D({
   // Se conserva la intención de (b) — no arrastrar estado viejo — pero de forma NO
   // destructiva: se descartan sólo las claves de módulos que ya no están en escena.
   useEffect(() => {
-    const vivos = new Set(modules.map((m, i) => String(m.id || `MOD-${i + 1}`)))
+    const vivos = new Set((Array.isArray(modules) ? modules : []).map((m, i) => String(m?.id || `MOD-${i + 1}`)))
     setOpenDrawers(prev => {
       const next = new Set([...prev].filter(k => vivos.has(String(k).replace(/-d\d+(-\d+)?$/, ''))))
       return next.size === prev.size ? prev : next   // sin cambios → misma referencia (no re-render)
@@ -292,14 +296,9 @@ export default function Viewer3D({
 
     // --- Renderer — usa el canvas de React directamente para evitar conflictos DOM ---
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    // ★ 2026-08-02 (auditoría E2E) — updateStyle=false: el canvas ya se estira con
-    //   Tailwind (`absolute inset-0 w-full h-full`). Si dejamos que three escriba
-    //   `style.width/height` en px, ESE inline gana sobre las clases y el canvas
-    //   queda CONGELADO en la medida del primer layout. Síntoma medido: canvas de
-    //   903px dentro de un contenedor de 1055px → franja muerta de 152px a la
-    //   derecha del visor. Con `false` three sólo toca el drawing buffer.
-    renderer.setSize(canvas.clientWidth || 800, canvas.clientHeight || 600, false)
+    const initW = canvas.clientWidth || container?.clientWidth || 800
+    const initH = canvas.clientHeight || container?.clientHeight || 600
+    renderer.setSize(initW > 0 ? initW : 800, initH > 0 ? initH : 600, false)
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -425,26 +424,30 @@ export default function Viewer3D({
 
     // --- Resize ---
     const onResize = () => {
-      const c = mountRef.current
+      const c = mountRef.current || canvas
       if (!c) return
-      const w = c.clientWidth || c.parentElement?.clientWidth || 800
-      const h = c.clientHeight || c.parentElement?.clientHeight || 600
-      if (w === 0 || h === 0) return
+      const w = c.clientWidth || c.parentElement?.clientWidth || 0
+      const h = c.clientHeight || c.parentElement?.clientHeight || 0
+      if (w <= 0 || h <= 0) return
       cam.aspect = w / h
       cam.updateProjectionMatrix()
-      renderer.setSize(w, h, false)   // ★ ver nota en la creación del renderer
+      renderer.setSize(w, h, false)
       if (composerRef.current) composerRef.current.setSize(w, h)
     }
     window.addEventListener('resize', onResize)
 
-    // ★ 2026-08-02 (auditoría E2E) — `window.resize` NO alcanza. El contenedor del
-    //   visor cambia de ancho sin que la ventana cambie: al plegar "Ocultar Listas",
-    //   al abrir/cerrar el panel de documentos, o cuando el layout reflowea después
-    //   de cargar datos. En esos casos el canvas se quedaba con el tamaño viejo.
-    //   El ResizeObserver escucha al contenedor real, que es quien manda.
     let _ro = null
     try {
-      _ro = new ResizeObserver(() => onResize())
+      _ro = new ResizeObserver((entries) => {
+        if (entries && entries.length > 0) {
+          const rect = entries[0].contentRect
+          if (rect && rect.width > 0 && rect.height > 0) {
+            onResize()
+          }
+        } else {
+          onResize()
+        }
+      })
       _ro.observe(canvas.parentElement || canvas)
     } catch (_) { /* navegador sin ResizeObserver: queda el listener de window */ }
 
@@ -597,10 +600,10 @@ export default function Viewer3D({
             if (ue.shiftKey) {
               const next = new Set(stateRef.current.selectedPieceIds)
               next.has(id) ? next.delete(id) : next.add(id)
-              onSelectPiece(next)
+              if (typeof onSelectPiece === 'function') onSelectPiece(next)
             } else {
-              onSelectModule(moduleId)
-              onSelectPiece(new Set([id]))
+              if (typeof onSelectModule === 'function') onSelectModule(moduleId)
+              if (typeof onSelectPiece === 'function') onSelectPiece(new Set([id]))
               if (drawerKey) {
                 setOpenDrawers(prev => {
                   const next = new Set(prev)
@@ -610,8 +613,8 @@ export default function Viewer3D({
               }
             }
           } else {
-            onSelectModule(null)
-            onSelectPiece(new Set())
+            if (typeof onSelectModule === 'function') onSelectModule(null)
+            if (typeof onSelectPiece === 'function') onSelectPiece(new Set())
           }
         } else {
           // Box selection (uses world position since pieces are local to groups)
@@ -808,11 +811,10 @@ export default function Viewer3D({
         if (!rendererRef.current || !sceneRef.current || !camRef.current) return null
         const rdr   = rendererRef.current
         const sc    = sceneRef.current
-        const cam2  = camRef.current
         const meshes = meshesRef.current
 
         // ── Save camera state & setup Orthographic Camera ──────────────────
-        const activeModule = modules.find(m => m.id === stateRef.current.selectedModuleId) || modules[0]
+        const activeModule = (Array.isArray(modules) ? modules : []).find(m => m?.id === stateRef.current.selectedModuleId) || (Array.isArray(modules) ? modules[0] : null)
         const cfg = activeModule?.configuration || { width: 600, height: 720 }
         const w = (cfg.width || 600) * SCALE
         const h = (cfg.height || 720) * SCALE
@@ -896,7 +898,6 @@ export default function Viewer3D({
         })
         sc.background.set(savedBg)
         if (gridRef.current) gridRef.current.visible = savedGridVis
-
         return dataURL
       }
       onCaptureReady(captureWireframeDataURL)
@@ -1099,29 +1100,33 @@ export default function Viewer3D({
   // ★ Premium: Smooth camera focus on module selection
   const cameraTargetRef = useRef(null)
   useEffect(() => {
-    if (!selectedModuleId || !moduleGroupsRef.current[selectedModuleId]) return
+    if (!selectedModuleId || !moduleGroupsRef.current || !moduleGroupsRef.current[selectedModuleId]) return () => {}
     const mGroup = moduleGroupsRef.current[selectedModuleId]
+    if (!mGroup) return () => {}
     const box = new THREE.Box3().setFromObject(mGroup)
     const center = new THREE.Vector3()
     box.getCenter(center)
     cameraTargetRef.current = center
     // Smooth orbit target transition
     const controls = controlsRef.current
-    if (controls) {
+    if (controls && controls.target) {
       const startTarget = controls.target.clone()
       const startTime = Date.now()
       const duration = 600
       const smoothFocus = () => {
         const elapsed = Date.now() - startTime
-        const t = Math.min(elapsed / duration, 1)
+        const progress = Math.min(elapsed / duration, 1)
         // Ease-out cubic
-        const ease = 1 - Math.pow(1 - t, 3)
-        controls.target.lerpVectors(startTarget, center, ease)
-        controls.update()
-        if (t < 1) requestAnimationFrame(smoothFocus)
+        const ease = 1 - Math.pow(1 - progress, 3)
+        if (controls && controls.target && typeof controls.target.lerpVectors === 'function') {
+          controls.target.lerpVectors(startTarget, center, ease)
+          controls.update()
+        }
+        if (progress < 1) requestAnimationFrame(smoothFocus)
       }
       smoothFocus()
     }
+    return () => {}
   }, [selectedModuleId])
 
   // ─── 2. Build Geometry from Configuration (Parametric Construction Logic) ──
@@ -1195,7 +1200,7 @@ export default function Viewer3D({
     meshesRef.current = []
     moduleGroupsRef.current = {}
     // ★ PROTECTED: Clean stale position cache (modules that were deleted)
-    const activeIds = new Set(modules.map(m => m.id))
+    const activeIds = new Set((Array.isArray(modules) ? modules : []).filter(Boolean).map(m => m?.id))
     Object.keys(modulePositionsRef.current).forEach(k => {
       if (!activeIds.has(k)) delete modulePositionsRef.current[k]
     })
@@ -1204,8 +1209,10 @@ export default function Viewer3D({
     snapLinesRef.current = []
 
     // ★ PROTECTED: Find rightmost edge of EXISTING modules for new module placement
-    let maxRightEdge = 0
-    modules.forEach((design) => {
+    // ★ 2026-10-09 FIX CRASH "0 is not a function": sin ';' el ASI unía
+    //   `0` + `(Array...)` → `0(...)`. Punto y coma obligatorio aquí.
+    let maxRightEdge = 0;
+    (Array.isArray(modules) ? modules : []).forEach((design) => {
       const cfg = design?.configuration
       if (!cfg) return
       const W = (cfg.width || 600) * SCALE
@@ -1222,22 +1229,36 @@ export default function Viewer3D({
       }
     })
 
-    let currentXOffset = 0  // ★ FIX: fallback offset for legacy pieces (not used by cfg-based modules)
+    let currentXOffset = 0;  // ★ FIX: fallback offset for legacy pieces (not used by cfg-based modules)
 
-    modules.forEach((design, dIdx) => {
-      const cfg = design?.configuration
+    ;(modules || []).forEach((design, dIdx) => {
+      if (!design || typeof design !== 'object') return
+      let cfg = design?.configuration
 
       // ★ PROTECTED: Skip hidden modules (layers panel visibility)
-      if (hiddenModules.has(design.id)) {
+      if (design.id && hiddenModules.has(design.id)) {
         currentXOffset += ((cfg?.width || 600) * SCALE) + 5
         return
       }
 
-      // If no configuration, try to build from pieces array (fallback)
+      // If no configuration, try to build from pieces array or apply safe fallback
       if (!cfg) {
-        buildFromPieces(design, dIdx, group, currentXOffset)
-        currentXOffset += 100
-        return
+        if (design.pieces && Array.isArray(design.pieces) && design.pieces.length > 0) {
+          buildFromPieces(design, dIdx, group, currentXOffset)
+          currentXOffset += 100
+          return
+        }
+        cfg = {
+          width: 800,
+          height: 2100,
+          depth: 550,
+          thickness: 18,
+          numShelves: 3,
+          numDrawers: 0,
+          hasDoors: false,
+          hasBaseboard: true,
+          baseboardHeight: 80
+        }
       }
 
       const W  = (cfg.width  || 600) * SCALE
@@ -1655,7 +1676,7 @@ export default function Viewer3D({
     {
       // ★ FIX: auto-include base/kitchen modules even if hasCountertop not explicitly set
       const BASE_TYPES = new Set(['base', 'kitchen_base', 'base_cocina', 'cocina_base', 'base_kitchen'])
-      const ctModules = modules.filter(m => {
+      const ctModules = (Array.isArray(modules) ? modules : []).filter(m => {
         const cfg = m?.configuration
         const isBase = BASE_TYPES.has(cfg?.moduleType) || BASE_TYPES.has(m?.type)
         return (cfg?.hasCountertop || isBase) && !hiddenModules.has(m.id) && moduleGroupsRef.current[m.id]
@@ -2095,9 +2116,9 @@ export default function Viewer3D({
       {hoveredInfo && (
         <div className="absolute top-4 left-4 bg-surface/90 backdrop-blur-xl border border-border/50 p-4 rounded-2xl pointer-events-none shadow-2xl z-10">
           <div className="flex items-center gap-2 mb-1">
-            <div className={`w-2 h-2 rounded-full ${selectedPieceIds.size > 0 ? 'bg-primary animate-pulse' : 'bg-muted'}`} />
+            <div className={`w-2 h-2 rounded-full ${pieceSet.size > 0 ? 'bg-primary animate-pulse' : 'bg-muted'}`} />
             <span className="text-[10px] font-bold text-muted uppercase tracking-wider">
-              {selectedPieceIds.size > 1 ? `${selectedPieceIds.size} ${t('pieces', 'piezas')}` : (hoveredInfo?.type || 'info')}
+              {pieceSet.size > 1 ? `${pieceSet.size} ${t('pieces', 'piezas')}` : (hoveredInfo?.type || 'info')}
             </span>
           </div>
           {/* ★ El motor NUNCA traduce (los nombres son identificadores de nesting/BOM).
