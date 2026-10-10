@@ -330,14 +330,16 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
   }, [formSeed])
 
   // ★ PROTECTED: Only propagates to parent when editMode is active
+  // ★ FIX 2026-10-09 (piloto): `onUpdateConfig` (setState del App) se llamaba DENTRO del
+  //   updater de setParams. Los updaters deben ser puros: React los re-ejecuta al
+  //   re-renderizar (y 2× en StrictMode) → "Cannot update a component while rendering a
+  //   different component" + "Maximum update depth exceeded" al editar medidas en vivo.
+  //   El updater no dependía de `prev` para la propagación, así que se saca afuera.
   const setParam = useCallback((k, v) => {
-    setParams(prev => {
-      const next = { ...prev, [k]: v }
-      if (editMode && currentConfig && onUpdateConfig) {
-        onUpdateConfig({ [k]: v })
-      }
-      return next
-    })
+    setParams(prev => ({ ...prev, [k]: v }))
+    if (editMode && currentConfig && onUpdateConfig) {
+      onUpdateConfig({ [k]: v })
+    }
   }, [editMode, currentConfig, onUpdateConfig])
 
   const reset = () => { setParams({ ...DEFAULTS }); setNlText('') }

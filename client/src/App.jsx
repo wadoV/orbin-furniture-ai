@@ -228,7 +228,9 @@ export default function App() {
   // TASK 3: UNSAVED CHANGES GUARD & SESSION CONTROLS
   useEffect(() => {
     const handleBeforeUnload = (e) => {
-      if (hasUnsavedChanges) {
+      // DEMO_MODE: sin diálogo "¿Salir del sitio?" — el autosave (localStorage) ya
+      // persiste el diseño en cada cambio; en planta el F5 no debe frenar la demo.
+      if (hasUnsavedChanges && !DEMO_MODE) {
         e.preventDefault();
         e.returnValue = '¿Desea guardar los cambios del diseño antes de salir?';
       }
@@ -1142,7 +1144,10 @@ export default function App() {
             </aside>
 
             <div className={`space-y-4 xl:space-y-6 ${mobileView === 'panel' ? 'hidden xl:block' : 'block'}`}>
-              <div className="relative w-full h-full min-h-[500px] flex-1 overflow-hidden card p-0 border-primary/10 shadow-2xl shadow-primary/5" style={{ minHeight: 'clamp(500px, 50vw, 600px)' }}>
+              {/* ★ FIX 2026-10-09 (piloto): era `h-full` dentro de una columna de grid estirada →
+                  la tarjeta heredaba el alto de TODA la columna (visor + despiece ≈ 2800 px) y la
+                  cámara centraba el mueble fuera de la pantalla. Alto acotado al viewport. */}
+              <div className="relative w-full h-[calc(100vh-7rem)] max-h-[900px] min-h-[500px] flex-1 overflow-hidden card p-0 border-primary/10 shadow-2xl shadow-primary/5" style={{ minHeight: 'clamp(500px, 50vw, 600px)' }}>
                 {show3D ? (
                   <Suspense fallback={
                     <div className="flex items-center justify-center h-full min-h-[280px] gap-3 text-muted">

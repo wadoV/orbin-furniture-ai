@@ -11,6 +11,18 @@
 
 export const translations = {
   PT: {
+    // 2026-10-09: claves usadas en ResultPanel/App que faltaban (la UI mostraba la clave cruda)
+    viable_blocked_novalidation: "Sem validação estrutural do servidor. Gere o projeto novamente.",
+    viable_blocked_errors: "O projeto tem erros estruturais. Corrija antes de arquivar.",
+    viable_blocked_critical: "Há desvios críticos de fabricação (peças fora da chapa).",
+    viable_name_prompt: "Nome do projeto verificado:",
+    viable_saved: "Salvo na Biblioteca Verificada.",
+    gallery_category: "Categoria",
+    gallery_uncategorized: "Sem categoria",
+    save_viable_hint: "Arquivar na Biblioteca Verificada",
+    save_viable_design: "Salvar como Projeto Viável",
+    paste_invalid: "O projeto copiado não é válido.",
+    paste_ok: "Modelo carregado na tela.",
     // ── App ─────────────────────────────────────────────────────────────────
     title:           'Orbin AI — Design Paramétrico',
     app_subtitle:    'Motor de Móveis Paramétrico',
@@ -609,6 +621,18 @@ export const translations = {
   },
 
   ES: {
+    // 2026-10-09: claves usadas en ResultPanel/App que faltaban (la UI mostraba la clave cruda)
+    viable_blocked_novalidation: "Sin validación estructural del servidor. Regenerá el diseño.",
+    viable_blocked_errors: "El diseño tiene errores estructurales. Corregilos antes de archivarlo.",
+    viable_blocked_critical: "Hay desviaciones críticas de fabricación (piezas fuera de chapa).",
+    viable_name_prompt: "Nombre del diseño verificado:",
+    viable_saved: "Guardado en la Biblioteca Verificada.",
+    gallery_category: "Categoría",
+    gallery_uncategorized: "Sin clasificar",
+    save_viable_hint: "Archivar en la Biblioteca Verificada",
+    save_viable_design: "Guardar como Diseño Viable",
+    paste_invalid: "El diseño copiado no es válido.",
+    paste_ok: "Plantilla cargada en el lienzo.",
     // ── App ─────────────────────────────────────────────────────────────────
     title:          'Orbin AI — Diseño Paramétrico',
     app_subtitle:   'Motor de Muebles Paramétrico',
@@ -1207,6 +1231,18 @@ export const translations = {
   },
 
   EN: {
+    // 2026-10-09: claves usadas en ResultPanel/App que faltaban (la UI mostraba la clave cruda)
+    viable_blocked_novalidation: "No structural validation from the server. Regenerate the design.",
+    viable_blocked_errors: "The design has structural errors. Fix them before archiving.",
+    viable_blocked_critical: "There are critical manufacturing deviations (pieces exceed the sheet).",
+    viable_name_prompt: "Verified design name:",
+    viable_saved: "Saved to the Verified Library.",
+    gallery_category: "Category",
+    gallery_uncategorized: "Uncategorized",
+    save_viable_hint: "Archive to the Verified Library",
+    save_viable_design: "Save as Viable Design",
+    paste_invalid: "The copied design is not valid.",
+    paste_ok: "Template loaded on the canvas.",
     // ── App ─────────────────────────────────────────────────────────────────
     title:          'Orbin AI — Parametric Design',
     app_subtitle:   'Parametric Furniture Engine',
