@@ -1047,9 +1047,14 @@ export default function App() {
             }}
           />
         )}
-        <main className="max-w-screen-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24 xl:pb-6">
+        {/* ★ LAYOUT 2026-10-10 — split-screen restaurado desde `lg` (1024 px).
+            Antes el split arrancaba en `xl` (1280 px): con Windows al 125 % una laptop de
+            1366 px reporta ~1093 px CSS → la app caía al modo alternante "Ver 3D / Panel".
+            Desde lg: alto acotado bajo el Header (3.75rem), sin scroll global, y cada
+            columna con scroll interno propio. */}
+        <main className="max-w-screen-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24 lg:py-4 lg:pb-4 lg:h-[calc(100vh-3.75rem)] lg:overflow-hidden lg:flex lg:flex-col">
           {/* Mobile view toggle */}
-          <div className="xl:hidden flex items-center justify-between mb-3">
+          <div className="lg:hidden flex items-center justify-between mb-3">
             <span className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
               {mobileView === 'panel' ? <><PanelLeft size={13} className="text-primary" /> Panel</> : <><Eye size={13} className="text-primary" /> Visor 3D</>}
             </span>
@@ -1058,8 +1063,8 @@ export default function App() {
               {mobileView === 'panel' ? <><Eye size={11} /> Ver 3D</> : <><PanelLeft size={11} /> Panel</>}
             </button>
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-4 xl:gap-6">
-            <aside className={`xl:sticky xl:top-20 xl:self-start space-y-4 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-1 pb-4 scrollbar-thin scrollbar-thumb-surface-3 scrollbar-track-transparent ${mobileView === "viewer" ? "hidden xl:block" : "block"}`}>
+          <div className="grid grid-cols-1 lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[420px_minmax(0,1fr)] gap-4 xl:gap-6 lg:flex-1 lg:min-h-0">
+            <aside className={`space-y-4 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 pb-4 scrollbar-thin scrollbar-thumb-surface-3 scrollbar-track-transparent ${mobileView === "viewer" ? "hidden lg:block" : "block"}`}>
               <div className="flex items-center justify-between border-b border-white/5 pb-3">
                 <h1 className="text-xl font-black text-white leading-tight">
                   {(t('title') || '').split('—')[0]}<br />
@@ -1201,11 +1206,13 @@ export default function App() {
               />
             </aside>
 
-            <div className={`space-y-4 xl:space-y-6 ${mobileView === 'panel' ? 'hidden xl:block' : 'block'}`}>
+            <div className={`space-y-4 xl:space-y-6 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain scrollbar-thin scrollbar-thumb-surface-3 scrollbar-track-transparent ${mobileView === 'panel' ? 'hidden lg:block' : 'block'}`}>
               {/* ★ FIX 2026-10-09 (piloto): era `h-full` dentro de una columna de grid estirada →
                   la tarjeta heredaba el alto de TODA la columna (visor + despiece ≈ 2800 px) y la
                   cámara centraba el mueble fuera de la pantalla. Alto acotado al viewport. */}
-              <div className="relative w-full h-[calc(100vh-7rem)] max-h-[900px] min-h-[500px] flex-1 overflow-hidden card p-0 border-primary/10 shadow-2xl shadow-primary/5" style={{ minHeight: 'clamp(500px, 50vw, 600px)' }}>
+              {/* lg+: el visor ocupa TODO el alto de la columna derecha (el despiece queda
+                  debajo, con el scroll propio de la columna). Móvil: alto de viewport. */}
+              <div className="relative w-full h-[calc(100vh-7rem)] max-h-[900px] lg:h-full lg:max-h-none min-h-[500px] flex-1 overflow-hidden card p-0 border-primary/10 shadow-2xl shadow-primary/5" style={{ minHeight: 'clamp(500px, 50vw, 600px)' }}>
                 {show3D ? (
                   <Suspense fallback={
                     <div className="flex items-center justify-center h-full min-h-[280px] gap-3 text-muted">
