@@ -242,7 +242,7 @@ const TAB_ITEMS = [
 ]
 
 // ─── Main ResultPanel ───────────────────────────────────────────────────────
-export default function ResultPanel({ design, onSave, loadingSave, onDeleteModule, onDeletePiece, selectedPieceIds, onSelectPieces }) {
+export default function ResultPanel({ design, onSave, loadingSave, onDeleteModule, onDeletePiece, selectedPieceIds, onSelectPieces, onDownloadJson }) {
   const { lang, unit, format, t, convert, setClipboardModule } = usePreferences()
   const [activeTab, setActiveTab] = useState('summary')
 
@@ -496,6 +496,17 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
             : <><Save size={18} /> {t('save_project')}</>
           }
         </button>
+
+        {/* ★ 2026-10-10: JSON completo del proyecto (módulos + despiece) con un clic */}
+        {typeof onDownloadJson === 'function' && (
+          <button
+            type="button"
+            onClick={onDownloadJson}
+            className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-surface-3/40 text-[10px] font-black uppercase tracking-[0.2em] text-white/70 hover:text-primary hover:border-primary/30 transition-all"
+          >
+            <Download size={15} /> {t('download_project_json', 'Descargar JSON del proyecto')}
+          </button>
+        )}
 
         {/* Biblioteca Verificada — solo se habilita con diseño VALIDADO sin
             errores ni desviaciones críticas. El backend revalida igualmente. */}

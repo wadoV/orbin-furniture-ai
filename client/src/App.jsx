@@ -161,6 +161,7 @@ export default function App() {
       if (DEMO_MODE && new URLSearchParams(window.location.search).has('reset')) {
         localStorage.removeItem('orbin-autosave')
         localStorage.removeItem('orbin-autosave-ts')
+        localStorage.removeItem('orbin-project-id')   // proyecto nuevo tras el reset
         const url = new URL(window.location.href); url.searchParams.delete('reset')
         window.history.replaceState({}, '', url)
         return [DEFAULT_INITIAL_MODULE]
@@ -600,8 +601,10 @@ export default function App() {
     setSelectedModuleId(mod.id)
     setActiveTab('params')
     setVolatileOverlay(null)
-    try { api.saveProject(mod, 'Chat — ' + (mod.type || 'módulo')) }
-    catch (e) { if (import.meta.env.DEV) console.warn('[HITL] saveProject', e) }
+    // ★ 2026-10-10: el try/catch no atrapaba el rechazo de la promesa (→ "Uncaught
+    //   (in promise)" en consola). Ahora el request realmente guarda (fix en client.js).
+    api.saveProject(mod, 'Chat — ' + (mod.type || 'módulo'))
+      .catch(e => { if (import.meta.env.DEV) console.warn('[HITL] saveProject', e?.message) })
     handleSendMessage(t('hitl_confirm_next') || 'Módulo confirmado. Continuá con los muebles aéreos alineados.')
   }
 
@@ -833,6 +836,61 @@ export default function App() {
   const isLikelyEngineParams = (o) =>
     o && typeof o === 'object' && !Array.isArray(o) &&
     ['width', 'height', 'depth'].every(k => Number.isFinite(Number(o[k])) && Number(o[k]) > 0)
+
+  // ★ 2026-10-10 — GUARDADO LOCAL REAL. El botón "Guardar proyecto" solo hacía
+  //   console.log. Ahora persiste TODO el proyecto (todos los módulos con su despiece)
+  //   en el backend local → server/data/approved_projects/*.json (+ Supabase si existe).
+  //   El id es estable por navegador: re-guardar sobrescribe el mismo archivo.
+  const [savingProject, setSavingProject] = useState(false)
+  const getProjectId = () => {
+    try {
+      let pid = localStorage.getItem('orbin-project-id')
+      if (!pid) {
+        const d = new Date(), z = n => String(n).padStart(2, '0')
+        pid = `PRJ-${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`
+        localStorage.setItem('orbin-project-id', pid)
+      }
+      return pid
+    } catch { return 'PRJ-' + Date.now() }
+  }
+  const buildProjectPayload = () => ({
+    id: getProjectId(),
+    modules: (modulesRef.current.length ? modulesRef.current : modules)
+      .map(({ _demoSnapshot, ...m }) => m),   // flags internos de UI fuera del archivo
+  })
+  const handleSaveProject = async () => {
+    if (savingProject) return
+    const project = buildProjectPayload()
+    if (!project.modules.length) return
+    if (project.modules.some(m => m?._cutListStale)) {
+      flashPaste('error', 'Despiece recalculándose — esperá un segundo y volvé a guardar.')
+      return
+    }
+    setSavingProject(true)
+    try {
+      const label = `${project.modules.length} módulo(s) — ${new Date().toLocaleString()}`
+      const r = await api.saveProject(project, label)
+      setHasUnsavedChanges(false)
+      flashPaste('ok', r?.local?.file
+        ? `Guardado en disco local: ${r.local.file}`
+        : `Guardado (${r?.storage || 'servidor'})`)
+    } catch (err) {
+      flashPaste('error', err?.message || 'No se pudo guardar el proyecto.')
+    } finally {
+      setSavingProject(false)
+    }
+  }
+  // Descarga el JSON completo (módulos + despiece + nesting + herrajes) con un clic.
+  const handleDownloadProjectJson = () => {
+    const project = buildProjectPayload()
+    const doc = { schema: 'orbin.project/v1', exportedAt: new Date().toISOString(), ...project }
+    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `${project.id}.json`
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
 
   const flashPaste = (type, msg) => {
     setPasteToast({ type, msg })
@@ -1206,7 +1264,9 @@ export default function App() {
                     onSelectPieces={setSelectedPieceIds}
                     onDeleteModule={handleDeleteModule}
                     onDeletePiece={handleDeletePiece}
-                    onSave={() => { setHasUnsavedChanges(false); if (import.meta.env.DEV) console.log('Saving module', shownResult?.id) }}
+                    onSave={handleSaveProject}
+                    loadingSave={savingProject}
+                    onDownloadJson={handleDownloadProjectJson}
                   />
                 </div>
               )}

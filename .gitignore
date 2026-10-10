@@ -84,3 +84,6 @@ _plan_review/
 
 # Artefacto de build del snapshot de planos (se regenera con npm run plan:snapshot)
 scripts/planGenerator.cjs
+
+# 2026-10-10: proyectos de clientes guardados localmente por el server (no versionar)
+server/data/approved_projects/

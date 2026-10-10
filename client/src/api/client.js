@@ -95,9 +95,11 @@ export const api = {
 
   // Projects (persistence)
   saveProject(design, label) {
-    // Check if design is already wrapped in an object or if it's the raw modules/design
-    const payload = design.modules ? design : { design };
-    return request('POST', '/projects/save', { design: payload, label });
+    // ★ FIX 2026-10-10: antes un módulo suelto se enviaba como { design: { design: mod } }
+    //   → el server no veía `design.id` y respondía 400 (todo guardado desde el chat se
+    //   perdía en silencio). El server ya acepta ambas formas: { id, modules:[…] } o un
+    //   módulo con `id` (lo envuelve en [design]). Se envía tal cual.
+    return request('POST', '/projects/save', { design, label });
   },
   listProjects:   ()         => request('GET',  '/projects'),
 

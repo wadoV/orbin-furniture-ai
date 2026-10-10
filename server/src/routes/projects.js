@@ -44,6 +44,23 @@ function withDbTimeout(promise, label) {
 }
 const DEMO_RESILIENT = () => process.env.DEMO_MODE === 'true' || process.env.NODE_ENV !== 'production'
 
+// ★ 2026-10-10 (ADITIVO): persistencia local en disco (server/data/approved_projects).
+//   Local-first: se escribe SIEMPRE (salvo ORBIN_LOCAL_STORE=false), antes de Supabase.
+//   Un fallo de disco nunca tumba el request: se loguea y se sigue con memoria/Supabase.
+const localStore = require('../storage/localProjectStore')
+const path = require('path')
+
+function writeLocal(record) {
+  if (!localStore.isEnabled()) return null
+  try {
+    const { file, contentHash } = localStore.saveProject(record)
+    return { file: path.basename(file), contentHash }   // nunca exponer la ruta absoluta
+  } catch (err) {
+    console.error('[projects/local] No se pudo escribir en disco:', err.message)
+    return { error: 'disk_write_failed' }
+  }
+}
+
 // ─── Apply auth to ALL routes in this router ─────────────────────────────────
 // Must be declared before any route handler.
 router.use(requireAuth)
@@ -75,19 +92,21 @@ router.post('/save', async (req, res) => {
 
   // Save in memory first as resilient fallback
   memStore.set(`${userId}:${record.id}`, record)
+  // …y en disco local (sobrevive a reinicios; no depende de red ni de Supabase)
+  const local = writeLocal(record)
 
   const sb = getSupabase()
   if (sb) {
     try {
       const { error } = await withDbTimeout(sb.from('projects').upsert(record), 'projects.upsert')
       if (error) throw new Error(error.message)
-      return res.json({ success: true, id: record.id, label: record.label, storage: 'supabase' })
+      return res.json({ success: true, id: record.id, label: record.label, storage: local?.file ? 'supabase+local' : 'supabase', local })
     } catch (err) {
       console.warn('[projects/save] Supabase error, saved to memory fallback:', err.message)
     }
   }
 
-  res.json({ success: true, id: record.id, label: record.label, storage: 'memory' })
+  res.json({ success: true, id: record.id, label: record.label, storage: local?.file ? 'local' : 'memory', local })
 })
 
 // ─── GET /api/projects ───────────────────────────────────────────────────────
@@ -118,7 +137,15 @@ router.get('/', async (req, res) => {
     .map(([, r]) => ({ id: r.id, label: r.label, created_at: r.created_at }))
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, 20)
-  res.json({ success: true, projects, storage: 'memory' })
+  // ★ 2026-10-10: une lo guardado en disco (sobrevive a reinicios del server)
+  const seen = new Set(projects.map(p => p.id))
+  const fromDisk = localStore.isEnabled()
+    ? localStore.listProjects(userId === 'dev-local-user' ? null : userId, 20).filter(p => !seen.has(p.id))
+    : []
+  const merged = [...projects, ...fromDisk]
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    .slice(0, 20)
+  res.json({ success: true, projects: merged, storage: fromDisk.length ? 'memory+local' : 'memory' })
 })
 
 // ─── GET /api/projects/:id ───────────────────────────────────────────────────
@@ -145,6 +172,7 @@ router.get('/:id', async (req, res) => {
   }
 
   const record = memStore.get(`${userId}:${id}`) || memStore.get(`dev-local-user:${id}`)
+    || (localStore.isEnabled() ? (localStore.getProject(userId, id) || localStore.getProject('dev-local-user', id)) : null)
   if (!record) return res.status(200).json({ success: false, error: 'Proyecto no encontrado en almacenamiento local.' })
   res.json({ success: true, ...record, storage: 'memory' })
 })
@@ -166,9 +194,11 @@ router.delete('/:id', async (req, res) => {
         .eq('owner_id', req.user.id), 'projects.delete')                   // ← ownership enforced
       if (error) throw new Error(error.message)
       if (count === 0) return res.status(404).json({ success: false, error: 'Proyecto no encontrado.' })
+      if (localStore.isEnabled()) localStore.deleteProject(req.user.id, id)   // copia local en sync
     } else {
       const key = `${req.user.id}:${id}`
-      if (!memStore.has(key)) return res.status(404).json({ success: false, error: 'Proyecto no encontrado.' })
+      const onDisk = localStore.isEnabled() && localStore.deleteProject(req.user.id, id)
+      if (!memStore.has(key) && !onDisk) return res.status(404).json({ success: false, error: 'Proyecto no encontrado.' })
       memStore.delete(key)
     }
 
@@ -181,6 +211,7 @@ router.delete('/:id', async (req, res) => {
     // DEMO_MODE: DB caída → borra del Map volátil y responde 200 (cero 500 en planta).
     if (DEMO_RESILIENT()) {
       memStore.delete(`${req.user?.id}:${req.params.id}`)
+      if (localStore.isEnabled()) localStore.deleteProject(req.user?.id, req.params.id)
       return res.json({ success: true, storage: 'memory', degraded: true })
     }
     res.status(500).json({ success: false, error: 'No pudimos eliminar el proyecto. Intentá de nuevo.' })

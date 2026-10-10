@@ -11,6 +11,7 @@
 
 export const translations = {
   PT: {
+    download_project_json: "Baixar JSON do projeto",
     // 2026-10-09: claves usadas en ResultPanel/App que faltaban (la UI mostraba la clave cruda)
     viable_blocked_novalidation: "Sem validação estrutural do servidor. Gere o projeto novamente.",
     viable_blocked_errors: "O projeto tem erros estruturais. Corrija antes de arquivar.",
@@ -621,6 +622,7 @@ export const translations = {
   },
 
   ES: {
+    download_project_json: "Descargar JSON del proyecto",
     // 2026-10-09: claves usadas en ResultPanel/App que faltaban (la UI mostraba la clave cruda)
     viable_blocked_novalidation: "Sin validación estructural del servidor. Regenerá el diseño.",
     viable_blocked_errors: "El diseño tiene errores estructurales. Corregilos antes de archivarlo.",
@@ -1231,6 +1233,7 @@ export const translations = {
   },
 
   EN: {
+    download_project_json: "Download project JSON",
     // 2026-10-09: claves usadas en ResultPanel/App que faltaban (la UI mostraba la clave cruda)
     viable_blocked_novalidation: "No structural validation from the server. Regenerate the design.",
     viable_blocked_errors: "The design has structural errors. Fix them before archiving.",
