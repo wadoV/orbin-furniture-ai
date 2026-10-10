@@ -32,6 +32,7 @@ import { useUser } from './context/UserContext.jsx'
 import { calculateAerialAlignment, findBaseForAerial, isAerialModule } from './lib/stackingMath.js'
 import { DEMO_MODE } from './config/demoMode.js'
 import DEMO_BASE_MODULE from './data/demoBaseModule.js'
+import { nextRotation, normalizeRotation } from './lib/dimensionLayout.js'
 
 // ── Plan Upgrade Banner ────────────────────────────────────────────────────────
 // [2026-06-23] Inline PlanLimitAlert replaced by real UpgradePrompt component
@@ -102,10 +103,27 @@ function isPristineDemoModule(m) {
 
 function sanitizeModulesPositions(mods) {
   if (!Array.isArray(mods)) return []
+  // ★ 2026-10-10: X por defecto ACUMULATIVA y CONTIGUA (gap 0; antes 50 mm). El visor
+  //   ya ubicaba los módulos tocándose ("unificar encimera"); con 50 mm de hueco las
+  //   cotas corridas (tolerancia 5 mm) nunca se formaban. Dos pasadas: un módulo nuevo
+  //   se ubica a la derecha del borde más a la derecha de los que YA tienen posición
+  //   (antes podía caer encima de uno ubicado más adelante en el array).
+  const footX = (m) => {
+    const c = m?.configuration || {}
+    const rot = ((Math.round((Number(m?.rotation) || 0) / 90) * 90) % 360 + 360) % 360
+    return (rot === 90 || rot === 270) ? (c.depth || 580) : (c.width || 600)
+  }
   let currentX = 0
-  return mods.map((mod, idx) => {
+  for (const m of mods) {
+    if (m && typeof m === 'object' && m.position && typeof m.position.x === 'number' && !Number.isNaN(m.position.x)) {
+      // borde derecho real: position.x es el borde izq. del ancla SIN girar; girado,
+      // la huella (ancho fx) queda centrada en x + W/2 → derecha = x + (W + fx)/2
+      const W = m.configuration?.width || 600
+      currentX = Math.max(currentX, m.position.x + (W + footX(m)) / 2)
+    }
+  }
+  return mods.map((mod) => {
     if (!mod || typeof mod !== 'object') return mod
-    const width = mod.configuration?.width || 600
     if (!mod.position || typeof mod.position.x !== 'number' || Number.isNaN(mod.position.x)) {
       const updated = {
         ...mod,
@@ -115,12 +133,10 @@ function sanitizeModulesPositions(mods) {
           z: mod.position?.z || 0
         }
       }
-      currentX += width + 50
+      currentX += footX(mod)
       return updated
-    } else {
-      currentX = Math.max(currentX, mod.position.x + width + 50)
-      return mod
     }
+    return mod
   })
 }
 
@@ -444,6 +460,9 @@ export default function App() {
           refreshMemory()
         } catch {}
         setTimeout(() => {
+          // ★ 2026-10-10: en split-screen (≥1024 px) NO se desplaza: el scroll movía la
+          //   columna derecha y el visor 3D quedaba fuera de vista justo al generar.
+          if (window.innerWidth >= 1024) return
           const el = document.getElementById('results')
           if (el) el.scrollIntoView({ behavior: 'smooth' })
         }, 100)
@@ -760,12 +779,41 @@ export default function App() {
     }, 350)
   }, [])
 
+  // ★ 2026-10-10 — TRANSFORMACIONES en el modelo de datos (mm / grados).
+  //   `rotation` ∈ {0,90,180,270} sobre Y; `position` {x,y,z}. Pasan por saveHistory
+  //   (Ctrl+Z las deshace) y quedan en autosave + guardado local del proyecto.
+  //   No tocan `configuration` → no disparan recálculo de despiece (el corte no cambia
+  //   por girar o mover un mueble).
+  const handleRotateModule = (id) => {
+    if (!id) return
+    saveHistory(modulesRef.current.map(m => m.id === id ? { ...m, rotation: nextRotation(m.rotation) } : m), 'Girar módulo 90°')
+  }
+  const handleUpdateTransform = (id, { position } = {}) => {
+    if (!id || !position) return
+    saveHistory(modulesRef.current.map(m => m.id === id
+      ? { ...m, position: { x: 0, y: 0, z: 0, ...(m.position || {}), ...position } }
+      : m), 'Mover módulo')
+  }
+
   const handleUpdateModule = (id, newConfig) => {
     if (!id) return
     const target = modulesRef.current.find(m => m.id === id) || modules.find(m => m.id === id)
     if (!target) return
     const merged = { ...target.configuration, ...newConfig }
-    saveHistory(modules.map(m => m.id === id ? { ...m, configuration: merged, _cutListStale: true } : m))
+    // ★ 2026-10-10 — REFLUJO EN X: si cambia el ancho de un módulo sin girar, los módulos
+    //   a su derecha en la misma fila se corren el mismo delta (siguen contiguos y la cota
+    //   corrida se mantiene). Solo datos: el visor los recoloca desde `position`.
+    const oldW = Number(target.configuration?.width), newW = Number(merged.width)
+    const dW = Number.isFinite(oldW) && Number.isFinite(newW) ? newW - oldW : 0
+    const tp = target.position
+    const reflow = (m) => {
+      if (!dW || !tp || typeof tp.x !== 'number' || normalizeRotation(target.rotation) !== 0) return m
+      const p = m.position
+      if (m.id === id || !p || typeof p.x !== 'number') return m
+      const sameRow = Math.abs((p.z || 0) - (tp.z || 0)) < (Number(target.configuration?.depth) || 600)
+      return (sameRow && p.x >= tp.x + oldW - 5) ? { ...m, position: { ...p, x: p.x + dW } } : m
+    }
+    saveHistory(modules.map(m => m.id === id ? { ...m, configuration: merged, _cutListStale: true } : reflow(m)))
     scheduleRegen(id, merged)
   }
 
@@ -1229,6 +1277,8 @@ export default function App() {
                     onSelectPiece={setSelectedPieceIds}
                     onDeleteModule={handleDeleteModule}
                     onUpdateModule={handleUpdateModule}
+                    onRotateModule={handleRotateModule}
+                    onUpdateTransform={handleUpdateTransform}
                     onCaptureReady={handleCaptureReady}
                     onIsoCaptureReady={handleIsoCaptureReady}
                     onCadCaptureReady={handleCadCaptureReady}
