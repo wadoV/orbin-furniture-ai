@@ -104,10 +104,15 @@ function dimension(group, { p1, p2, o1, o2, text, labelDir, S }) {
 }
 
 /**
- * @param {{ items: Array<{id:string, box:object}>, scale:number, tolMm?:number, color?:number }} opts
+ * @param {{ items: Array<{id:string, box:object}>, scale:number, tolMm?:number, color?:number,
+ *           mode?: 'iso'|'front'|'side', sideIds?: string[] }} opts
+ *   mode 'front' (alzado): anchos + corrida + alturas, sin profundidad (en ortogonal frontal
+ *                          la profundidad colapsa en un punto).
+ *   mode 'side'  (perfil): profundidad + altura de los módulos `sideIds` (por defecto el
+ *                          extremo derecho), colocadas para leerse mirando desde +X.
  * @returns {THREE.Group}
  */
-export function buildDimensionOverlay({ items, scale, tolMm = 5, color = 0xF5A623 }) {
+export function buildDimensionOverlay({ items, scale, tolMm = 5, color = 0xF5A623, mode = 'iso', sideIds = null }) {
   const group = new THREE.Group()
   group.name = '__orbin_dimensions__'
   group.userData._isOverlay = true
@@ -144,6 +149,31 @@ export function buildDimensionOverlay({ items, scale, tolMm = 5, color = 0xF5A62
     text: `${Math.round(zMax - zMin)} mm`, labelDir: RIGHT, S,
   })
 
+  // ── Perfil: solo profundidad (arriba) y altura (por delante) del/los extremo(s) ──
+  if (mode === 'side') {
+    const FRONT = new THREE.Vector3(0, 0, 1)
+    const ids = sideIds?.length ? new Set(sideIds) : new Set([items.reduce((a, b) => (b.box.xMax > a.box.xMax ? b : a)).id])
+    let level = 0
+    for (const it of items) {
+      if (!ids.has(it.id)) continue
+      const b = it.box
+      dimension(group, {
+        p1: V(b.xMax, b.yMax + off, b.zMin), p2: V(b.xMax, b.yMax + off, b.zMax),
+        o1: V(b.xMax, b.yMax, b.zMin), o2: V(b.xMax, b.yMax, b.zMax),
+        text: `${Math.round(b.zMax - b.zMin)} mm`, labelDir: UP, S,
+      })
+      const zH = b.zMax + off * (1 + level)
+      dimension(group, {
+        p1: V(b.xMax, b.yMin, zH), p2: V(b.xMax, b.yMax, zH),
+        o1: V(b.xMax, b.yMin, b.zMax), o2: V(b.xMax, b.yMax, b.zMax),
+        text: `${Math.round(b.yMax - b.yMin)} mm`, labelDir: FRONT, S,
+      })
+      level++
+    }
+    return group
+  }
+  const withDepth = mode !== 'front'
+
   const plan = buildDimensionPlan(items, { tolMm })
   const byId = new Map(items.map(i => [i.id, i.box]))
 
@@ -167,7 +197,7 @@ export function buildDimensionOverlay({ items, scale, tolMm = 5, color = 0xF5A62
       level++
     }
     const last = boxes[boxes.length - 1]
-    depthDim(chain.xMax + off * level, last.xMax, last.yMin, last.zMin, last.zMax)
+    if (withDepth) depthDim(chain.xMax + off * level, last.xMax, last.yMin, last.zMin, last.zMax)
   }
 
   // ── Módulos sueltos (o girados): sus tres cotas ───────────────────────────────
@@ -176,7 +206,7 @@ export function buildDimensionOverlay({ items, scale, tolMm = 5, color = 0xF5A62
     const b = it.box
     widthDim(b.xMin, b.xMax, b.yMax + off, b.zMax, b.yMax, `${Math.round(b.xMax - b.xMin)} mm`)
     heightDim(b.xMin - off, b.xMin, b.yMin, b.yMax, b.zMax, LEFT)
-    depthDim(b.xMax + off, b.xMax, b.yMin, b.zMin, b.zMax)
+    if (withDepth) depthDim(b.xMax + off, b.xMax, b.yMin, b.zMin, b.zMax)
   }
   return group
 }

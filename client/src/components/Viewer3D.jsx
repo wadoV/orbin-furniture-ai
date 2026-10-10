@@ -13,7 +13,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
-import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan, ZoomIn, ZoomOut, RotateCw, Axis3d, DraftingCompass } from 'lucide-react'
+import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan, ZoomIn, ZoomOut, RotateCw, Axis3d, DraftingCompass, FileImage } from 'lucide-react'
 
 import PresentationMode from './PresentationMode.jsx'
 import AIVisualStylist from './AIVisualStylist.jsx'
@@ -25,8 +25,9 @@ import { getPBRMaterial } from '../engine/materialLibrary.js'
 //   por localizePieceName y mostraban "Porta". El operario no puede emparejarlos.
 import { localizePieceName } from '../engine/pieceNames.js'
 import { AEREO_MOUNT } from '../engine/domainConstants.js'
-import { normalizeRotation, rotationOffset, moduleWorldBox } from '../lib/dimensionLayout.js'
+import { normalizeRotation, rotationOffset, moduleWorldBox, buildDimensionPlan, chainLabel } from '../lib/dimensionLayout.js'
 import { buildDimensionOverlay, buildAxesOverlay, disposeOverlay } from '../lib/dimensionOverlay.js'
+import { countertopEligibility, buildCountertopClusters } from '../lib/countertopLayout.js'
 
 // Captura técnica (plano gris CAD): esconde y restaura las texturas PBR (bumpMap)
 // para que las vistas del plano queden en gris plano, sin veta de madera. [2026-07]
@@ -177,6 +178,9 @@ export default function Viewer3D({
   const [showAxes, setShowAxes] = useState(false)
   const [overlayVersion, setOverlayVersion] = useState(0)   // ↑ tras arrastrar → recalcula cotas
   const [transformInfo, setTransformInfo] = useState(null)  // {id,x,y,z,rotation,isAereo} del seleccionado
+  // ★ 2026-10-10 (b) — Vistas técnicas: 'iso' (órbita libre) | 'front' (alzado) | 'side' (perfil)
+  const [viewMode, setViewMode] = useState('iso')
+  const [isExportingSheet, setIsExportingSheet] = useState(false)
   const dimsGroupRef = useRef(null)
   const axesGroupRef = useRef(null)
   const appliedPosRef = useRef({})        // id → JSON de la última `position` de datos aplicada
@@ -1731,63 +1735,41 @@ export default function Viewer3D({
     // a single merged countertop slab spanning the full width of each chain.
     // This eliminates the seam / gap between side-by-side module countertops.
     {
-      // ★ FIX: auto-include base/kitchen modules even if hasCountertop not explicitly set
-      const BASE_TYPES = new Set(['base', 'kitchen_base', 'base_cocina', 'cocina_base', 'base_kitchen'])
-      const ctModules = (Array.isArray(modules) ? modules : []).filter(m => {
-        const cfg = m?.configuration
-        const isBase = BASE_TYPES.has(cfg?.moduleType) || BASE_TYPES.has(m?.type)
-        // ★ 2026-10-10: un módulo girado sale de la encimera unificada (su huella ya no
-        //   está alineada al eje X; la unión asumía frente en +Z).
-        return (cfg?.hasCountertop || isBase) && !hiddenModules.has(m.id) && moduleGroupsRef.current[m.id]
-          && normalizeRotation(m.rotation) === 0
+      // ★ 2026-10-10 — TAMPO POR CLÚSTER COPLANAR (lib/countertopLayout.js).
+      //   Antes: cadena por cercanía en X (150 mm, sin límite inferior) y tampo a la ALTURA
+      //   MÁXIMA → un ropero 2100 junto a un balcão 720 dejaba un tampo volando a 2100 sobre
+      //   el balcão. Ahora: solo módulos elegibles (sin torres ≥1800, aéreos, escritorios ni
+      //   girados), contiguos ≤5 mm, misma cara superior ±2 mm, misma fila; y la caja usa la
+      //   posición REAL (x, y elevación, z) — antes asumía y=0 y z=0.
+      const ctItems = []
+      const ctById = {}
+      ;(Array.isArray(modules) ? modules : []).forEach(m => {
+        const grp = m?.id && moduleGroupsRef.current[m.id]
+        if (!grp || hiddenModules.has(m.id) || !m.configuration) return
+        const rotation = grp.userData.rotation || 0
+        if (!countertopEligibility(m, rotation).ok) return
+        const cfg = m.configuration
+        const off = grp.userData.rotOffset || { dx: 0, dz: 0 }
+        ctItems.push({
+          id: m.id,
+          box: moduleWorldBox({
+            width: cfg.width || 600, height: cfg.height || 720, depth: cfg.depth || 580,
+            anchorX: (grp.position.x - off.dx) / SCALE, anchorZ: (grp.position.z - off.dz) / SCALE,
+            y: grp.position.y / SCALE, rotation,
+          }),
+        })
+        ctById[m.id] = m
       })
 
-      if (ctModules.length > 0) {
-        // ★ Compute bounding boxes directly from config + mGroup.position
-        // (avoids world-matrix update race — setFromObject needs a render pass first)
-        const ctBoxes = ctModules
-          .map(m => {
-            const cfg  = m.configuration
-            const W    = (cfg.width  || 600) * SCALE
-            const H    = (cfg.height || 720) * SCALE
-            const D    = (cfg.depth  || 580) * SCALE
-            const mGrp = moduleGroupsRef.current[m.id]
-            return {
-              module: m,
-              box: {
-                min: { x: mGrp.position.x - W / 2, y: 0,  z: 0 },
-                max: { x: mGrp.position.x + W / 2, y: H,  z: D },
-              }
-            }
-          })
-          .sort((a, b) => a.box.min.x - b.box.min.x)   // order left → right
-
-        // Tolerance constants (scene units: 1 unit = 10 mm)
-        const X_TOUCH = 15   // ≈ 150 mm gap tolerance — catches default placement + snapped modules
-        const Z_ALIGN = 15   // ≈ 150 mm front-face depth alignment tolerance
-
-        // Build adjacency chains (all values are plain numbers now)
-        const chains = [[ctBoxes[0]]]
-        for (let i = 1; i < ctBoxes.length; i++) {
-          const prev = ctBoxes[i - 1]
-          const curr = ctBoxes[i]
-          const xGap  = curr.box.min.x - prev.box.max.x
-          const zDiff = Math.abs(curr.box.max.z - prev.box.max.z)
-          if (xGap <= X_TOUCH && zDiff <= Z_ALIGN) {
-            chains[chains.length - 1].push(curr)
-          } else {
-            chains.push([curr])
-          }
-        }
-
-
-        // Create one unified slab per chain
-        chains.forEach(chain => {
-          const xMin   = chain[0].box.min.x
-          const xMax   = chain[chain.length - 1].box.max.x
-          const topY   = Math.max(...chain.map(c => c.box.max.y))
-          const frontZ = Math.max(...chain.map(c => c.box.max.z))
-          const backZ  = Math.min(...chain.map(c => c.box.min.z))
+      if (ctItems.length > 0) {
+        const clusters = buildCountertopClusters(ctItems)
+        clusters.forEach(cl => {
+          const chain  = cl.ids.map(id => ({ module: ctById[id] }))
+          const xMin   = cl.xMin * SCALE
+          const xMax   = cl.xMax * SCALE
+          const topY   = cl.topY * SCALE
+          const frontZ = cl.zMax * SCALE
+          const backZ  = cl.zMin * SCALE
 
           const cfg0     = chain[0].module.configuration
           const ctColor  = MATERIAL_COLORS[cfg0.countertopMaterial] || TYPE_COLORS.countertop
@@ -2042,16 +2024,10 @@ export default function Viewer3D({
     group.add(mGroup)
   }
 
-  // ─── ★ 2026-10-10 — OVERLAYS: cotas CAD + ejes ─────────────────────────────
-  //   Corre DESPUÉS del armado de geometría (mismo ciclo, efecto declarado después).
-  //   Lee posiciones reales de los grupos (incluye arrastres) y dims de la config (mm).
-  useEffect(() => {
-    const scene = sceneRef.current
-    if (!scene || !rendererRef.current) return
-    // limpiar
-    for (const ref of [dimsGroupRef, axesGroupRef]) {
-      if (ref.current) { scene.remove(ref.current); disposeOverlay(ref.current); ref.current = null }
-    }
+  // ─── ★ 2026-10-10 — Cajas reales (mm) de los módulos visibles ─────────────────
+  //   Fuente única para cotas, vistas técnicas y ficha: posición real del grupo
+  //   (incluye arrastres) + dimensiones de la config + giro.
+  const collectOverlayItems = () => {
     const items = []
     let selectedBox = null, selectedInfo = null
     ;(Array.isArray(modules) ? modules : []).forEach(m => {
@@ -2065,7 +2041,7 @@ export default function Viewer3D({
         width: cfg.width || 600, height: cfg.height || 720, depth: cfg.depth || 580,
         anchorX: ax, anchorZ: az, y: grp.position.y / SCALE, rotation,
       })
-      items.push({ id: m.id, box })
+      items.push({ id: m.id, box, module: m })
       if (m.id === selectedModuleId) {
         selectedBox = box
         const isAereo = cfg.moduleType === 'aereo'
@@ -2076,9 +2052,199 @@ export default function Viewer3D({
         }
       }
     })
+    return { items, selectedBox, selectedInfo }
+  }
+
+  // ─── ★ 2026-10-10 (b) — VISTAS TÉCNICAS EN VIVO ───────────────────────────────
+  //   Frontal: cámara en +Z mirando al frente. Lateral: desde +X (perfil derecho).
+  //   3D: vuelve a la isométrica. Orbitar con el mouse devuelve el modo a '3D'
+  //   (las cotas vuelven a incluir profundidad).
+  const setTechnicalView = useCallback((mode) => {
+    const cam = camRef.current, controls = controlsRef.current, grp = groupRef.current
+    if (!cam || !controls || !grp) return
+    const box = new THREE.Box3().setFromObject(grp)
+    if (box.isEmpty()) return
+    // Encuadre que incluye las cotas (si están visibles): sin esto las cotas superiores
+    // y la de altura quedaban cortadas o debajo del HUD.
+    if (dimsGroupRef.current?.visible) {
+      dimsGroupRef.current.updateMatrixWorld(true)
+      box.union(new THREE.Box3().setFromObject(dimsGroupRef.current))
+    }
+    const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3())
+    const tanHalf = Math.tan((cam.fov * Math.PI) / 360)
+    const fitDist = (w, h) => (Math.max(h, w / (cam.aspect || 1)) / 2) / tanHalf * 1.3
+    let pos
+    if (mode === 'front') pos = new THREE.Vector3(c.x, c.y, box.max.z + fitDist(sz.x, sz.y))
+    else if (mode === 'side') pos = new THREE.Vector3(box.max.x + fitDist(sz.z, sz.y), c.y, c.z)
+    else pos = c.clone().add(new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(Math.max(sz.x, sz.y, sz.z) * 2.2))
+    controls.target.copy(c)
+    cam.position.copy(pos)
+    cam.up.set(0, 1, 0)
+    cam.lookAt(c)
+    controls.update()
+    setViewMode(mode)
+  }, [])
+
+  useEffect(() => {
+    const controls = controlsRef.current
+    if (!controls) return
+    const onStart = () => setViewMode(m => (m === 'iso' ? m : 'iso'))
+    controls.addEventListener('start', onStart)
+    return () => controls.removeEventListener('start', onStart)
+  }, [isReady])
+
+  // Materiales sin resaltado de selección/hover mientras dura `fn` (fotos para cliente/taller)
+  const withCleanMaterials = (fn) => {
+    const restore = []
+    if (!stateRef.current.wireframe) {
+      meshesRef.current.forEach(m => {
+        const mat = m.material, ud = m.userData
+        if (!mat?.color || ud?.originalColor === undefined) return
+        restore.push([mat, mat.color.clone(), mat.emissive?.clone(), mat.emissiveIntensity, ud.edgeHelper, ud.edgeHelper?.material.color.clone(), ud.edgeHelper?.material.opacity])
+        mat.color.set(ud.originalColor)
+        if (mat.emissive) mat.emissive.set(0x000000)
+        if (ud.edgeHelper) { ud.edgeHelper.material.color.set(0x000000); ud.edgeHelper.material.opacity = 0.1 }
+      })
+    }
+    try { return fn() } finally {
+      restore.forEach(([mat, col, e, ei, edge, ec, eo]) => {
+        mat.color.copy(col); if (e && mat.emissive) mat.emissive.copy(e); mat.emissiveIntensity = ei
+        if (edge) { edge.material.color.copy(ec); edge.material.opacity = eo }
+      })
+    }
+  }
+
+  /**
+   * Render ORTOGONAL (proyección paralela real, sin perspectiva) de la composición con
+   * sus cotas de vista, a `pxW×pxH` px, sobre Charcoal #0D0D0D. Devuelve un <canvas>.
+   * Síncrono de punta a punta: ningún frame de la animación se intercala.
+   */
+  const renderOrthoView = (mode, items, pxW, pxH) => {
+    const renderer = rendererRef.current, scene = sceneRef.current, grp = groupRef.current
+    if (!renderer || !scene || !grp || !items.length) return null
+    const sideIds = mode === 'side' ? [items.reduce((a, b) => (b.box.xMax > a.box.xMax ? b : a)).id] : null
+    const ov = buildDimensionOverlay({ items, scale: SCALE, tolMm: 5, mode, sideIds })
+    scene.add(ov)
+    ov.updateMatrixWorld(true)
+    const box = new THREE.Box3().setFromObject(grp).union(new THREE.Box3().setFromObject(ov))
+    const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3())
+    const viewW = (mode === 'side' ? sz.z : sz.x) * 1.08, viewH = sz.y * 1.08
+    const aspect = pxW / pxH
+    const fw = Math.max(viewW, viewH * aspect), fh = fw / aspect
+    const cam = new THREE.OrthographicCamera(-fw / 2, fw / 2, fh / 2, -fh / 2, 0.1, 20000)
+    if (mode === 'side') cam.position.set(box.max.x + 2000, c.y, c.z)
+    else cam.position.set(c.x, c.y, box.max.z + 2000)
+    cam.up.set(0, 1, 0)
+    cam.lookAt(c)
+    cam.updateProjectionMatrix()
+    const savedBg = scene.background, savedFog = scene.fog
+    const live = [dimsGroupRef.current, axesGroupRef.current].filter(Boolean).map(g => [g, g.visible])
+    live.forEach(([g]) => { g.visible = false })
+    try {
+      scene.background = new THREE.Color(0x0d0d0d)
+      scene.fog = null              // la niebla oscurece a 2000 u de distancia
+      renderer.setPixelRatio(1)
+      renderer.setSize(pxW, pxH, false)
+      renderer.render(scene, cam)
+      const out = document.createElement('canvas')
+      out.width = pxW; out.height = pxH
+      out.getContext('2d').drawImage(renderer.domElement, 0, 0, pxW, pxH)
+      return out
+    } finally {
+      scene.background = savedBg; scene.fog = savedFog
+      live.forEach(([g, v]) => { g.visible = v })
+      scene.remove(ov); disposeOverlay(ov)
+    }
+  }
+
+  // ─── ★ 2026-10-10 (b) — FICHA TÉCNICA DE TALLER (PNG) ─────────────────────────
+  //   Alzado frontal + perfil lateral ortogonales, cotas activas, pie técnico.
+  //   Lo que sale es exactamente la geometría del visor (misma escena, sin redibujo).
+  const handleExportSheet = useCallback(async () => {
+    const renderer = rendererRef.current
+    if (!renderer || isExportingSheet) return
+    const { items } = collectOverlayItems()
+    if (!items.length) return
+    setIsExportingSheet(true)
+    const prevRatio = renderer.getPixelRatio()
+    const prevSize = renderer.getSize(new THREE.Vector2())
+    try {
+      const PW = 1540, PH = 1340   // ≈ 2× de un panel de 770×670 → impresión nítida
+      const [front, side] = withCleanMaterials(() => [
+        renderOrthoView('front', items, PW, PH),
+        renderOrthoView('side', items, PW, PH),
+      ])
+      if (!front || !side) return
+      const W = 3200, H = 1960, HEAD = 150, FOOT = 300, GAP = 40
+      const sheet = document.createElement('canvas')
+      sheet.width = W; sheet.height = H
+      const g = sheet.getContext('2d')
+      g.fillStyle = '#0D0D0D'; g.fillRect(0, 0, W, H)
+      const font = (w, px) => `${w} ${px}px Inter, system-ui, sans-serif`
+      let projectId = ''
+      try { projectId = localStorage.getItem('orbin-project-id') || '' } catch (_) {}
+      g.textBaseline = 'middle'
+      g.fillStyle = '#F5A623'; g.font = font(800, 54); g.fillText('ORBIN AI · FICHA TÉCNICA DE TALLER', 60, HEAD / 2)
+      g.fillStyle = '#BDBDBD'; g.font = font(500, 34); g.textAlign = 'right'
+      g.fillText(`${projectId ? projectId + ' · ' : ''}${new Date().toLocaleString()}`, W - 60, HEAD / 2)
+      g.textAlign = 'left'
+      const panel = (img, x, title) => {
+        g.strokeStyle = '#2A2A2A'; g.lineWidth = 3; g.strokeRect(x, HEAD, PW, PH + 70)
+        g.fillStyle = '#E5E5E5'; g.font = font(800, 32); g.fillText(title, x + 24, HEAD + 36)
+        g.drawImage(img, x, HEAD + 70)
+      }
+      panel(front, 60, 'ALZADO FRONTAL')
+      panel(side, 60 + PW + GAP, 'PERFIL LATERAL (vista desde la derecha)')
+      // Pie técnico: cotas netas
+      const plan = buildDimensionPlan(items, { tolMm: 5 })
+      const ctClusters = buildCountertopClusters(items.filter(i => countertopEligibility(i.module, i.box.rotation).ok))
+      const lines = [
+        'Módulos: ' + items.map((it, i) => {
+          const c = it.module.configuration
+          return `M${i + 1} ${c.width}×${c.height}×${c.depth}${it.box.rotation ? ` (giro ${it.box.rotation}°)` : ''}`
+        }).join('  ·  '),
+        plan.chains.length ? 'Corridas: ' + plan.chains.map(chainLabel).join('  ·  ') : 'Corridas: —',
+        ctClusters.length
+          ? 'Tampos: ' + ctClusters.map(cl => `${cl.width} × ${Math.round(cl.zMax - cl.zMin) + 20} × 30 mm a ${Math.round(cl.topY)} mm`).join('  ·  ')
+          : 'Tampos: —',
+        'Medidas en mm · proyección ortogonal · verificar en obra antes de cortar.',
+      ]
+      const y0 = HEAD + PH + 70 + 50
+      lines.forEach((t, i) => {
+        g.fillStyle = i === lines.length - 1 ? '#8A8A8A' : '#E5E5E5'
+        g.font = font(i === lines.length - 1 ? 500 : 600, 32)
+        g.fillText(t, 60, y0 + i * 52, W - 120)
+      })
+      const blob = await new Promise(res => sheet.toBlob(res, 'image/png'))
+      if (!blob) return
+      const name = `orbin-ficha-${projectId || new Date().toISOString().slice(0, 10)}.png`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.download = name; a.href = url
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1500)
+    } finally {
+      renderer.setPixelRatio(prevRatio)
+      renderer.setSize(prevSize.x, prevSize.y, false)
+      setIsExportingSheet(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modules, hiddenModules, isExportingSheet])
+
+  // ─── ★ 2026-10-10 — OVERLAYS: cotas CAD + ejes ─────────────────────────────
+  //   Corre DESPUÉS del armado de geometría (mismo ciclo, efecto declarado después).
+  //   Lee posiciones reales de los grupos (incluye arrastres) y dims de la config (mm).
+  useEffect(() => {
+    const scene = sceneRef.current
+    if (!scene || !rendererRef.current) return
+    // limpiar
+    for (const ref of [dimsGroupRef, axesGroupRef]) {
+      if (ref.current) { scene.remove(ref.current); disposeOverlay(ref.current); ref.current = null }
+    }
+    const { items, selectedBox, selectedInfo } = collectOverlayItems()
     setTransformInfo(selectedInfo)
     if (showDims && items.length) {
-      const g = buildDimensionOverlay({ items, scale: SCALE, tolMm: 5 })
+      const g = buildDimensionOverlay({ items, scale: SCALE, tolMm: 5, mode: viewMode })
       g.visible = !isDragMoving
       scene.add(g); dimsGroupRef.current = g
     }
@@ -2090,7 +2256,7 @@ export default function Viewer3D({
       g.visible = !isDragMoving
       scene.add(g); axesGroupRef.current = g
     }
-  }, [modules, hiddenModules, showDims, showAxes, selectedModuleId, overlayVersion, isDragMoving, isReady])
+  }, [modules, hiddenModules, showDims, showAxes, selectedModuleId, overlayVersion, isDragMoving, isReady, viewMode])
 
   // Limpieza de overlays al desmontar
   useEffect(() => () => {
@@ -2317,12 +2483,45 @@ export default function Viewer3D({
 
       {/* ★ PROTECTED: Ruler measurement display */}
       {rulerMode && rulerPoints.length === 2 && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#00FF99]/10 backdrop-blur-md border border-[#00FF99]/40 px-4 py-2 rounded-full z-30 pointer-events-none">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-[#00FF99]/10 backdrop-blur-md border border-[#00FF99]/40 px-4 py-2 rounded-full z-30 pointer-events-none">
           <span className="text-[#00FF99] text-xs font-bold uppercase tracking-wider flex items-center gap-2">
             <Ruler size={12} /> {rulerDistance} mm
           </span>
         </div>
       )}
+
+      {/* ★ 2026-10-10 (b) — Vistas técnicas + Ficha de taller */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 bg-black/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl">
+        {[
+          { id: 'iso',   label: '3D' },
+          { id: 'front', label: lang === 'PT' ? 'Frontal' : lang === 'EN' ? 'Front' : 'Frontal' },
+          { id: 'side',  label: lang === 'PT' ? 'Lateral' : lang === 'EN' ? 'Side' : 'Lateral' },
+        ].map(v => (
+          <button
+            key={v.id}
+            type="button"
+            onClick={() => setTechnicalView(v.id)}
+            aria-pressed={viewMode === v.id}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+              viewMode === v.id ? 'bg-primary text-black' : 'text-white/70 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            {v.label}
+          </button>
+        ))}
+        <div className="w-px h-5 bg-white/10 mx-1" />
+        <button
+          type="button"
+          onClick={handleExportSheet}
+          disabled={isExportingSheet}
+          aria-label={lang === 'PT' ? 'Exportar Ficha Técnica (PNG)' : lang === 'EN' ? 'Export Technical Sheet (PNG)' : 'Exportar Ficha Técnica (PNG)'}
+          title={lang === 'PT' ? 'Ficha técnica: frontal + lateral ortogonais com cotas' : lang === 'EN' ? 'Technical sheet: orthographic front + side with dimensions' : 'Ficha técnica: frontal + lateral ortogonales con cotas'}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary/15 transition-all disabled:opacity-50"
+        >
+          {isExportingSheet ? <Loader2 size={13} className="animate-spin" /> : <FileImage size={13} />}
+          {lang === 'EN' ? 'Sheet' : 'Ficha'}
+        </button>
+      </div>
 
       {/* ─── PROFESSIONAL CAD TOOLBAR (SketchUp style - Always Visible) ─── */}
       <div className="absolute top-1/2 -translate-y-1/2 left-4 flex flex-col gap-3 bg-black/60 backdrop-blur-xl p-2 rounded-2xl border border-white/10 shadow-2xl z-30 transition-all duration-300 hover:border-white/20">
