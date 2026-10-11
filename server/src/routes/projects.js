@@ -12,6 +12,8 @@
 const express     = require('express')
 const router      = express.Router()
 const { requireAuth } = require('../middleware/auth')
+// ★ ADITIVO 2026-10-11 — gate: solo se persisten diseños estructuralmente sanos
+const { validateDesign } = require('../engine/validator')
 
 // ─── Storage layer (Supabase service client or in-memory fallback) ────────────
 
@@ -39,11 +41,42 @@ router.use(requireAuth)
 router.post('/save', async (req, res) => {
   try {
     const { design, label } = req.body
-    if (!design || !design.id) {
-      return res.status(400).json({ success: false, error: 'El campo "design" con "id" es obligatorio.' })
+    // ★ FIX 2026-10-11: el guard previo exigía design.id siempre, pero NINGÚN
+    // call site del cliente lo envía (ProjectsPanel.jsx manda {modules} sin id;
+    // el flujo HITL manda el módulo suelto, que sí trae id propio). El id real
+    // se genera más abajo con fallback (`design.id || 'PRJ-'+Date.now()`) —
+    // exigirlo acá rechazaba TODO guardado desde la UI con 400. Se afloja el
+    // guard a solo "es un objeto", que es lo único que el resto del handler
+    // necesita.
+    if (!design || typeof design !== 'object') {
+      return res.status(400).json({ success: false, error: 'El campo "design" es obligatorio.' })
     }
 
     const modules = design.modules || [design]
+
+    // ★ ADITIVO 2026-10-11 — Solo se guardan diseños sanos (VALIDADO).
+    // Reusa el mismo validador estructural que ya corre en /design/generate
+    // y en el flujo HITL de chat (server/src/engine/validator.js), para que
+    // la galería nunca termine con un diseño que no se puede cortar.
+    const rejections = []
+    modules.forEach((mod, idx) => {
+      try {
+        const v = validateDesign(mod)
+        if (v.status === 'RECHAZADO') {
+          const moduleLabel = mod.type || mod.moduleType || `Módulo ${idx + 1}`
+          rejections.push(`${moduleLabel}: ${v.errors.join(' | ')}`)
+        }
+      } catch (e) {
+        rejections.push(`Módulo ${idx + 1}: no se pudo validar estructuralmente (${e.message}).`)
+      }
+    })
+    if (rejections.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `No se guardó: ${rejections.length} ${rejections.length === 1 ? 'módulo tiene' : 'módulos tienen'} errores estructurales.\n${rejections.join('\n')}`,
+      })
+    }
+
     if (req.user.plan === 'free' && modules.length > 3) {
       return res.status(403).json({
         success: false,

@@ -82,10 +82,15 @@ export const api = {
   chatParse:      (text)     => request('POST', '/chat/parse', { text }),
 
   // Projects (persistence)
+  // ★ FIX 2026-10-11: la heurística previa (`design.modules ? design : { design }`)
+  // doble-envolvía un módulo suelto con id propio (p.ej. el flujo HITL de chat en
+  // App.jsx, que llama saveProject(mod, label)) en { design: mod }, perdiendo el
+  // id en el nivel que el servidor espera y garantizando un 400 silencioso.
+  // El servidor ya acepta ambas formas de `design` directamente — { id, modules:
+  // [...] } o un módulo único { id, configuration, pieces, ... } — así que no
+  // hace falta envolver nada acá.
   saveProject(design, label) {
-    // Check if design is already wrapped in an object or if it's the raw modules/design
-    const payload = design.modules ? design : { design };
-    return request('POST', '/projects/save', { design: payload, label });
+    return request('POST', '/projects/save', { design, label });
   },
   listProjects:   ()         => request('GET',  '/projects'),
   getProject:     (id)       => request('GET',  `/projects/${id}`),
