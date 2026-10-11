@@ -22,6 +22,7 @@ REGLAS DE MANUFACTURA INDUSTRIAL (INQUEBRANTABLES):
    - "aereo": Para cocinas altas, armários aéreos, wall cabinets, gabinetes superiores (asume height: 700, depth: 350 por defecto).
 4. Puertas y Ancho: Si el ancho > 600mm y hay puertas, fuerza un mínimo de 'numDoors: 2'.
 5. Cajones y Columnas: Si hay cajones, define un drawerLayout adecuado ('vertical' por defecto para cajones apilados, 'left' o 'right' si el usuario pide cajonera a un lado).
+   - drawerFrontStyle: 'flat' (estándar), 'cava_cnc' (rebajo router central), 'cava45' (bisel 45°), o 'internal' (embutida). Mapea descripciones: "gaveta interna/oculta" → 'internal', "rebajo para router/cava fresada" → 'cava_cnc', "cava a 45°" → 'cava45'.
 6. Cubierta de Cajones: Si hay cajones (numDrawers > 0), topShelf DEBE ser true. En tu campo "interpreted", explica SIEMPRE: "He incluido una repisa superior de cierre sobre tus cajones para proteger la estructura y los mecanismos."
 
 ESQUEMA JSON OBLIGATORIO:
@@ -40,6 +41,9 @@ ESQUEMA JSON OBLIGATORIO:
     "hasDoors": boolean,
     "doorType": "hinged" | "sliding" | "none",
     "drawerLayout": "vertical" | "left" | "right" | "horizontal",
+    "drawerFrontStyle": "flat" | "cava_cnc" | "cava45" | "internal",
+    "cavaCncWidth": number (80-250, default 140),
+    "cavaCncDepth": number (20-50, default 35),
     "handleType": "standard" | "gola" | "push",
     "hasCountertop": boolean,
     "topShelf": boolean,

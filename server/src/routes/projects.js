@@ -68,6 +68,7 @@ router.use(requireAuth)
 // ─── POST /api/projects/save ─────────────────────────────────────────────────
 
 router.post('/save', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
   const { design, label } = req.body || {}
   if (!design || !design.id) {
     return res.status(400).json({ success: false, error: 'El campo "design" con "id" es obligatorio.' })
@@ -106,7 +107,7 @@ router.post('/save', async (req, res) => {
     }
   }
 
-  res.json({ success: true, id: record.id, label: record.label, storage: local?.file ? 'local' : 'memory', local })
+  return res.status(200).json({ success: true, id: record.id, label: record.label, storage: local?.file ? "local" : "memory", local, contentHash: local?.contentHash })
 })
 
 // ─── GET /api/projects ───────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ import {
 import { exportDesign, nestPieces, downloadBlob } from '../engine/exportAdapters.js'
 import { drawElevation, elevationBox } from '../engine/planRenderer.js'
 import { generateFactoryCutlist } from '../engine/CutlistGenerator.js'
-import { generateModulePlanSVG, generateConjuntoPlanSVG, CAJETIN_FIELDS, PLAN_VIEWBOX } from '../engine/planGenerator.js'
+import { generateModulePlanSVG, generateConjuntoPlanSVG, generateCutlistSheetsSVG, CAJETIN_FIELDS, PLAN_VIEWBOX } from '../engine/planGenerator.js'
 import { localizePieceName } from '../engine/pieceNames.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
@@ -667,11 +667,11 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
           pdf.addField(tf)
         })
       }
-      const addSVG = async (svg, first) => {
+      const addSVG = async (svg, first, withCajetin = true) => {
         const png = await svgToPngDataURL(svg, 2.5)
         if (!first) pdf.addPage('a4', 'landscape')
         pdf.addImage(png, 'JPEG', offX, offY, imgW, imgH)   // ★ sin distorsión (ver nota arriba)
-        addEditableCajetin()
+        if (withCajetin) addEditableCajetin()
       }
       const planOpts = { theme: 'print', lang, company, captures, isoDataURL: iso, editableFields: true }
       if (mode === 'conjunto') {
@@ -681,6 +681,11 @@ export default function ExportPanel({ modules = [], captureWireframe = null, cap
           await addSVG(generateModulePlanSVG(modules[i], planOpts), i === 0)
         }
       }
+      // ★ 2026-10-10: hoja(s) de corte dedicada(s) con la lista COMPLETA del proyecto,
+      //   paginada, sin filas truncadas. Se añaden tras el plano. Sin cajetín editable
+      //   (no son plano de dibujo). Vacío cuando la lista ya cabe en el resumen del plano.
+      const cutSheets = generateCutlistSheetsSVG(modules, planOpts)
+      for (const sheet of cutSheets) await addSVG(sheet, false, false)
       pdf.save(`orbin-plano-${mode}-${Date.now()}.pdf`)
       trackEvent(EVENTS.FILE_EXPORTED, { format: 'plano-pro-' + mode })
     } catch (err) { console.error('PLANO PRO ERROR:', err); setError('PLANO ERROR: ' + err.message) }

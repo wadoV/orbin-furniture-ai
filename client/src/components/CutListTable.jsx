@@ -330,7 +330,7 @@ export default function CutListTable({ cutList, selectedPieceIds, onSelectPiece,
                 <td className={`px-3 py-2.5 font-mono text-right ${exceedsMdfPlate && (w > PLATE_LONG_MM || (plateIssue === 'SHORT' && w > PLATE_SHORT_MM)) ? 'text-amber-400 font-black' : ''}`}>{f(w)}</td>
                 <td className={`px-3 py-2.5 font-mono text-right ${exceedsMdfPlate && (h > PLATE_LONG_MM || (plateIssue === 'SHORT' && h > PLATE_SHORT_MM)) ? 'text-amber-400 font-black' : ''}`}>{f(h)}</td>
 
-                <td className="px-3 py-2.5 font-mono text-right text-muted">{p.thickness}</td>
+                <td className="px-3 py-2.5 font-mono text-right text-muted">{p.thickness ?? '—'}</td>
                 <td className="px-3 py-2.5 text-xs text-muted capitalize">{p.grainDirection}</td>
                 <td className="px-3 py-2.5 font-mono text-xs text-primary">{EDGE_LABEL(p.edgeBanding)}</td>
                 {/* ── Botón Ojo ───────────────────────────────────── */}

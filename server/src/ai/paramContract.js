@@ -55,6 +55,7 @@ const ENUMS = {
   moduleType: ['standard', 'base', 'aereo', 'desk'],
   doorType: ['hinged', 'sliding', 'none'],
   drawerLayout: ['vertical', 'horizontal', 'left', 'right'],
+  drawerFrontStyle: ['flat', 'cava_cnc', 'cava45', 'internal'],
   handleType: ['standard', 'gola', 'push'],
   edgeBandingType: ['thin', 'thick'],
   baseType: ['recessed', 'legs', 'none'],

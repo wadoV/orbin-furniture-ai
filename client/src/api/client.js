@@ -109,6 +109,7 @@ export const api = {
   saveViableDesign: (designName, params, category = null) =>
     request('POST', '/designs/save-viable', { design_name: designName, params, category }),
   listViableDesigns: ()      => request('GET',  '/designs/viable'),
+  deleteViableDesign: (id)   => request('DELETE', `/designs/viable/${encodeURIComponent(id)}`),
 
   getProject:     (id)       => request('GET',  `/projects/${id}`),
   deleteProject:  (id)       => request('DELETE', `/projects/${id}`),

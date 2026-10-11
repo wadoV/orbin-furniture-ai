@@ -427,5 +427,36 @@ router.get('/viable', requireAuth, async (req, res) => {
   }
 })
 
+// ─── DELETE /api/designs/viable/:id ───────────────────────────────────────────
+// ★ 2026-10-10: faltaba el borrado de la Biblioteca Verificada. NO es lógica de corte
+//   —solo persistencia—. Scoped por seguridad: un usuario real borra SOLO sus filas;
+//   una sesión demo (user_id NULL) borra SOLO filas demo. Así una demo jamás puede
+//   purgar la biblioteca de un usuario real aunque comparta la base.
+router.delete('/viable/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ success: false, error: 'Id inválido.', code: 'BAD_INPUT' })
+    }
+    const sb = getSupabase()
+    if (!sb) {
+      return res.status(503).json({
+        success: false,
+        error: 'El almacenamiento no está disponible en este momento.',
+        code: 'STORAGE_UNAVAILABLE',
+      })
+    }
+    const isRealUser = req.user?.id && req.user.id !== 'dev-local-user'
+    let query = sb.from('viable_designs').delete().eq('id', id)
+    query = isRealUser ? query.eq('user_id', req.user.id) : query.is('user_id', null)
+    const { error } = await query
+    if (error) throw new Error(error.message)
+    return res.json({ success: true, deleted: id })
+  } catch (err) {
+    console.error('[design/viable-delete] Error:', err)
+    return res.status(500).json({ success: false, error: 'No pudimos eliminar el diseño verificado.' })
+  }
+})
+
 module.exports = router
 

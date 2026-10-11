@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
-import { LayoutGrid, Filter, Search, Copy, Check, X, PackageOpen, Loader2, ShieldCheck } from 'lucide-react'
+import { LayoutGrid, Filter, Search, Copy, Check, X, PackageOpen, Loader2, ShieldCheck, Hammer, AlertTriangle, Trash2 } from 'lucide-react'
+// (X ya estaba importado; se reutiliza para el botón cancelar de la confirmación inline)
+import { WORKSHOP_TEMPLATES, auditWorkshopTemplate } from '../data/workshopTemplates.js'
 import { api } from '../api/client.js'
+import { listViable, removeViable } from '../api/viableStore.js'
+import { DEMO_MODE } from '../config/demoMode.js'
 import { GALLERY_CATEGORIES, CATEGORY_LABELS } from '../data/galleryCategories.js'
 
 /**
@@ -12,21 +16,30 @@ import { GALLERY_CATEGORIES, CATEGORY_LABELS } from '../data/galleryCategories.j
  * Props:
  *   onClose()            — cierra el overlay.
  *   onUseTemplate(params)— inyecta los params en el workspace (dispara generateProject).
+ *   onLoadWorkshopTemplate(id) — ★ 2026-10-10: carga una plantilla de TALLER (despiece
+ *                          literal, sin motor) en el visor. Local: no depende de Supabase.
  */
-export default function GalleryCatalog({ onClose, onUseTemplate }) {
+export default function GalleryCatalog({ onClose, onUseTemplate, onLoadWorkshopTemplate }) {
+  const workshop = useMemo(() => WORKSHOP_TEMPLATES.filter(t => t.viewerReady).map(t => ({ t, audit: auditWorkshopTemplate(t) })), [])
+  const [openAudit, setOpenAudit] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
   const [designs, setDesigns] = useState([])
   const [search, setSearch]   = useState('')
   const [activeCat, setActiveCat] = useState('todos')
   const [copiedId, setCopiedId]   = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [confirmingId, setConfirmingId] = useState(null)   // tarjeta en estado "¿eliminar?"
 
   useEffect(() => {
     let alive = true
+    // ★ 2026-10-10 (piloto): la fuente es viableStore — en DEMO_MODE lee localStorage
+    //   (offline-first, sin 503), en producción el server con fallback local. Así los
+    //   diseños guardados desde el visor 3D aparecen aquí sin depender de Supabase.
     ;(async () => {
       try {
-        const res = await api.listViableDesigns()
-        if (alive) setDesigns(Array.isArray(res?.designs) ? res.designs : [])
+        const list = await listViable()
+        if (alive) setDesigns(Array.isArray(list) ? list : [])
       } catch (err) {
         if (alive) setError(err?.message || 'No pudimos cargar la Galería.')
       } finally {
@@ -35,6 +48,24 @@ export default function GalleryCatalog({ onClose, onUseTemplate }) {
     })()
     return () => { alive = false }
   }, [])
+
+  // Eliminación reactiva en DOS PASOS (confirmación inline, sin window.confirm nativo
+  // que rompe la coherencia visual y bloquea la automatización). Quita la tarjeta al
+  // instante (optimista) y revierte si el backend rechaza el borrado.
+  async function doDelete(d) {
+    setConfirmingId(null)
+    setDeletingId(d.id)
+    const prev = designs
+    setDesigns(cur => cur.filter(x => x.id !== d.id))
+    try {
+      await removeViable(d.id)
+    } catch (err) {
+      setDesigns(prev)   // revertir si el backend rechaza el borrado
+      setError(err?.message || 'No pudimos eliminar el diseño.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   // Escape para cerrar (mismo patrón que los modales del Header)
   useEffect(() => {
@@ -127,6 +158,66 @@ export default function GalleryCatalog({ onClose, onUseTemplate }) {
 
         {/* Contenido */}
         <div className="px-5 sm:px-6 py-5 min-h-[240px] max-h-[60vh] overflow-y-auto scrollbar-thin scrollbar-thumb-surface-3 scrollbar-track-transparent">
+          {/* ★ 2026-10-10 — Plantillas de TALLER (despiece literal del jefe de taller) */}
+          {typeof onLoadWorkshopTemplate === 'function' && workshop.length > 0 && (
+            <section className="mb-6">
+              <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-primary mb-3">
+                <Hammer size={13} /> Plantillas de taller · despiece real
+              </h3>
+              <div className="grid gap-3">
+                {workshop.map(({ t, audit }) => {
+                  const obs = audit.findings.filter(f => f.level !== 'info' || f.code !== 'NOT_ENGINE_READY')
+                  const nPieces = (t.cutList || []).reduce((n, p) => n + (p.qty || 0), 0)
+                  return (
+                    <div key={t.id} className="p-4 rounded-2xl border border-primary/25 bg-primary/5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-[13px] font-black text-white">{t.name}</p>
+                          <p className="text-[11px] text-muted mt-0.5">
+                            {t.declared?.overall ? `${t.declared.overall.width} × ${t.declared.overall.height} × ${t.declared.overall.depth} mm · ` : ''}
+                            {(t.layout || []).length} módulos · {nPieces} piezas · {t.source}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onLoadWorkshopTemplate(t.id)}
+                          className="shrink-0 px-4 py-2 rounded-xl bg-primary text-black text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all"
+                        >
+                          Cargar en el visor
+                        </button>
+                      </div>
+                      {/* Badge profesional de fabricación — las observaciones del taller son
+                          preguntas al jefe de obra, NO errores del software. Se muestran
+                          colapsadas para consulta técnica, sin alarma visual. */}
+                      <div className="mt-3 flex items-center gap-2 flex-wrap">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sky-500/10 text-sky-300 text-[9px] font-black uppercase tracking-widest border border-sky-400/20">
+                          <Hammer size={10} /> Plantilla en fabricación · Taller Brasil
+                        </span>
+                        {obs.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setOpenAudit(o => (o === t.id ? null : t.id))}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 text-muted/70 text-[9px] font-bold border border-white/5 hover:text-white/80 hover:border-white/15 transition-all"
+                          >
+                            {obs.length} notas técnicas {openAudit === t.id ? '▴' : '▾'}
+                          </button>
+                        )}
+                      </div>
+                      {openAudit === t.id && obs.length > 0 && (
+                        <ul className="mt-2 space-y-1.5">
+                          {obs.map(f => (
+                            <li key={f.code} className={`text-[11px] leading-snug pl-3 border-l-2 ${f.level === 'error' ? 'border-sky-400/60 text-sky-200/80' : f.level === 'warn' ? 'border-white/15 text-muted/80' : 'border-white/10 text-muted/60'}`}>
+                              {f.text}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
           {loading && (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted">
               <Loader2 size={28} className="animate-spin text-primary" />
@@ -202,6 +293,38 @@ export default function GalleryCatalog({ onClose, onUseTemplate }) {
                           title="Cargar esta plantilla en el lienzo"
                         >
                           Usar
+                        </button>
+                      )}
+                      {/* ★ 2026-10-10: eliminar de la Galería — confirmación inline (2 pasos) + remoción reactiva */}
+                      {confirmingId === d.id ? (
+                        <>
+                          <button
+                            onClick={() => doDelete(d)}
+                            disabled={deletingId === d.id}
+                            className="shrink-0 flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border bg-rose-500/15 text-rose-300 border-rose-400/40 hover:bg-rose-500/25 transition-all text-[9px] font-black uppercase tracking-widest disabled:opacity-40"
+                            title="Confirmar eliminación"
+                            aria-label={`Confirmar eliminar ${d.design_name}`}
+                          >
+                            {deletingId === d.id ? <Loader2 size={12} className="animate-spin" /> : <><Trash2 size={11} /> Sí</>}
+                          </button>
+                          <button
+                            onClick={() => setConfirmingId(null)}
+                            disabled={deletingId === d.id}
+                            className="shrink-0 flex items-center justify-center w-9 py-2 rounded-lg border bg-white/5 text-white/60 border-white/5 hover:text-white transition-all disabled:opacity-40"
+                            title="Cancelar"
+                            aria-label="Cancelar eliminación"
+                          >
+                            <X size={12} />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmingId(d.id)}
+                          className="shrink-0 flex items-center justify-center w-9 py-2 rounded-lg border bg-white/5 text-rose-300/70 border-white/5 hover:text-rose-300 hover:border-rose-400/40 hover:bg-rose-500/10 transition-all"
+                          title="Eliminar de la Galería"
+                          aria-label={`Eliminar ${d.design_name}`}
+                        >
+                          <Trash2 size={12} />
                         </button>
                       )}
                     </div>

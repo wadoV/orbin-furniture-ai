@@ -1,0 +1,26 @@
+2026-08-05T16:07:27: Error: [Orbin] FATAL: JWT_SECRET is not set.
+2026-08-05T16:07:27:   Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+2026-08-05T16:07:27:   Then set it in server/.env (never commit the real value).
+2026-08-05T16:07:27:     at Object.<anonymous> (C:\Users\Azomarg\Documents\Claude_projects\Orbin\server\src\index.js:16:11)
+2026-08-05T16:07:27:     at Module._compile (node:internal/modules/cjs/loader:1812:14)
+2026-08-05T16:07:27:     at Object..js (node:internal/modules/cjs/loader:1943:10)
+2026-08-05T16:07:27:     at Module.load (node:internal/modules/cjs/loader:1533:32)
+2026-08-05T16:07:27:     at Module._load (node:internal/modules/cjs/loader:1335:12)
+2026-08-05T16:07:27:     at Object.<anonymous> (C:\Users\Azomarg\AppData\Local\npm-cache\_npx\5f7878ce38f1eb13\node_modules\pm2\lib\ProcessContainerFork.js:32:23)
+2026-08-05T16:07:27:     at Module._compile (node:internal/modules/cjs/loader:1812:14)
+2026-08-05T16:07:27:     at Object..js (node:internal/modules/cjs/loader:1943:10)
+2026-08-05T16:07:27:     at Module.load (node:internal/modules/cjs/loader:1533:32)
+2026-08-05T16:07:27:     at Module._load (node:internal/modules/cjs/loader:1335:12)
+2026-08-05T16:07:27: Error: [Orbin] FATAL: JWT_SECRET is not set.
+2026-08-05T16:07:27:   Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+2026-08-05T16:07:27:   Then set it in server/.env (never commit the real value).
+2026-08-05T16:07:27:     at Object.<anonymous> (C:\Users\Azomarg\Documents\Claude_projects\Orbin\server\src\index.js:16:11)
+2026-08-05T16:07:27:     at Module._compile (node:internal/modules/cjs/loader:1812:14)
+2026-08-05T16:07:27:     at Object..js (node:internal/modules/cjs/loader:1943:10)
+2026-08-05T16:07:27:     at Module.load (node:internal/modules/cjs/loader:1533:32)
+2026-08-05T16:07:27:     at Module._load (node:internal/modules/cjs/loader:1335:12)
+2026-08-05T16:07:27:     at Object.<anonymous> (C:\Users\Azomarg\AppData\Local\npm-cache\_npx\5f7878ce38f1eb13\node_modules\pm2\lib\ProcessContainerFork.js:32:23)
+2026-08-05T16:07:27:     at Module._compile (node:internal/modules/cjs/loader:1812:14)
+2026-08-05T16:07:27:     at Object..js (node:internal/modules/cjs/loader:1943:10)
+2026-08-05T16:07:27:     at Module.load (node:internal/modules/cjs/loader:1533:32)
+2026-08-05T16:07:27:     at Module._load (node:internal/modules/cjs/loader:1335:12)

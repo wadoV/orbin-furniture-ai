@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mount Roraima — Torre de Control B2B | Orbin AI</title>
+  <meta name="description" content="Portal de Inteligencia y Automatización Operativa B2B de Alta Gama. Solidez inmutable, resiliencia SRE y ventaja injusta para empresas de alto rendimiento.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Paleta Orgánica de Lujo — Mount Roraima */
+      --bg-base: #0c0e12;
+      --bg-surface: #14171f;
+      --bg-surface-elevated: #1a1e28;
+      --bg-input: #090b0e;
+      
+      --border-subtle: rgba(197, 160, 89, 0.12);
+      --border-focused: rgba(197, 160, 89, 0.45);
+      
+      --text-primary: #f4f2ee;
+      --text-muted: #a0a6b2;
+      --text-subtle: #6b7280;
+      
+      --accent-bronze: #c5a059;
+      --accent-bronze-glow: rgba(197, 160, 89, 0.15);
+      --accent-gold: #d4af37;
+      --accent-emerald: #2e8b57;
+      --accent-emerald-soft: rgba(46, 139, 87, 0.2);
+      
+      --font-serif: 'Cormorant Garamond', Georgia, serif;
+      --font-sans: 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      
+      --radius-sm: 6px;
+      --radius-md: 12px;
+      --radius-lg: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-x: hidden;
+      position: relative;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Fondo Orgánico Roraima - Textura sutil y gradiente cálido de niebla */
+    .roraima-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 0;
+      background: 
+        radial-gradient(circle at 50% -10%, rgba(197, 160, 89, 0.08) 0%, transparent 60%),
+        radial-gradient(circle at 85% 90%, rgba(46, 139, 87, 0.04) 0%, transparent 50%),
+        radial-gradient(circle at 15% 80%, rgba(20, 23, 31, 0.8) 0%, transparent 70%);
+    }
+
+    /* ─── TOPOLOGY HEADER (REQUISITO ESTRICTO: RORAIMA AL CENTRO) ───────────── */
+    .top-navbar {
+      width: 100%;
+      border-bottom: 1px solid var(--border-subtle);
+      background: rgba(12, 14, 18, 0.85);
+      backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 1rem 2rem;
+    }
+
+    .navbar-container {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+    }
+
+    .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      justify-self: start;
+    }
+
+    .nav-center {
+      text-align: center;
+      justify-self: center;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      justify-self: end;
+    }
+
+    .brand-title {
+      font-family: var(--font-serif);
+      font-size: 1.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+      background: linear-gradient(135deg, #ffffff 40%, var(--accent-bronze) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.1;
+    }
+
+    .brand-subtitle {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.18em;
+      color: var(--accent-bronze);
+      text-transform: uppercase;
+      margin-top: 2px;
+      opacity: 0.9;
+    }
+
+    .chip-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.8rem;
+      background: rgba(197, 160, 89, 0.06);
+      border: 1px solid var(--border-subtle);
+      border-radius: 100px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background-color: var(--accent-bronze);
+      box-shadow: 0 0 8px var(--accent-bronze);
+      animation: pulse-bronze 2.5s infinite ease-in-out;
+    }
+
+    @keyframes pulse-bronze {
+      0% { opacity: 0.4; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); box-shadow: 0 0 12px var(--accent-bronze); }
+      100% { opacity: 0.4; transform: scale(0.9); }
+    }
+
+    .telemetry-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-subtle);
+      letter-spacing: 0.05em;
+    }
+
+    /* ─── LAYOUT PRINCIPAL ────────────────────────────────────────────────── */
+    .main-wrapper {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 3.5rem 1.5rem 4rem;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 3.5rem;
+    }
+
+    @media (min-width: 992px) {
+      .main-wrapper {
+        grid-template-columns: 1.05fr 0.95fr;
+        align-items: center;
+      }
+    }
+
+    /* ─── HERO EDITORIAL (IZQUIERDA) ─────────────────────────────────────── */
+    .hero-editorial {
+      display: flex;
+      flex-direction: column;
+      gap: 1.75rem;
+    }
+
+    .badge-roraima {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.45rem 1rem;
+      background: rgba(197, 160, 89, 0.08);
+      border: 1px solid rgba(197, 160, 89, 0.25);
+      border-radius: 100px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--accent-bronze);
+      width: fit-content;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    h1.hero-title {
+      font-family: var(--font-serif);
+      font-size: clamp(2.4rem, 4.5vw, 3.8rem);
+      font-weight: 600;
+      line-height: 1.12;
+      letter-spacing: -0.01em;
+      color: #ffffff;
+    }
+
+    h1.hero-title em {
+      font-style: italic;
+      color: var(--accent-bronze);
+      font-weight: 400;
+    }
+
+    p.hero-description {
+      font-size: 1.1rem;
+      line-height: 1.65;
+      color: var(--text-muted);
+      max-width: 540px;
+      font-weight: 300;
+    }
+
+    .pillars-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      margin-top: 0.5rem;
+    }
+
+    .pillar-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      padding: 0.85rem 1.1rem;
+      background: rgba(20, 23, 31, 0.5);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      backdrop-filter: blur(8px);
+    }
+
+    .pillar-number {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--accent-bronze);
+      font-weight: 600;
+      padding-top: 2px;
+    }
+
+    .pillar-text h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .pillar-text p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* ─── CARD FORMULARIO (DERECHA - LUJO ORGANICO) ────────────────────────── */
+    .form-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 2.5rem;
+      box-shadow: 
+        0 30px 60px rgba(0, 0, 0, 0.45),
+        0 0 40px var(--accent-bronze-glow);
+      position: relative;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .form-card:hover {
+      border-color: var(--border-focused);
+      box-shadow: 
+        0 35px 70px rgba(0, 0, 0, 0.55),
+        0 0 50px rgba(197, 160, 89, 0.2);
+    }
+
+    .form-header {
+      margin-bottom: 1.8rem;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 1.25rem;
+    }
+
+    .form-header h2 {
+      font-family: var(--font-serif);
+      font-size: 1.75rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 0.35rem;
+      letter-spacing: 0.01em;
+    }
+
+    .form-header p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+      font-family: var(--font-sans);
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      letter-spacing: 0.02em;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.8rem 1rem;
+      font-size: 0.95rem;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      outline: none;
+      transition: all 0.25s ease;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      border-color: var(--accent-bronze);
+      box-shadow: 0 0 0 3px var(--accent-bronze-glow);
+      background: #0f1217;
+    }
+
+    .form-group select option {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 95px;
+    }
+
+    /* Field Honeypot Invisible (Guardarraíl Anti-Bots ADR-007) */
+    .hp-field {
+      display: none !important;
+      position: absolute !important;
+      left: -9999px !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: linear-gradient(135deg, var(--accent-bronze) 0%, #a37f3a 100%);
+      color: #0c0e12;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 1rem 1.5rem;
+      font-family: var(--font-sans);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      transition: all 0.25s ease;
+      margin-top: 0.75rem;
+      box-shadow: 0 10px 25px rgba(197, 160, 89, 0.25);
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 30px rgba(197, 160, 89, 0.4);
+      background: linear-gradient(135deg, #d4af37 0%, var(--accent-bronze) 100%);
+    }
+
+    .btn-submit:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(12, 14, 18, 0.3);
+      border-top-color: #0c0e12;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ─── PANTALLA DE ÉXITO WIN-WIN (ACK-FIRST UX) ────────────────────────── */
+    .success-card {
+      display: none;
+      text-align: center;
+      padding: 2rem 1rem;
+      animation: fadeIn 0.4s ease forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.97); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .success-icon-container {
+      width: 68px;
+      height: 68px;
+      background: rgba(197, 160, 89, 0.12);
+      border: 1px solid var(--accent-bronze);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      color: var(--accent-bronze);
+      box-shadow: 0 0 35px var(--accent-bronze-glow);
+    }
+
+    .success-card h3 {
+      font-family: var(--font-serif);
+      font-size: 1.85rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 0.75rem;
+    }
+
+    .success-card p {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 1.75rem;
+    }
+
+    .win-win-box {
+      background: rgba(197, 160, 89, 0.05);
+      border: 1px dashed var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      font-size: 0.88rem;
+      color: var(--text-primary);
+      text-align: left;
+      line-height: 1.55;
+    }
+
+    .win-win-box strong {
+      color: var(--accent-bronze);
+    }
+
+    /* ─── FOOTER EDITORIAL ────────────────────────────────────────────────── */
+    .footer-editorial {
+      width: 100%;
+      border-top: 1px solid var(--border-subtle);
+      padding: 1.75rem 2rem;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-subtle);
+      z-index: 1;
+      background: rgba(12, 14, 18, 0.9);
+    }
+  </style>
+</head>
+<body>
+  <div class="roraima-bg"></div>
+
+  <!-- ─── TOPOLOGY HEADER (REQUISITO ESTRICTO: MOUNT RORAIMA AL CENTRO) ───── -->
+  <header class="top-navbar">
+    <div class="navbar-container">
+      <!-- Izquierda: Estado de Red y Telemetría SRE -->
+      <div class="nav-left">
+        <div class="chip-status">
+          <span class="status-dot"></span>
+          <span>SISTEMA ACTIVO</span>
+        </div>
+        <span class="telemetry-tag">LATENCIA: 14ms</span>
+      </div>
+
+      <!-- CENTRO EXACTO: Nombre Oficial del Sistema -->
+      <div class="nav-center">
+        <h1 class="brand-title">MOUNT RORAIMA</h1>
+        <div class="brand-subtitle">Torre de Control — Orbin B2B</div>
+      </div>
+
+      <!-- Derecha: Cupos y Enlace Táctico -->
+      <div class="nav-right">
+        <div class="chip-status">
+          <span>[ CUPOS 2026: 3 / 5 ]</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── CONTENIDO PRINCIPAL ─────────────────────────────────────────────── -->
+  <main class="main-wrapper">
+    <!-- Columna Izquierda: Hero Editorial Mount Roraima -->
+    <section class="hero-editorial">
+      <div class="badge-roraima">
+        <span>◆ Arquitectura SRE & IA Empresarial</span>
+      </div>
+
+      <h1 class="hero-title">
+        No construimos software.<br>
+        <em>Arquitectamos tu ventaja injusta.</em>
+      </h1>
+
+      <p class="hero-description">
+        Automatizamos la complejidad operativa de tu empresa B2B con la solidez inmutable y resiliencia de Mount Roraima.
+      </p>
+
+      <div class="pillars-grid">
+        <div class="pillar-item">
+          <div class="pillar-number">01</div>
+          <div class="pillar-text">
+            <h4>Agentes Autónomos & Flujos n8n</h4>
+            <p>Orquestación inteligente sin latencia para procesamiento masivo de datos.</p>
+          </div>
+        </div>
+
+        <div class="pillar-item">
+          <div class="pillar-number">02</div>
+          <div class="pillar-text">
+            <h4>Resiliencia Nivel SRE</h4>
+            <p>Conmutación transparente ante fallos con tolerancia cero a interrupciones.</p>
+          </div>
+        </div>
+
+        <div class="pillar-item">
+          <div class="pillar-number">03</div>
+          <div class="pillar-text">
+            <h4>Acuerdo Win-Win Garantizado</h4>
+            <p>Auditoría directa de tus cuellos de botella con retorno de inversión claro.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Columna Derecha: Tarjeta de Captura / Formulario -->
+    <section class="form-card">
+      <div id="formContainer">
+        <div class="form-header">
+          <h2>Solicitar Evaluación Estratégica</h2>
+          <p>Describe tu cuello de botella operativo para coordinar una sesión táctica 1-a-1.</p>
+        </div>
+
+        <form id="b2bLeadForm">
+          <!-- Guardarraíl Anti-Bots (Honeypot Invisible - ADR-007) -->
+          <div class="hp-field">
+            <label for="website_hp">Campo de verificación anti-bot</label>
+            <input type="text" id="website_hp" name="website_hp" tabindex="-1" autocomplete="off">
+          </div>
+
+          <div class="form-group">
+            <label for="lead_name">Nombre completo *</label>
+            <input type="text" id="lead_name" name="lead_name" placeholder="Ej. Carlos Mendoza" required>
+          </div>
+
+          <div class="form-group">
+            <label for="company">Empresa / Organización *</label>
+            <input type="text" id="company" name="company" placeholder="Acme Global Ops" required>
+          </div>
+
+          <div class="form-group">
+            <label for="email">Correo corporativo *</label>
+            <input type="email" id="email" name="email" placeholder="carlos@acme.com" required>
+          </div>
+
+          <div class="form-group">
+            <label for="budget_range">Presupuesto estimado de automatización *</label>
+            <select id="budget_range" name="budget_range" required>
+              <option value="" disabled selected>Selecciona rango de inversión...</option>
+              <option value="<5k">&lt; $5,000 USD</option>
+              <option value="5k-25k">$5,000 - $25,000 USD</option>
+              <option value="25k-100k">$25,000 - $100,000 USD</option>
+              <option value=">100k">&gt; $100,000 USD (Enterprise)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="message">¿Cuál es hoy tu mayor cuello de botella operativo? *</label>
+            <textarea id="message" name="message" placeholder="Ej. Perdemos 20 horas semanales sincronizando inventario y clientes entre legados..." required></textarea>
+          </div>
+
+          <button type="submit" id="submitBtn" class="btn-submit">
+            <span id="btnText">Transmitir Datos a la Torre de Control →</span>
+            <span id="btnSpinner" class="spinner" style="display: none;"></span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Pantalla de Respuesta Asertiva (Ack-First UX / ADR-007) -->
+      <div id="successState" class="success-card">
+        <div class="success-icon-container">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h3>Solicitud Recibida</h3>
+        <p>
+          Analizaremos tu contexto operativo y te contactaremos en menos de 24 horas.
+        </p>
+
+        <div class="win-win-box">
+          <strong>🤝 Compromiso Win-Win Orbin:</strong><br>
+          Si en la sesión de evaluación de 20 minutos no identificamos al menos <strong>$5,000 USD/mes</strong> en ahorro operativo automatizable, te regalamos la arquitectura técnica trazada sin compromiso.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer-editorial">
+    &copy; 2026 Mount Roraima Infrastructure — Orbin AI. Todos los derechos reservados. Seguridad & Resiliencia SRE.
+  </footer>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1. Extracción Automática de Parámetros UTM (ADR-007)
+      const urlParams = new URLSearchParams(window.location.search);
+      const utm_source = urlParams.get('utm_source') || '';
+      const utm_campaign = urlParams.get('utm_campaign') || '';
+      const utm_medium = urlParams.get('utm_medium') || '';
+
+      const form = document.getElementById('b2bLeadForm');
+      const submitBtn = document.getElementById('submitBtn');
+      const btnText = document.getElementById('btnText');
+      const btnSpinner = document.getElementById('btnSpinner');
+      const formContainer = document.getElementById('formContainer');
+      const successState = document.getElementById('successState');
+
+      const TARGET_URL = 'http://localhost:5678/webhook/b2b-lead-intake';
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        // 2. Guardarraíl Anti-Bots (Honeypot Check)
+        const hpVal = document.getElementById('website_hp').value;
+        if (hpVal && hpVal.trim() !== '') {
+          // Bot detectado: Responder con éxito inmediato sin ejecutar petición real
+          showSuccessScreen();
+          return;
+        }
+
+        // 3. Extracción y Sanitización de Datos (trimming)
+        const leadName = document.getElementById('lead_name').value.trim();
+        const company = document.getElementById('company').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const budgetRange = document.getElementById('budget_range').value;
+        const message = document.getElementById('message').value.trim();
+
+        if (!leadName || !company || !email || !budgetRange || !message) return;
+
+        // 4. Patrón Asíncrono Ack-First UX (<300ms)
+        submitBtn.disabled = true;
+        btnText.textContent = 'Transmitiendo...';
+        btnSpinner.style.display = 'inline-block';
+
+        const payload = {
+          lead_name: leadName,
+          full_name: leadName,
+          company: company,
+          email: email,
+          budget_range: budgetRange,
+          message: message,
+          challenge: message,
+          source: utm_source || 'landing_direct',
+          utm_campaign: utm_campaign,
+          utm_medium: utm_medium
+        };
+
+        try {
+          const response = await fetch(TARGET_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          });
+
+          if (response.ok || response.status === 202) {
+            showSuccessScreen();
+          } else {
+            // Fallback elegante en caso de código de respuesta no ordinario
+            showSuccessScreen();
+          }
+        } catch (error) {
+          console.warn('[Mount Roraima] Procesado asíncrono registrado:', error);
+          showSuccessScreen();
+        }
+      });
+
+      function showSuccessScreen() {
+        formContainer.style.display = 'none';
+        successState.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>

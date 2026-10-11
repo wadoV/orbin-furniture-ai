@@ -121,6 +121,9 @@ const DEFAULTS = {
   //    llamar a generateFurniture, así que un 0 de default sería indistinguible de un
   //    0 puesto por el usuario y el auto-default del aéreo nunca se dispararía.
   mountHeight: null,
+  drawerFrontStyle: 'flat',
+  cavaCncWidth: 140,
+  cavaCncDepth: 35,
   slidingDoorSheets: 2,    // ★ 2026-10: hojas de correr (solo doorType='sliding')
   puxadorCava45: false,   // ★ 2026-10: mecanizado cava 45° CNC
   alturaTraviesaCava: 50,  // ★ 2026-10: altura de traviesa de respaldo en cava 45°
@@ -784,13 +787,35 @@ function generateFurniture(params) {
     if (yPos < H - 50) {
       const drawerId = `DRW-${i + 1}`
 
+      // Pieza frontal de gaveta con estilos condicionales
+      const frontNotes = cfg.drawerFrontStyle === 'cava_cnc' 
+        ? `Holgura 2mm/lado | USINAGEM: Cava central CNC ${cfg.cavaCncWidth}x${cfg.cavaCncDepth}mm R20`
+        : cfg.drawerFrontStyle === 'cava45'
+        ? `Holgura 2mm/lado | Bisel 45° con labio plano 3mm`
+        : cfg.drawerFrontStyle === 'internal'
+        ? `Holgura 2mm/lado | Gaveta embutida en interior`
+        : `Holgura 2mm/lado`
+
+      const frontPiece = makePiece(
+        nextId('GAV-FF'), `Frente Gaveta ${i + 1}`, 'drawer_front',
+        drawerW - 2*HARDWARE.DRAWER_FRONT_GAP, safeDrawerHeight - 2*HARDWARE.DRAWER_FRONT_GAP, T, 1,
+        xPos, yPos, D - T/2, 'horizontal',
+        { all: true }, frontNotes, 'drawer_front'
+      )
+
+      // Agregar operaciones de mecanizado si es cava CNC
+      if (cfg.drawerFrontStyle === 'cava_cnc') {
+        frontPiece.machiningOps = [{
+          type: 'ROUTER_POCKET_HANDLE',
+          width: cfg.cavaCncWidth,
+          depth: cfg.cavaCncDepth,
+          radius: 20,
+          edge: 'top_center'
+        }]
+      }
+
       pieces.push({
-        ...makePiece(
-          nextId('GAV-FF'), `Frente Gaveta ${i + 1}`, 'drawer_front',
-          drawerW - 2*HARDWARE.DRAWER_FRONT_GAP, safeDrawerHeight - 2*HARDWARE.DRAWER_FRONT_GAP, T, 1,
-          xPos, yPos, D - T/2, 'horizontal',
-          { all: true }, 'Holgura 2mm/lado', 'drawer_front'
-        ),
+        ...frontPiece,
         drawerGroupId: drawerId
       })
 

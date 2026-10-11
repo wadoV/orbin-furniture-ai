@@ -33,6 +33,7 @@ import { calculateAerialAlignment, findBaseForAerial, isAerialModule } from './l
 import { DEMO_MODE } from './config/demoMode.js'
 import DEMO_BASE_MODULE from './data/demoBaseModule.js'
 import { nextRotation, normalizeRotation } from './lib/dimensionLayout.js'
+import { buildWorkshopModules } from './data/workshopTemplates.js'
 
 // ── Plan Upgrade Banner ────────────────────────────────────────────────────────
 // [2026-06-23] Inline PlanLimitAlert replaced by real UpgradePrompt component
@@ -408,6 +409,13 @@ export default function App() {
       // through to ResultPanel instead of relying on its hardcoded success message.
       if (design && data?.validation) {
         design = { ...design, validation: data.validation }
+      }
+      // ★ 2026-10-10: el guard de viabilidad (botón "Guardar en Galería" del visor y
+      //   ResultPanel) lee design.specAdjustments para bloquear piezas fuera de chapa
+      //   (severity 'critical'). Se asegura que viaje junto al módulo aunque el server
+      //   lo devuelva a nivel raíz del response.
+      if (design && (design.specAdjustments || data?.specAdjustments)) {
+        design = { ...design, specAdjustments: design.specAdjustments || data.specAdjustments }
       }
       if (design && design.pieces) {
         // ★ FIX: Ensure configuration wrapper exists so Viewer3D uses the parametric builder
@@ -940,6 +948,19 @@ export default function App() {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
+  // ★ 2026-10-10 — Plantilla de TALLER (p. ej. Ilha Gosa 02): reemplaza la composición
+  //   por los módulos de la plantilla con su despiece LITERAL (sin motor, sin recálculo).
+  //   Pasa por saveHistory → Ctrl+Z vuelve al diseño anterior.
+  const handleLoadWorkshopTemplate = (templateId) => {
+    const mods = buildWorkshopModules(templateId)
+    if (!mods?.length) { flashPaste('error', 'Plantilla no disponible para el visor.'); return }
+    saveHistory(mods, 'Plantilla de taller')
+    setSelectedModuleId(mods[Math.floor(mods.length / 2)].id)
+    setGalleryOpen(false)
+    const n = mods.reduce((acc, m) => acc + (m.pieces || []).reduce((k, p) => k + (p.quantity || 0), 0), 0)
+    flashPaste('ok', `Plantilla de taller cargada · ${mods.length} módulos · ${n} piezas (despiece del taller)`)
+  }
+
   const flashPaste = (type, msg) => {
     setPasteToast({ type, msg })
     setTimeout(() => setPasteToast(t => (t && t.msg === msg ? null : t)), 2600)
@@ -1093,6 +1114,7 @@ export default function App() {
               setGalleryOpen(false)
               handleUseTemplateParams(params)
             }}
+            onLoadWorkshopTemplate={handleLoadWorkshopTemplate}
           />
         )}
         {/* ★ LAYOUT 2026-10-10 — split-screen restaurado desde `lg` (1024 px).

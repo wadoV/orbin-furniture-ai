@@ -268,7 +268,10 @@ const DEFAULTS = {
   hasPedestal: true,
   pedestalSide: 'right',
   drawerPrivacyPanel: true,
-  drawerRailHeight: 50
+  drawerRailHeight: 50,
+  drawerFrontStyle: 'flat',
+  cavaCncWidth: 140,
+  cavaCncDepth: 35
 }
 
 // ─── InputPanel ───────────────────────────────────────────────────────────────
@@ -663,6 +666,38 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                 onChange={setParam}
                 type="number" min={50} max={300} step={5} suffix="mm"
               />
+            )}
+            {params.numDrawers > 0 && (
+              <SELECT
+                label={t('drawer_front_style', 'Estilo de Frente / Puxador')}
+                name="drawerFrontStyle"
+                value={params.drawerFrontStyle || 'flat'}
+                onChange={(k, v) => setParam('drawerFrontStyle', v)}
+                options={[
+                  { value: 'flat', label: t('drawer_flat', 'Estándar (Tirador externo)') },
+                  { value: 'cava_cnc', label: t('drawer_cava_cnc', 'Cava Central CNC (Rebajo Router)') },
+                  { value: 'cava45', label: t('drawer_cava45', 'Cava Bisel 45°') },
+                  { value: 'internal', label: t('drawer_internal', 'Gaveta Interna (Embutida)') },
+                ]}
+              />
+            )}
+            {params.numDrawers > 0 && params.drawerFrontStyle === 'cava_cnc' && (
+              <div className="space-y-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                <FIELD
+                  label={t('cava_cnc_width', 'Ancho rebajo (mm)')}
+                  name="cavaCncWidth"
+                  value={params.cavaCncWidth || 140}
+                  onChange={setParam}
+                  type="number" min={80} max={250} step={10} suffix="mm"
+                />
+                <FIELD
+                  label={t('cava_cnc_depth', 'Profundidad rebajo (mm)')}
+                  name="cavaCncDepth"
+                  value={params.cavaCncDepth || 35}
+                  onChange={setParam}
+                  type="number" min={20} max={50} step={5} suffix="mm"
+                />
+              </div>
             )}
             {isBase && params.hasCountertop && (
               <SELECT

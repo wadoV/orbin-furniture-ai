@@ -9,25 +9,9 @@ import { GALLERY_CATEGORIES, suggestCategory } from '../data/galleryCategories.j
 import { localizeAdjustment } from '../engine/adjustmentMessages.js'
 import { localizeApiError } from '../engine/apiErrors.js'
 import { plateOverflow, plateOverflowLabel, plateOverflowTitle } from '../engine/plateFit.js'
-
-// ─── Viability Gate ─────────────────────────────────────────────────────────
-// Espejo EXACTO del guard del backend (server/src/routes/design.js → /save-viable).
-// Fail-closed: sin reporte de validación del servidor NO se considera viable.
-// El backend regenera y revalida igual — esto es solo UX, nunca la autoridad.
-function evaluateViability(design) {
-  const v = design?.validation
-  if (!v || v.status !== 'VALIDADO') {
-    return { viable: false, reason: 'validation_missing' }
-  }
-  if (Array.isArray(v.errors) && v.errors.length > 0) {
-    return { viable: false, reason: 'errors' }
-  }
-  const critical = (design.specAdjustments || []).filter(a => a?.severity === 'critical')
-  if (critical.length > 0) {
-    return { viable: false, reason: 'critical_adjustments' }
-  }
-  return { viable: true, reason: null }
-}
+// ★ 2026-10-10: guard de viabilidad extraído a módulo compartido (SSOT cliente).
+//   Lo usan ResultPanel (este botón) y el botón "Guardar en Galería" del visor 3D.
+import { evaluateViability } from '../engine/viabilityGate.js'
 
 // ─── Save as Viable Design ──────────────────────────────────────────────────
 function SaveViableButton({ design, t }) {
@@ -438,7 +422,7 @@ export default function ResultPanel({ design, onSave, loadingSave, onDeleteModul
                       <td className="py-3.5 text-center text-[11px] font-black text-white/60">{p.quantity}</td>
                       <td className={`py-3.5 text-right text-[11px] font-mono font-bold tracking-tighter ${exceedsMdf ? 'text-amber-400 font-black' : 'text-white'}`}>{convert(p.width)}</td>
                       <td className={`py-3.5 text-right text-[11px] font-mono font-bold tracking-tighter ${exceedsMdf ? 'text-amber-400 font-black' : 'text-white'}`}>{convert(p.height)}</td>
-                      <td className="py-3.5 text-right pr-2 text-[10px] font-black text-muted">{p.thickness}mm</td>
+                      <td className="py-3.5 text-right pr-2 text-[10px] font-black text-muted">{p.thickness != null ? `${p.thickness}mm` : '—'}</td>
 
                       <td className="py-3.5 pr-3 rounded-r-2xl">
                         <button

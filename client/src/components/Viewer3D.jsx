@@ -13,7 +13,12 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
-import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan, ZoomIn, ZoomOut, RotateCw, Axis3d, DraftingCompass, FileImage } from 'lucide-react'
+import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan, ZoomIn, ZoomOut, RotateCw, Axis3d, DraftingCompass, FileImage, BookmarkPlus, Check, X, ShieldAlert } from 'lucide-react'
+// ★ 2026-10-10: "Guardar en Galería" desde el visor — guard de viabilidad compartido
+//   (mismo que ResultPanel) + store resiliente + categorías de la galería.
+import { evaluateViability } from '../engine/viabilityGate.js'
+import { saveViable, ViabilityError } from '../api/viableStore.js'
+import { GALLERY_CATEGORIES, suggestCategory } from '../data/galleryCategories.js'
 
 import PresentationMode from './PresentationMode.jsx'
 import AIVisualStylist from './AIVisualStylist.jsx'
@@ -171,6 +176,51 @@ export default function Viewer3D({
 
   // Presentation mode
   const [isPresentationMode, setIsPresentationMode] = useState(false)
+
+  // ★ 2026-10-10: Guardar en Galería (Biblioteca Verificada) desde el visor.
+  const [saveOpen, setSaveOpen]   = useState(false)   // modal abierto
+  const [saveName, setSaveName]   = useState('')
+  const [saveCat,  setSaveCat]    = useState('')
+  const [saving,   setSaving]     = useState(false)
+  const [toast,    setToast]      = useState(null)     // { type:'ok'|'err', msg }
+
+  // Diseño objetivo del guardado: el módulo SELECCIONADO (o el único/primero si no hay
+  // selección). El guard es el MISMO que usa ResultPanel → una sola regla de viabilidad.
+  const saveTarget = (Array.isArray(modules) ? modules : []).find(m => m && m.id === selectedModuleId)
+    || (Array.isArray(modules) ? modules[0] : null) || null
+  const viability = evaluateViability(saveTarget)
+  const blockedMsg = {
+    validation_missing:   (lang === 'PT' ? 'Sem validação estrutural. Gere o desenho novamente.' : lang === 'EN' ? 'No structural validation. Regenerate the design.' : 'Sin validación estructural del servidor. Regenerá el diseño.'),
+    errors:               (lang === 'PT' ? 'O desenho tem erros estruturais. Corrija antes de registrar.' : lang === 'EN' ? 'The design has structural errors. Fix them before saving.' : 'Diseño no apto para galería: resolvé las advertencias estructurales antes de registrarlo.'),
+    critical_adjustments: (lang === 'PT' ? 'Peças fora da chapa (>2750 mm sem seccionar). Não apto para a galeria.' : lang === 'EN' ? 'Pieces exceed the sheet (>2750 mm). Not eligible for the gallery.' : 'Diseño no apto para galería: resolvé las advertencias estructurales (pieza fuera de chapa) antes de registrarlo.'),
+  }[viability.reason]
+
+  function flashToast(type, msg) { setToast({ type, msg }); setTimeout(() => setToast(null), 3200) }
+
+  function openSaveModal() {
+    if (!viability.viable) { flashToast('err', blockedMsg || 'Diseño no apto para la galería.'); return }
+    const cfg = saveTarget?.configuration || {}
+    const suggested = `${cfg.moduleType || saveTarget?.type || 'Módulo'} ${cfg.width || ''}x${cfg.height || ''}`.trim()
+    setSaveName(suggested)
+    setSaveCat(suggestCategory(cfg.moduleType) || '')
+    setSaveOpen(true)
+  }
+
+  async function doSaveToGallery() {
+    if (saving) return
+    const name = (saveName || '').trim()
+    if (!name) { flashToast('err', 'Poné un nombre para el mueble.'); return }
+    if (!saveTarget?.configuration) { flashToast('err', 'No hay un diseño válido para guardar.'); return }
+    setSaving(true)
+    try {
+      await saveViable({ designName: name, params: saveTarget.configuration, category: saveCat || null })
+      setSaveOpen(false)
+      flashToast('ok', lang === 'PT' ? 'Salvo na Galeria.' : lang === 'EN' ? 'Saved to the Gallery.' : 'Guardado en la Galería.')
+    } catch (err) {
+      const msg = (err instanceof ViabilityError) ? (blockedMsg || 'Diseño no apto para la galería.') : (err?.message || 'No pudimos guardar el diseño.')
+      flashToast('err', msg)
+    } finally { setSaving(false) }
+  }
 
   // ★ 2026-10-10 — Cotas CAD y ejes de referencia (overlays fuera de groupRef:
   //   no se exportan a GLB/AR, no se seleccionan y se ocultan en las capturas del plano).
@@ -2755,6 +2805,23 @@ export default function Viewer3D({
             {lang === 'ES' ? 'Ver en AR' : lang === 'PT' ? 'Ver em AR' : 'View in AR'}
           </span>
         </button>
+        {/* Celda 3 — Guardar en Galería (Guardián de Integridad: solo diseños sanos) ★ 2026-10-10 */}
+        <button
+          onClick={openSaveModal}
+          className={`p-2.5 rounded-xl transition-all duration-200 group/btn relative
+                     ${viability.viable ? 'hover:bg-emerald-500/20 text-emerald-300' : 'text-white/35 hover:bg-white/5'}`}
+          title={viability.viable ? (lang === 'PT' ? 'Salvar na Galeria' : lang === 'EN' ? 'Save to Gallery' : 'Guardar en Galería') : (blockedMsg || '')}
+          aria-label="Guardar en Galería"
+          aria-disabled={!viability.viable}
+        >
+          {viability.viable ? <BookmarkPlus size={18} /> : <ShieldAlert size={18} />}
+          <span className="absolute right-12 top-1/2 -translate-y-1/2 bg-black border border-white/10
+                           text-[10px] text-white/80 font-black uppercase tracking-widest py-1.5 px-3 rounded-md
+                           opacity-0 group-hover/btn:opacity-100 pointer-events-none
+                           transition-opacity whitespace-nowrap shadow-lg">
+            {lang === 'PT' ? 'Salvar na Galeria' : lang === 'EN' ? 'Save to Gallery' : 'Guardar en Galería'}
+          </span>
+        </button>
       </div>
 
       {/* ─── Zoom controls (+ / -) — right side, vertically centered ─── */}
@@ -2793,6 +2860,56 @@ export default function Viewer3D({
           {/* ★ FIX: No children React inside model-viewer — slots se mueven al shadow DOM
               y causan removeChild crash. El botón AR se inyecta imperativemente. */}
 
+        </div>
+      )}
+
+      {/* ★ 2026-10-10 — Modal compacto "Guardar en Galería" (nombre + categoría) */}
+      {saveOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => !saving && setSaveOpen(false)}>
+          <div className="w-[320px] max-w-[90%] bg-[#151518] border border-white/10 rounded-2xl p-5 shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[12px] font-black uppercase tracking-widest text-white flex items-center gap-2">
+                <BookmarkPlus size={15} className="text-emerald-300" />
+                {lang === 'PT' ? 'Salvar na Galeria' : lang === 'EN' ? 'Save to Gallery' : 'Guardar en Galería'}
+              </h3>
+              <button onClick={() => !saving && setSaveOpen(false)} className="text-white/50 hover:text-white p-1" aria-label="Cerrar"><X size={16} /></button>
+            </div>
+            <label className="block space-y-1">
+              <span className="text-[9px] font-black text-muted uppercase tracking-widest">{lang === 'PT' ? 'Nome do móvel' : lang === 'EN' ? 'Furniture name' : 'Nombre del mueble'}</span>
+              <input autoFocus value={saveName} onChange={e => setSaveName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') doSaveToGallery() }}
+                placeholder="Balcão Cozinha 1200"
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[12px] text-white outline-none focus:border-emerald-400/60" />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-[9px] font-black text-muted uppercase tracking-widest">{lang === 'PT' ? 'Categoria' : lang === 'EN' ? 'Category' : 'Categoría'}</span>
+              <select value={saveCat} onChange={e => setSaveCat(e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[12px] text-white outline-none focus:border-emerald-400/60 cursor-pointer">
+                <option value="" className="bg-[#151518]">{lang === 'PT' ? 'Sem categoria' : lang === 'EN' ? 'Uncategorized' : 'Sin clasificar'}</option>
+                {GALLERY_CATEGORIES.map(c => <option key={c.value} value={c.value} className="bg-[#151518]">{c.label}</option>)}
+              </select>
+            </label>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setSaveOpen(false)} disabled={saving}
+                className="flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-white/70 border border-white/5 hover:text-white disabled:opacity-40">
+                {lang === 'PT' ? 'Cancelar' : lang === 'EN' ? 'Cancel' : 'Cancelar'}
+              </button>
+              <button onClick={doSaveToGallery} disabled={saving || !saveName.trim()}
+                className="flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 hover:bg-emerald-500/30 disabled:opacity-40 flex items-center justify-center gap-2">
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                {lang === 'PT' ? 'Salvar' : lang === 'EN' ? 'Save' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ★ 2026-10-10 — Toast de confirmación / aviso de bloqueo */}
+      {toast && (
+        <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[55] max-w-[92%] px-4 py-2.5 rounded-xl text-[11px] font-bold shadow-2xl border flex items-center gap-2
+          ${toast.type === 'ok' ? 'bg-emerald-500/15 text-emerald-200 border-emerald-400/40' : 'bg-rose-500/15 text-rose-200 border-rose-400/40'}`}>
+          {toast.type === 'ok' ? <Check size={14} /> : <ShieldAlert size={14} />}
+          <span>{toast.msg}</span>
         </div>
       )}
     </div>
