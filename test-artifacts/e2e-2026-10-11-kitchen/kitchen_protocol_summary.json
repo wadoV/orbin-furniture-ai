@@ -1,0 +1,207 @@
+{
+  "timestamp": "2026-10-11T16:46:31.383Z",
+  "results": {
+    "caso1_base": {
+      "status": "VALIDADO",
+      "viable": true,
+      "id": "local:1791737139319:609ss",
+      "name": "Cozinha Linear 1200 Base",
+      "category": "cocina"
+    },
+    "caso1_aereo": {
+      "status": "VALIDADO",
+      "viable": true,
+      "id": "local:1791737153189:qtis8",
+      "name": "Cozinha Linear 1200 Aéreo",
+      "category": "cocina"
+    },
+    "caso2_modular": {
+      "status": "VALIDADO",
+      "viable": true,
+      "id": "local:1791737181565:3ze93",
+      "name": "Cozinha Master Gourmet 2600",
+      "category": "cocina"
+    },
+    "galleryCards": [
+      {
+        "title": "Vanitory Banheiro Dinamarca 800",
+        "badges": [
+          "BAÑO",
+          "BASE",
+          "mm"
+        ],
+        "dims": "800 × 650 × 460 mm"
+      },
+      {
+        "title": "Espelheira Aérea Soho 800",
+        "badges": [
+          "BAÑO",
+          "AEREO",
+          "mm"
+        ],
+        "dims": "800 × 700 × 160 mm"
+      },
+      {
+        "title": "Balcão Cozinha Pia 1200 Pro",
+        "badges": [
+          "COCINA",
+          "BASE",
+          "mm"
+        ],
+        "dims": "1200 × 850 × 550 mm"
+      },
+      {
+        "title": "Aéreo Cozinha Gourmet 1200",
+        "badges": [
+          "COCINA",
+          "AEREO",
+          "mm"
+        ],
+        "dims": "1200 × 720 × 320 mm"
+      },
+      {
+        "title": "Torre Quente Fornos 600",
+        "badges": [
+          "COCINA",
+          "STANDARD",
+          "mm"
+        ],
+        "dims": "600 × 2100 × 580 mm"
+      },
+      {
+        "title": "Ropero Casal Correr 1800",
+        "badges": [
+          "CLOSET / ROPERO",
+          "STANDARD",
+          "mm"
+        ],
+        "dims": "1800 × 2200 × 580 mm"
+      },
+      {
+        "title": "Ropero Juvenil 900 Duo",
+        "badges": [
+          "CLOSET / ROPERO",
+          "STANDARD",
+          "mm"
+        ],
+        "dims": "900 × 2100 × 550 mm"
+      },
+      {
+        "title": "Cómoda 4 Gavetas Master 800",
+        "badges": [
+          "CAJONERA",
+          "BASE",
+          "mm"
+        ],
+        "dims": "800 × 950 × 480 mm"
+      },
+      {
+        "title": "Escritorio Home Office Pro 1300",
+        "badges": [
+          "OFICINA",
+          "DESK",
+          "mm"
+        ],
+        "dims": "1300 × 750 × 600 mm"
+      },
+      {
+        "title": "Rack Buffet TV Living 1600",
+        "badges": [
+          "SALA / LIVING",
+          "BASE",
+          "mm"
+        ],
+        "dims": "1600 × 550 × 400 mm"
+      },
+      {
+        "title": "Cozinha Master Gourmet 2600",
+        "badges": [
+          "COCINA",
+          "BASE",
+          "mm"
+        ],
+        "dims": "2600 × 850 × 550 mm"
+      },
+      {
+        "title": "Cozinha Linear 1200 Aéreo",
+        "badges": [
+          "COCINA",
+          "AEREO",
+          "mm"
+        ],
+        "dims": "1200 × 700 × 320 mm"
+      },
+      {
+        "title": "Cozinha Linear 1200 Base",
+        "badges": [
+          "COCINA",
+          "BASE",
+          "mm"
+        ],
+        "dims": "1200 × 850 × 550 mm"
+      }
+    ],
+    "filterTests": {
+      "COCINA": 6,
+      "TODOS": 13
+    }
+  },
+  "uncaughtErrors": [],
+  "consoleErrorsCount": 4,
+  "cardsUnderCocina": [
+    {
+      "title": "Balcão Cozinha Pia 1200 Pro",
+      "badges": [
+        "COCINA",
+        "BASE",
+        "mm"
+      ],
+      "dims": "1200 × 850 × 550 mm"
+    },
+    {
+      "title": "Aéreo Cozinha Gourmet 1200",
+      "badges": [
+        "COCINA",
+        "AEREO",
+        "mm"
+      ],
+      "dims": "1200 × 720 × 320 mm"
+    },
+    {
+      "title": "Torre Quente Fornos 600",
+      "badges": [
+        "COCINA",
+        "STANDARD",
+        "mm"
+      ],
+      "dims": "600 × 2100 × 580 mm"
+    },
+    {
+      "title": "Cozinha Master Gourmet 2600",
+      "badges": [
+        "COCINA",
+        "BASE",
+        "mm"
+      ],
+      "dims": "2600 × 850 × 550 mm"
+    },
+    {
+      "title": "Cozinha Linear 1200 Aéreo",
+      "badges": [
+        "COCINA",
+        "AEREO",
+        "mm"
+      ],
+      "dims": "1200 × 700 × 320 mm"
+    },
+    {
+      "title": "Cozinha Linear 1200 Base",
+      "badges": [
+        "COCINA",
+        "BASE",
+        "mm"
+      ],
+      "dims": "1200 × 850 × 550 mm"
+    }
+  ]
+}

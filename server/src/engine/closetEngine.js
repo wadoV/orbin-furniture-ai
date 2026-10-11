@@ -984,7 +984,11 @@ function generateFurniture(params) {
       // Lógica original: puertas sobrepuestas (hinged)
       const totalDrawerH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) : 0)
       const nicheOffset = nicheH > 0 ? nicheH + T : 0
-      const doorH = H - BH3 - totalDrawerH - (isBase ? T : 0) - nicheOffset
+      
+      // ★ ADITIVO 2026-10-11: puxadorCavaAereo en módulos aéreos
+      //   Extensión de puertas 30mm hacia abajo (overhang) + tamponado inferior retranqueado
+      const puxadorOverhang = (isAereo && cfg.puxadorCavaAereo) ? (cfg.cavaOverhang || 30) : 0
+      const doorH = H - BH3 - totalDrawerH - (isBase ? T : 0) - nicheOffset + puxadorOverhang
       if (doorH > 150) {
         const n = Math.min(4, Math.max(1, numDoors || 1))
         const leafW = (W / n) - HARDWARE.DOOR_GAP_W
@@ -997,6 +1001,21 @@ function generateFurniture(params) {
             leafW, doorH - HARDWARE.DOOR_GAP_H, T, 1,
             xPos, doorY, CD + T/2,   // cara frontal en CD+T: con overlay = D exacto; en legacy = D+T
             'vertical', { all: true }, 'Bisagra Reforzada', 'standard_door'
+          ))
+        }
+        
+        // ★ ADITIVO 2026-10-11: Tamponado inferior aéreo (cierre visual + retranqueo Z)
+        //   Se genera cuando isAereo && puxadorCavaAereo, para cerrar visualmente
+        //   el espacio bajo la extensión de las puertas (30mm overhang).
+        if (isAereo && cfg.puxadorCavaAereo) {
+          const tamponRetranqueo = cfg.tamponadoInferiorRetranqueo || 25  // retranqueado en Z
+          pieces.push(makePiece(
+            nextId('TAMPON-INF-AERO'), 'Tamponado Inferior Aéreo', 'tampon_bottom',
+            internalWidth - 2, internalDepth - tamponRetranqueo, cfg.tamponadoThickness || T, 1,
+            W/2, BH3 + totalDrawerH + nicheOffset + (puxadorOverhang - tamponRetranqueo) / 2, 
+            internalDepth/2 + BT - tamponRetranqueo/2,
+            'horizontal', { front: true },
+            'Cierre visual inferior — retranqueado 25mm en profundidad'
           ))
         }
       }

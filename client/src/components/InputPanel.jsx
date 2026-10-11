@@ -271,7 +271,11 @@ const DEFAULTS = {
   drawerRailHeight: 50,
   drawerFrontStyle: 'flat',
   cavaCncWidth: 140,
-  cavaCncDepth: 35
+  cavaCncDepth: 35,
+  // ★ 2026-10-11: mountHeight en DEFAULTS con sentinel null (espejo de closetEngine DEFAULTS).
+  //   Sin esto, reset() dejaba mountHeight=undefined → el campo del aéreo usaba siempre
+  //   AEREO_MOUNT.DEFAULT y no reflejaba el estado real tras un reset del formulario.
+  mountHeight: null
 }
 
 // ─── InputPanel ───────────────────────────────────────────────────────────────
@@ -724,7 +728,7 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                 {t('edit_mode_hint') || 'Estás en «Creando nuevo»: estos valores crearán un módulo nuevo. Para modificar el mueble seleccionado, activá «Editar módulo» más abajo.'}
               </p>
             )}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 [&_.label]:min-h-[2.1rem] [&_.label]:flex [&_.label]:items-end">
               <FIELD label={t('width')}  name="width"  value={convert(params.width)}  onChange={setDimParam} min={convert(300)} max={convert(3000)} step={unit === 'cm' ? 0.1 : 1} suffix={unit} />
               <FIELD label={t('height')} name="height" value={convert(params.height)} onChange={setDimParam} min={convert(300)} max={convert(2800)} step={unit === 'cm' ? 0.1 : 1} suffix={unit} />
               <FIELD label={t('depth')}  name="depth"  value={convert(params.depth)}  onChange={setDimParam} min={convert(150)} max={convert(1000)} step={unit === 'cm' ? 0.1 : 1} suffix={unit} />
@@ -781,9 +785,9 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                     </label>
                     <button
                       onClick={() => setParam('divideDrawers', !params.divideDrawers)}
-                      className={`w-10 h-5 rounded-full relative transition-all duration-300 ${params.divideDrawers ? 'bg-primary shadow-[0_0_10px_rgba(245,166,35,0.4)]' : 'bg-white/10'}`}
+                      className={`w-10 h-6 rounded-full relative transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D0D0D] ${params.divideDrawers ? 'bg-primary shadow-[0_0_12px_rgba(245,166,35,0.4)]' : 'bg-surface-3'}`}
                     >
-                      <div className={`absolute top-1 w-3 h-3 rounded-full bg-black transition-all duration-300 ${params.divideDrawers ? 'right-1' : 'left-1'}`} />
+                      <span className={`absolute top-1 left-0 w-4 h-4 bg-white rounded-full transition-transform shadow-md ${params.divideDrawers ? 'translate-x-5' : 'translate-x-1'}`} />
                     </button>
                   </div>
 

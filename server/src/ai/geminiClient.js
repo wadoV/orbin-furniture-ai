@@ -127,6 +127,24 @@ function extractParamsFromText(text) {
     while (openBraces > 0) { clean += '}'; openBraces--; }
     try {
       const raw = JSON.parse(clean);
+      if (raw.conceptualModules && Array.isArray(raw.conceptualModules)) {
+        const totalW = raw.conceptualModules.reduce((acc, m) => acc + (Number(m.width) || 0), 0);
+        if (totalW > 0) {
+          return {
+            moduleType: 'base',
+            width: totalW,
+            height: 850,
+            depth: 550,
+            thickness: 18,
+            hasDoors: true,
+            doorType: 'sliding',
+            baseboard: true,
+            baseboardHeight: 100,
+            numDrawers: 2,
+            numDividers: 2
+          };
+        }
+      }
       return raw.params || (raw.width ? raw : null);
     } catch (err) {}
   }

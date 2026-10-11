@@ -298,6 +298,84 @@ export const WORKSHOP_TEMPLATES = Object.freeze([
       { key: 'MOD-1', width: 2000, depth: 500, x: 0, y: 0 },
     ],
   },
+  // ★ ADITIVO 2026-10-11: Plantilla industrial premium — cocina modular 2800mm lineales
+  //   Composición: 2 módulos base gemelos (1400mm c/u) + 2 módulos aéreos acoplados (1400mm c/u)
+  //   Acabado: cava CNC 45° en frentes de base, puxador passante (cava inferior) en aéreos,
+  //   tamponado lateral integral (envolvente), fondo estructural atornillado en aéreos.
+  {
+    id: 'wt-cozinha-master-2800',
+    name: 'Cozinha Master Grande Cava 2800',
+    category: 'cocina',
+    source: 'Plantilla industrial premium (2026-10-11)',
+    engineReady: false,
+    engineReadyReason: 'Requiere composición mixta (base + aéreo) y alineación de tamponado lateral con cava inferior; cliente debe confirmar detalles de instalación eléctrica/plomería.',
+    known: {
+      totalLengthMm: 2800,
+      moduleBase: [
+        { type: 'base', width: 1400, height: 850, depth: 550, modules: 2 },
+      ],
+      moduleAereo: [
+        { type: 'aereo', width: 1400, height: 750, depth: 320, modules: 2, mountHeight: 1450 },
+      ],
+      baseCava: { style: 'cava45', degreesAngle: 45, depthMm: 35 },
+      aereoCava: { style: 'puxadorPassante', overhangMm: 30, tamponadoRetranqueoMm: 25 },
+      materials: {
+        structure: 'MDF 18mm',
+        backs: 'MDF 15mm (aéreos), 6mm (base)',
+        tamponado: 'MDF 15mm',
+      },
+      edgeBanding: { type: 'riviera', application: 'frentes + costados' },
+      notes: [
+        'Base: 2 módulos gemelos de 1400 × 850 × 550 mm en MDF 18 con zócalo 100mm retrasado.',
+        'Puertas batientes + gavetas internas con cava CNC 45°.',
+        'Aéreo: 2 módulos gemelos de 1400 × 750 × 320 mm en MDF 15.',
+        'Puertas con extensión passante 30mm hacia abajo (puxador) + tamponado inferior retranqueado 25mm.',
+        'Tamponados laterales exteriores (L + R) en ambos lados, alineados al ras de las fachadas con profundidad D + espesor puerta (15-18mm).',
+        'Fondo estructural 15mm atornillado en 4 cantos de aéreos (invariante).',
+        'Separación vertical: vano libre 600mm entre bancada + base (850mm) e inicio aéreo (1450mm instalación).',
+        'Acabado: pintura/enchapado Riviera en MDF 18 de estructura; frentes en acabado custom (cliente).',
+      ],
+    },
+    viewerReady: false,
+    materials: {
+      MDF18: { label: 'MDF 18 (estructura base)', thickness: 18 },
+      MDF15: { label: 'MDF 15 (aéreo + tamponado)', thickness: 15 },
+      MDF6: { label: 'MDF 6 (fondo aéreo)', thickness: 6 },
+    },
+    cutList: [
+      // BASE: Módulo izquierdo (1400 × 850 × 550)
+      { ref: 'BASE-L-LAT', module: 'BASE-L', name: 'Lateral base izquierdo (L1400)', a: 1400, b: 850, qty: 2, material: 'MDF18', type: 'lateral' },
+      { ref: 'BASE-L-BASE', module: 'BASE-L', name: 'Base/piso interior', a: 1350, b: 550, qty: 1, material: 'MDF18', type: 'base' },
+      { ref: 'BASE-L-FONDO', module: 'BASE-L', name: 'Fondo 6mm ranurado', a: 1400, b: 850, qty: 1, material: 'MDF6', type: 'fondo' },
+      { ref: 'BASE-L-TAM-L', module: 'BASE-L', name: 'Tamponado lateral izquierdo (envolvente)', a: 1400, b: 880, qty: 1, material: 'MDF15', type: 'tampon_left' },
+      { ref: 'BASE-L-PUERTA', module: 'BASE-L', name: 'Puerta batiente (frente + cava 45°)', a: 680, b: 820, qty: 2, material: 'MDF18', type: 'door_with_cava' },
+      // BASE: Módulo derecho (1400 × 850 × 550)
+      { ref: 'BASE-R-LAT', module: 'BASE-R', name: 'Lateral base derecho (R1400)', a: 1400, b: 850, qty: 2, material: 'MDF18', type: 'lateral' },
+      { ref: 'BASE-R-BASE', module: 'BASE-R', name: 'Base/piso interior', a: 1350, b: 550, qty: 1, material: 'MDF18', type: 'base' },
+      { ref: 'BASE-R-FONDO', module: 'BASE-R', name: 'Fondo 6mm ranurado', a: 1400, b: 850, qty: 1, material: 'MDF6', type: 'fondo' },
+      { ref: 'BASE-R-TAM-R', module: 'BASE-R', name: 'Tamponado lateral derecho (envolvente)', a: 1400, b: 880, qty: 1, material: 'MDF15', type: 'tampon_right' },
+      { ref: 'BASE-R-PUERTA', module: 'BASE-R', name: 'Puerta batiente (frente + cava 45°)', a: 680, b: 820, qty: 2, material: 'MDF18', type: 'door_with_cava' },
+      // AÉREO: Módulo izquierdo (1400 × 750 × 320)
+      { ref: 'AERO-L-LAT', module: 'AERO-L', name: 'Lateral aéreo izquierdo (L1400)', a: 1400, b: 750, qty: 2, material: 'MDF15', type: 'lateral' },
+      { ref: 'AERO-L-FONDO', module: 'AERO-L', name: 'Fondo atornillado 15mm', a: 1400, b: 750, qty: 1, material: 'MDF15', type: 'back_screwed' },
+      { ref: 'AERO-L-TAM-L', module: 'AERO-L', name: 'Tamponado lateral izquierdo (envolvente + 30mm puxador)', a: 1400, b: 780, qty: 1, material: 'MDF15', type: 'tampon_left' },
+      { ref: 'AERO-L-TAM-INF', module: 'AERO-L', name: 'Tamponado inferior (cierre visual, retranq 25mm Z)', a: 1350, b: 305, qty: 1, material: 'MDF15', type: 'tampon_bottom' },
+      { ref: 'AERO-L-PUERTA', module: 'AERO-L', name: 'Puerta puxador passante (ext -30mm Y)', a: 680, b: 780, qty: 2, material: 'MDF15', type: 'door_puxador' },
+      // AÉREO: Módulo derecho (1400 × 750 × 320)
+      { ref: 'AERO-R-LAT', module: 'AERO-R', name: 'Lateral aéreo derecho (R1400)', a: 1400, b: 750, qty: 2, material: 'MDF15', type: 'lateral' },
+      { ref: 'AERO-R-FONDO', module: 'AERO-R', name: 'Fondo atornillado 15mm', a: 1400, b: 750, qty: 1, material: 'MDF15', type: 'back_screwed' },
+      { ref: 'AERO-R-TAM-R', module: 'AERO-R', name: 'Tamponado lateral derecho (envolvente + 30mm puxador)', a: 1400, b: 780, qty: 1, material: 'MDF15', type: 'tampon_right' },
+      { ref: 'AERO-R-TAM-INF', module: 'AERO-R', name: 'Tamponado inferior (cierre visual, retranq 25mm Z)', a: 1350, b: 305, qty: 1, material: 'MDF15', type: 'tampon_bottom' },
+      { ref: 'AERO-R-PUERTA', module: 'AERO-R', name: 'Puerta puxador passante (ext -30mm Y)', a: 680, b: 780, qty: 2, material: 'MDF15', type: 'door_puxador' },
+    ],
+    layout: [
+      { key: 'BASE-L', width: 1400, depth: 550, x: 0, y: 0 },
+      { key: 'BASE-R', width: 1400, depth: 550, x: 1400, y: 0 },
+      { key: 'AERO-L', width: 1400, depth: 320, x: 0, y: 1450 },
+      { key: 'AERO-R', width: 1400, depth: 320, x: 1400, y: 1450 },
+    ],
+    missing: ['confirmacionCliente-distancia-enchufes', 'tipoPintura-frentes', 'pruebaHidraulica-plomeria', 'secuenciaInstalacion'],
+  },
 
 
 ])

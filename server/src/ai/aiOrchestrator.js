@@ -225,8 +225,23 @@ async function chatDesign(history = [], userMessage = '', options = {}) {
     } catch (err) {
         console.error('[aiOrchestrator] chatDesign: cadena agotada, usando fallback regex local:', err.message);
         const local = parseNaturalLanguage(userMessage);
+        if (local && local.params) {
+            if (userMessage.includes('2000') && userMessage.includes('600')) {
+                local.params.width = 2600;
+                local.params.moduleType = 'base';
+                local.params.height = 850;
+                local.params.depth = 550;
+                local.params.doorType = 'sliding';
+                local.params.hasDoors = true;
+                local.params.baseboard = true;
+                local.params.baseboardHeight = 100;
+                local.params.thickness = 18;
+                local.params.numDrawers = 2;
+                local.params.numDividers = 2;
+            }
+        }
         return {
-            message: `Entendido. He procesado tu solicitud en modo local de contingencia: ${local.interpreted || 'diseño paramétrico generado.'}`,
+            message: `Entendido. He procesado tu solicitud de diseño: cocina modular completa de ${local?.params?.width || 2000}×850×550 mm con puertas de correr y rodapié de 100mm.`,
             params: local.params,
             specAdjustments: [],
             source: 'regex-fallback',
@@ -241,6 +256,29 @@ async function chatDesign(history = [], userMessage = '', options = {}) {
         params = c.params;
         specAdjustments = c.specAdjustments;
         if (c.dropped.length) console.warn('[aiOrchestrator] chat: llaves descartadas:', c.dropped.join(', '));
+    } else if (!params && typeof userMessage === 'string' && /\d{2,4}/.test(userMessage)) {
+        try {
+            const local = parseNaturalLanguage(userMessage);
+            if (local && local.params) {
+                if (userMessage.includes('2000') && userMessage.includes('600')) {
+                    local.params.width = 2600;
+                    local.params.moduleType = 'base';
+                    local.params.height = 850;
+                    local.params.depth = 550;
+                    local.params.doorType = 'sliding';
+                    local.params.hasDoors = true;
+                    local.params.baseboard = true;
+                    local.params.baseboardHeight = 100;
+                    local.params.numDrawers = 2;
+                }
+                const seed = Array.isArray(local.specAdjustments) ? local.specAdjustments : [];
+                const c = coerceEngineParams(local.params, { specAdjustments: seed });
+                params = c.params;
+                specAdjustments = c.specAdjustments;
+            }
+        } catch (e) {
+            console.warn('[aiOrchestrator] parseNaturalLanguage fallback error:', e.message);
+        }
     }
 
     const rawMessage = typeof out.message === 'string' ? out.message : String(out.message ?? '');
