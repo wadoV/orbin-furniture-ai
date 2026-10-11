@@ -20,7 +20,12 @@ const HARDWARE = {
   DOOR_GAP_W: 2.5,
   DOOR_GAP_H: 4,
   SLIDE_CLEARANCE: 13,
-  RECESO_TECNICO: 50
+  RECESO_TECNICO: 50,
+  // ★ ADITIVO 2026-10-11 — Kitchen structural constants
+  OVEN_OPENING_W: 595,        // Free front opening for standard 60cm oven
+  CROSSBEAM_H_DEFAULT: 80,    // Sink/oven crossbeam height (70–100mm range)
+  CAVA_OVERHANG: 30,          // Door extension below bottom for cava handle
+  CAVA_BOTTOM_RECESS: 25,     // Bottom panel setback for grip clearance
 }
 
 const MATERIAL = {
@@ -170,6 +175,11 @@ function generateFurniture(params) {
     const err = new Error(`INSUFFICIENT_SPACE: structuralHeight=${structuralHeight}mm é menor que 100mm mínimo. Reduza o rodapé ou aumente a altura.`)
     err.statusCode = 400; throw err;
   }
+  // ★ ADITIVO 2026-10-11 — Oven: validate internal width ≥ 595mm for standard oven opening
+  if ((params.subType === 'oven_cavity') && internalWidth < HARDWARE.OVEN_OPENING_W) {
+    const err = new Error(`OVEN_OPENING: internalWidth=${internalWidth}mm < ${HARDWARE.OVEN_OPENING_W}mm requeridos para la apertura frontal del horno. Aumente el ancho del módulo.`)
+    err.statusCode = 400; throw err;
+  }
 
   const onLegs = baseType === 'legs'
   const latH = onLegs ? (H - BH3) : H
@@ -184,18 +194,64 @@ function generateFurniture(params) {
   if (tamp === 'right' || tamp === 'both')
     pieces.push(makePiece(nextId('TAMP-R'), 'Tampão Lateral Der', 'tamponado', D, latH, T, 1, W + T/2, latY, D/2, 'vertical', { front: true }, 'Cubre tornillos costado derecho'))
 
-  if (isBase && hasCountertop && moduleType !== 'standard') {
+  // ★ ADITIVO 2026-10-11 — Sub-type aware top structure
+  const subType = cfg.subType || null
+  const crossbeamH = Math.max(70, Math.min(150, cfg.crossbeamHeight || HARDWARE.CROSSBEAM_H_DEFAULT))
+
+  if (subType === 'sink') {
+    // ── SINK MODULE: solid top replaced by two structural crossbeams ──────────
+    // The countertop (with sink cutout) rests on these. No solid techo.
+    pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal (Fregadero)', 'tie_strip',
+      internalWidth, crossbeamH, T, 1,
+      W/2, H - crossbeamH/2, T/2 + 20,
+      'horizontal', { front: true }, `Soporte estructural fregadero — ${crossbeamH}mm`))
+    pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero (Fregadero)', 'tie_strip',
+      internalWidth, crossbeamH, T, 1,
+      W/2, H - crossbeamH/2, D - BT - T/2,
+      'horizontal', { front: true }, `Soporte estructural fregadero — ${crossbeamH}mm`))
+  } else if (subType === 'oven_cavity') {
+    // ── OVEN MODULE: reinforced support crossbeam + open front ────────────────
+    // Top: two crossbeams (front+back) to support countertop weight above oven.
+    // The oven sits on the base plate; the front is left completely open (595mm).
+    pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal (Horno)', 'tie_strip',
+      internalWidth, crossbeamH, T, 1,
+      W/2, H - crossbeamH/2, T/2 + 20,
+      'horizontal', { front: true }, `Refuerzo horno — ${crossbeamH}mm`))
+    pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero (Horno)', 'tie_strip',
+      internalWidth, crossbeamH, T, 1,
+      W/2, H - crossbeamH/2, D - BT - T/2,
+      'horizontal', { front: true }, `Refuerzo horno — ${crossbeamH}mm`))
+    // Bottom support crossbeam: the oven rests on this, not directly on the base plate.
+    // Sits above the base plate at baseboard+T height.
+    pieces.push(makePiece(nextId('TRAV-SOPORTE'), 'Travesaño Soporte Horno', 'tie_strip',
+      internalWidth, crossbeamH, T, 1,
+      W/2, BH3 + T + crossbeamH/2, D/2,
+      'horizontal', { front: true }, 'Soporte base del horno — distribuye peso'))
+  } else if (isBase && hasCountertop && moduleType !== 'standard') {
     pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal', 'tie_strip', internalWidth, 70, T, 1, W/2, H - 70/2, T/2 + 20, 'horizontal', { front: true }, 'Refuerzo Estructural'))
     pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero', 'tie_strip', internalWidth, 70, T, 1, W/2, H - 70/2, D - BT - T/2, 'horizontal', { front: true }, 'Refuerzo Estructural'))
   } else {
     pieces.push(makePiece(nextId('TAMPO'), 'Techo', 'techo', internalWidth, D, T, 1, W/2, H - T/2, D/2, 'horizontal', { front: true }))
   }
 
-  pieces.push(makePiece(nextId('BASE'), 'Base Inferior', 'piso', internalWidth, D, T, 1, W/2, BH3 + T/2, D/2, 'horizontal', { front: true }))
+  // ★ ADITIVO 2026-10-11 — Cava aéreo: bottom panel recessed for grip clearance
+  if (isAereo && cfg.puxadorCavaAereo) {
+    const recess = cfg.cavaOverhang || HARDWARE.CAVA_BOTTOM_RECESS
+    // Base inferior retrocedida: profundidad reducida para dejar espacio de agarre
+    pieces.push(makePiece(nextId('BASE'), 'Base Inferior (Cava)', 'piso',
+      internalWidth, D - recess, T, 1,
+      W/2, BH3 + T/2, (D - recess)/2 + recess,
+      'horizontal', { front: true },
+      `Retroceso ${recess}mm para agarre cava`))
+  } else {
+    pieces.push(makePiece(nextId('BASE'), 'Base Inferior', 'piso', internalWidth, D, T, 1, W/2, BH3 + T/2, D/2, 'horizontal', { front: true }))
+  }
 
   // BUG FIX #5: base+countertop has traversaños (70mm) at top, not a techo (T).
   // Standard/aereo use 2*T (bottom base + top techo). Base+countertop uses T+70.
-  const topDeduction = (isBase && hasCountertop && moduleType !== 'standard') ? 70 : T
+  // ★ ADITIVO 2026-10-11: sink/oven use crossbeamH instead of hardcoded 70.
+  const topDeduction = (subType === 'sink' || subType === 'oven_cavity') ? crossbeamH
+    : (isBase && hasCountertop && moduleType !== 'standard') ? 70 : T
   const backH = H - BH3 - T - topDeduction
   // ── Fondo: ancho según método (manifiesto = SSOT). Default = vano interno (sin cambios).
   //   'grooved' (ranurado) = internalSpan + 2·grooveDepth ; 'nailed' (clavado) = W − 2mm.
@@ -211,8 +267,13 @@ function generateFurniture(params) {
     pieces.push(makePiece(nextId('RDPE-B'), 'Zócalo Trasero', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, T/2 + 50, 'vertical', { front: true }))
   }
 
+  // ★ ADITIVO 2026-10-11 — Oven cavity: drawer start offset accounts for support crossbeam
   const safeDrawerHeight = Math.max(100, drawerHeight)
   let drawerYStart = BH3 + T
+  if (subType === 'oven_cavity') {
+    // Oven support crossbeam sits above base plate; drawers (if any) start above it
+    drawerYStart = BH3 + T + crossbeamH + T
+  }
   const SLIDE_GAP = HARDWARE.SLIDE_CLEARANCE
 
   const numDivs = cfg.numDividers || 0
@@ -330,7 +391,8 @@ function generateFurniture(params) {
     }
   }
 
-  if (hasDoors) {
+  // ★ ADITIVO 2026-10-11 — Oven cavity: NO doors (front must stay open for appliance)
+  if (hasDoors && subType !== 'oven_cavity') {
     const totalDrawerH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0)
     const doorH = H - BH3 - totalDrawerH - (isBase ? T : 0)
     if (doorH > 150) {
@@ -338,13 +400,23 @@ function generateFurniture(params) {
       const leafW = (W / n) - HARDWARE.DOOR_GAP_W
       const doorY = BH3 + totalDrawerH + doorH/2
 
+      // ★ ADITIVO 2026-10-11 — Cava handle on aéreos: door extends below bottom panel
+      const cavaExt = (isAereo && cfg.puxadorCavaAereo)
+        ? (cfg.cavaOverhang || HARDWARE.CAVA_OVERHANG)
+        : 0
+      const finalDoorH = doorH - HARDWARE.DOOR_GAP_H + cavaExt
+      const finalDoorY = doorY - cavaExt / 2  // shift center down by half the extension
+
       for (let i = 0; i < n; i++) {
         const xPos = (W/n)/2 + i*(W/n)
+        const doorNote = cavaExt > 0
+          ? `Puerta cava — extensión ${cavaExt}mm bajo base`
+          : 'Bisagra Reforzada'
         pieces.push(makePiece(
           nextId('PORTA'), `Puerta ${i + 1}`, 'standard_door',
-          leafW, doorH - HARDWARE.DOOR_GAP_H, T, 1,
-          xPos, doorY, D + T/2,
-          'vertical', { all: true }, 'Bisagra Reforzada', 'standard_door'
+          leafW, finalDoorH, T, 1,
+          xPos, finalDoorY, D + T/2,
+          'vertical', { all: true }, doorNote, 'standard_door'
         ))
       }
     }
