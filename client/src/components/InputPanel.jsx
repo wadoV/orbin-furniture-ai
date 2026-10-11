@@ -789,6 +789,49 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                 <div className="grid grid-cols-2 gap-4">
                   <FIELD label={t('num_doors')} name="numDoors" value={params.numDoors} onChange={setParam} type="number" min={1} max={4} />
                 </div>
+                <SELECT
+                  label="Tipo de puerta"
+                  name="doorType"
+                  value={params.doorType || 'hinged'}
+                  onChange={setParam}
+                  options={[
+                    { value: 'hinged',  label: 'Sobrepuesta (Bisagra)' },
+                    { value: 'sliding', label: 'Correr (Riel doble)' },
+                    { value: 'none',    label: 'Sin puerta' },
+                  ]}
+                />
+                
+                {params.doorType === 'sliding' && (
+                  <div className="space-y-3 pl-3 border-l-2 border-primary/30">
+                    <FIELD 
+                      label="Hojas de correr"
+                      name="slidingDoorSheets"
+                      value={params.slidingDoorSheets || 2}
+                      onChange={setParam}
+                      type="number"
+                      min={1}
+                      max={4}
+                    />
+                    <TOGGLE
+                      label="Puxador Cava 45° (CNC)"
+                      name="puxadorCava45"
+                      value={params.puxadorCava45 || false}
+                      onChange={setParam}
+                    />
+                    {params.puxadorCava45 && (
+                      <FIELD
+                        label="Altura Traviesa Respaldo"
+                        name="alturaTraviesaCava"
+                        value={params.alturaTraviesaCava || 50}
+                        onChange={setParam}
+                        type="number"
+                        min={20}
+                        max={200}
+                        suffix="mm"
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {/* ★ F1 2026-07-19 (ux_ui_critic APROBADO como cofundador): handleType fuera del

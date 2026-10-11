@@ -24,8 +24,8 @@ const ENGINE_PARAM_KEYS = [
   'hasDoors', 'doorType', 'doorStyle', 'doorFinish',
   'drawerHeight', 'drawerLayout', 'drawerColumns',
   'baseboard', 'baseboardHeight', 'baseType', 'legHeight',
-  'hasCountertop', 'countertopMaterial', 'topStyle', 'backStyle',
-  'hasHangingRod', 'hasLed', 'nicheHeight', 'tamponado', 'tamponadoThickness', 'frontMolding', 'panelVista', 'fijacion', 'grooveDepth',  'pedestalWidth', 'hasPedestal', 'pedestalSide', 'drawerPrivacyPanel', 'drawerRailHeight',
+  'hasCountertop', 'countertopMaterial', 'topStyle', 'backStyle', 'alturaTraviesaCava', 'slidingDoorSheets', 'puxadorCava45',
+  'hasHangingRod', 'hasLed', 'nicheHeight', 'tamponado', 'tamponadoThickness', 'frontMolding', 'panelVista', 'fijacion', 'grooveDepth',  'pedestalWidth', 'hasPedestal', 'puxadorCava45', 'pedestalSide', 'drawerPrivacyPanel', 'drawerRailHeight',
   'handleType', 'edgeBandingType', 'materialBody', 'materialFront',
   'mountHeight', 'type',
 ]
@@ -92,9 +92,11 @@ const RANGES = {
   //   Este contrato valida FORMA; el SENTIDO (un aéreo colgado a 300mm es absurdo) lo
   //   valida structural_validator. Mezclar ambos hace ilegibles los mensajes de error.
   mountHeight: [0, 2400],
+  slidingDoorSheets: [1, 4],
+  alturaTraviesaCava: [0, 200],
 }
 
-const BOOL_KEYS = ['hasDoors', 'hasCountertop', 'hasHangingRod', 'hasLed', 'baseboard', 'drawerPrivacyPanel', 'hasPedestal']
+const BOOL_KEYS = ['hasDoors', 'hasCountertop', 'hasHangingRod', 'hasLed', 'baseboard', 'drawerPrivacyPanel', 'hasPedestal', 'puxadorCava45']
 const NUM_KEYS = Object.keys(RANGES)
 
 // Sólo estas llaves son MEDIDAS: admiten unidad y la inferencia "2.4" → 2400mm.
@@ -234,7 +236,7 @@ function coerceEngineParams(raw, opts = {}) {
   }
 
   // 2.g — strings libres que el motor sí lee
-  for (const k of ['doorStyle', 'doorFinish', 'topStyle', 'backStyle', 'tamponado',
+  for (const k of ['doorStyle', 'doorFinish', 'topStyle', 'backStyle', 'alturaTraviesaCava', 'slidingDoorSheets', 'puxadorCava45', 'tamponado',
                    'materialBody', 'materialFront', 'countertopMaterial']) {
     if (typeof norm[k] === 'string' && norm[k].trim()) out[k] = norm[k].trim()
   }

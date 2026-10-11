@@ -120,7 +120,10 @@ const DEFAULTS = {
   //    OJO: no puede ser 0 acá. generateProject hace {...DEFAULTS,...params} ANTES de
   //    llamar a generateFurniture, así que un 0 de default sería indistinguible de un
   //    0 puesto por el usuario y el auto-default del aéreo nunca se dispararía.
-  mountHeight: null
+  mountHeight: null,
+  slidingDoorSheets: 2,    // ★ 2026-10: hojas de correr (solo doorType='sliding')
+  puxadorCava45: false,   // ★ 2026-10: mecanizado cava 45° CNC
+  alturaTraviesaCava: 50,  // ★ 2026-10: altura de traviesa de respaldo en cava 45°
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -155,6 +158,91 @@ function makePiece(id, name, type, w, h, t, qty, x, y, z, grainDir, edgeBanding,
 //   el fondo es grooved) + DRAWER_REAR_CLEARANCE (10mm).
 //   Sustituye el `D − Tb − 20` histórico, que ignoraba el FRENTE: en D=580/T=18
 //   emitía caja de 550 → 550+6+10+18 = 584 > 580 (4mm de interferencia real).
+// ─── ADITIVO 2026-10: Puertas de correr (Portas de Correr) ───────────────────
+const SLIDING_RAIL_OFFSET = 80        // retranqueo para riel
+const SLIDING_SHEET_OVERLAP = 100      // traslape entre hojas
+const SLIDING_DOOR_HEIGHT_DEDUCTION = 35  // descontar para kit carros
+
+function calculateSlidingDoors(cfg, D, CD, T, BT, internalWidth, internalDepth, H, hasDoors, nextId) {
+  const { slidingDoorSheets = 2, puxadorCava45 = false } = cfg
+  const doorType = cfg.doorType || "hinged"
+  
+  if (!hasDoors || doorType !== "sliding") {
+    return { effectiveInternalDepth: internalDepth, pieces: [], bomItems: [], warnings: [] }
+  }
+  
+  const effectiveInternalDepth = internalDepth - SLIDING_RAIL_OFFSET
+  
+  if (effectiveInternalDepth < 250) {
+    return {
+      effectiveInternalDepth: internalDepth,
+      pieces: [],
+      bomItems: [],
+      warnings: [{ code: "SLIDING_DEPTH_INSUFFICIENT", severity: "error", message: `Profundidad insuficiente. Mínimo 250mm interior, solicitado ${effectiveInternalDepth}mm.` }]
+    }
+  }
+  
+  const spaceForSlides = internalWidth - 40
+  const nSheets = Math.max(1, Math.min(4, slidingDoorSheets || 2))
+  const sheetWidth = Math.round((spaceForSlides + (nSheets - 1) * SLIDING_SHEET_OVERLAP) / nSheets)
+  
+  const bh = (cfg.baseboard && cfg.moduleType !== "aereo") ? (cfg.baseboardHeight || 100) : 0
+  const drawerH = ((cfg.numDrawers || 0) > 0) ? ((cfg.numDrawers || 0) * (cfg.drawerHeight || 180)) : 0
+  const nicheH = (cfg.nicheHeight || 0) > 0 ? (cfg.nicheHeight || 0) + T : 0
+  const cavaLightDeduction = puxadorCava45 ? 30 : 0
+  const doorHeight = H - bh - drawerH - nicheH - SLIDING_DOOR_HEIGHT_DEDUCTION - cavaLightDeduction
+  
+  if (doorHeight < 150) {
+    return {
+      effectiveInternalDepth,
+      pieces: [],
+      bomItems: [],
+      warnings: [{ code: "SLIDING_HEIGHT_INSUFFICIENT", severity: "error", message: `Altura insuficiente. Mínimo 150mm, solicitado ${doorHeight}mm.` }]
+    }
+  }
+  
+  const pieces = []
+  const yBase = bh + drawerH + nicheH
+  const doorY = yBase + doorHeight / 2
+  
+  for (let i = 0; i < nSheets; i++) {
+    const xPos = (internalWidth / 2) + (i - (nSheets - 1) / 2) * (sheetWidth - SLIDING_SHEET_OVERLAP)
+    const notes = puxadorCava45 ? "USINAGEM: Cava 45° superior + labio 3mm" : ""
+    
+    pieces.push(makePiece(
+      nextId("PORTA-CORRER"), `Porta de Correr ${i + 1}/${nSheets}`, "sliding_door",
+      sheetWidth, doorHeight, T, 1,
+      xPos, doorY, CD + T/2,
+      "vertical", { all: true }, notes, "sliding_door"
+    ))
+  }
+
+  // ★ ADITIVO 2026-10: Traviesa de respaldo para cava 45°
+  if (puxadorCava45) {
+    const traviesaHeight = cfg.alturaTraviesaCava || 50
+    pieces.push(makePiece(
+      nextId('TRAV-CAVA'), 'Traviesa Respaldo Cava 45°', 'travesano',
+      internalWidth, traviesaHeight, T, 1,
+      internalWidth / 2, yBase + doorHeight + traviesaHeight / 2, CD + T/2,
+      'horizontal', { front: true },
+      'Cierre visual y anti-polvo para cava 45°', 'travesano'
+    ))
+  }
+  
+  const bomItems = [
+    { type: "Riel Corredor Inferior", description: `Riel Aluminio duplo 50mm x ${Math.round(internalWidth)}mm`, quantity: 1, unit: "un" },
+    { type: "Riel Corredor Superior", description: `Riel Aluminio duplo 50mm x ${Math.round(internalWidth)}mm`, quantity: 1, unit: "un" },
+    { type: "Carro Corredor", description: "Carro deslizante com rolamentos ABEC-9 (kit superior + inferior)", quantity: nSheets * 2, unit: "un" },
+    { type: "Tope Lateral Riel", description: "Tope de goma para fin de carrera (par)", quantity: 2, unit: "par" }
+  ]
+  
+  if (puxadorCava45) {
+    bomItems.push({ type: "Usinagem CNC", description: `Mecanizado Cava 45° (bisel + labio 3mm) — ${nSheets} hojas`, quantity: nSheets, unit: "un" })
+  }
+  
+  return { effectiveInternalDepth, pieces, bomItems, warnings: [] }
+}
+
 function drawerDepthClearance(T, Tb, backStyle, grooveDepth) {
   const fondoEfectivo = Tb + (backStyle === 'grooved' ? (grooveDepth || 8) : 0)
   return T + fondoEfectivo + HARDWARE.DRAWER_REAR_CLEARANCE
@@ -855,22 +943,38 @@ function generateFurniture(params) {
   }
 
   if (hasDoors) {
-    const totalDrawerH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0)
-    const nicheOffset = nicheH > 0 ? nicheH + T : 0
-    const doorH = H - BH3 - totalDrawerH - (isBase ? T : 0) - nicheOffset
-    if (doorH > 150) {
-      const n = Math.min(4, Math.max(1, numDoors || 1))
-      const leafW = (W / n) - HARDWARE.DOOR_GAP_W
-      const doorY = BH3 + totalDrawerH + nicheOffset + doorH/2
+    // ★ ADITIVO 2026-10: Soporte para puertas de correr
+    if (cfg.doorType === 'sliding') {
+      const slidingResult = calculateSlidingDoors(cfg, D, CD, T, BT, internalWidth, internalDepth, H, hasDoors, nextId)
+      pieces.push(...slidingResult.pieces)
+      bom.push(...slidingResult.bomItems)
+      
+      // Avisar si hay restricciones
+      for (const warning of slidingResult.warnings) {
+        if (warning.severity === 'error') {
+          cfg.specAdjustments = cfg.specAdjustments || []
+          cfg.specAdjustments.push(warning)
+        }
+      }
+    } else {
+      // Lógica original: puertas sobrepuestas (hinged)
+      const totalDrawerH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) : 0)
+      const nicheOffset = nicheH > 0 ? nicheH + T : 0
+      const doorH = H - BH3 - totalDrawerH - (isBase ? T : 0) - nicheOffset
+      if (doorH > 150) {
+        const n = Math.min(4, Math.max(1, numDoors || 1))
+        const leafW = (W / n) - HARDWARE.DOOR_GAP_W
+        const doorY = BH3 + totalDrawerH + nicheOffset + doorH/2
 
-      for (let i = 0; i < n; i++) {
-        const xPos = (W/n)/2 + i*(W/n)
-        pieces.push(makePiece(
-          nextId('PORTA'), `Puerta ${i + 1}`, 'standard_door',
-          leafW, doorH - HARDWARE.DOOR_GAP_H, T, 1,
-          xPos, doorY, CD + T/2,   // cara frontal en CD+T: con overlay = D exacto; en legacy = D+T
-          'vertical', { all: true }, 'Bisagra Reforzada', 'standard_door'
-        ))
+        for (let i = 0; i < n; i++) {
+          const xPos = (W/n)/2 + i*(W/n)
+          pieces.push(makePiece(
+            nextId('PORTA'), `Puerta ${i + 1}`, 'standard_door',
+            leafW, doorH - HARDWARE.DOOR_GAP_H, T, 1,
+            xPos, doorY, CD + T/2,   // cara frontal en CD+T: con overlay = D exacto; en legacy = D+T
+            'vertical', { all: true }, 'Bisagra Reforzada', 'standard_door'
+          ))
+        }
       }
     }
   }
