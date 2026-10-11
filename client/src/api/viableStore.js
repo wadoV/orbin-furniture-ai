@@ -18,6 +18,7 @@
  */
 import { api } from './client.js'
 import { DEMO_MODE } from '../config/demoMode.js'
+import { getInitialSeeds } from '../data/seedViableDesigns.js'
 
 const LS_KEY = 'orbin:viableDesigns'
 const isLocalId = (id) => typeof id === 'string' && id.startsWith('local:')
@@ -28,67 +29,67 @@ const isLocalId = (id) => typeof id === 'string' && id.startsWith('local:')
 //   y no vuelven (el flag `orbin:viableSeeded` lo impide).
 // ─────────────────────────────────────────────────────────────────────────────
 const SEED_FLAG = 'orbin:viableSeeded'
-const DEMO_SEED = Object.freeze([
-  {
-    id: 'seed:balcao-cozinha-1200',
-    design_name: 'Balcão Cozinha 1200',
-    module_type: 'base',
-    category: 'cocina',
-    parametric_json: {
-      moduleType: 'base', width: 1200, height: 850, depth: 550, thickness: 18,
-      backThickness: 6, numShelves: 0, numDrawers: 2, hasDoors: true, numDoors: 2,
-      doorType: 'hinged', baseboard: true, baseboardHeight: 100,
-      hasCountertop: true, drawerSlideType: 'telescopic',
-    },
-    engine_version: 'demo-seed-v1',
-    created_at: '2026-10-10T12:00:00Z',
+const DISMISSED_SEEDS_FLAG = 'orbin:dismissedSeeds'
+
+// Convertir seedViableDesigns.js a formato viable_designs (con aliases esperados)
+function buildDemoSeed() {
+  const seeds = getInitialSeeds()
+  return Object.freeze(seeds.map(s => ({
+    id: s.id,
+    design_name: s.nombre,
+    module_type: s.parametric_json?.moduleType || 'standard',
+    category: s.categoria,
+    parametric_json: s.parametric_json,
+    engine_version: 'seed-certified-v1',
+    created_at: s.createdAt,
+    updatedAt: s.updatedAt,
     _local: true,
+    _isSeed: true,
     validation: { status: 'VALIDADO', errors: [], specAdjustments: [] },
-  },
-  {
-    id: 'seed:aereo-banheiro-600',
-    design_name: 'Aéreo Banheiro 600',
-    module_type: 'aereo',
-    category: 'bano',
-    parametric_json: {
-      moduleType: 'aereo', width: 600, height: 600, depth: 200, thickness: 15,
-      backThickness: 15, numShelves: 0, numDrawers: 0, hasDoors: true, numDoors: 1,
-      doorType: 'hinged', baseboard: false, baseboardHeight: 0,
-      hasCountertop: false,
-    },
-    engine_version: 'demo-seed-v1',
-    created_at: '2026-10-10T12:01:00Z',
-    _local: true,
-    validation: { status: 'VALIDADO', errors: [], specAdjustments: [] },
-  },
-  {
-    id: 'seed:ropero-casal-900',
-    design_name: 'Ropero Casal 900',
-    module_type: 'standard',
-    category: 'closet',
-    parametric_json: {
-      moduleType: 'standard', width: 900, height: 2100, depth: 580, thickness: 18,
-      backThickness: 6, numShelves: 3, numDrawers: 0, hasDoors: true, numDoors: 2,
-      doorType: 'hinged', baseboard: true, baseboardHeight: 100,
-      hasCountertop: false,
-    },
-    engine_version: 'demo-seed-v1',
-    created_at: '2026-10-10T12:02:00Z',
-    _local: true,
-    validation: { status: 'VALIDADO', errors: [], specAdjustments: [] },
-  },
-])
+  })))
+}
+
+const DEMO_SEED = buildDemoSeed()
 
 function ensureDemoSeed() {
   try {
-    if (localStorage.getItem(SEED_FLAG)) return           // ya se sembró una vez
+    const seeded = localStorage.getItem(SEED_FLAG)
+    const dismissed = JSON.parse(localStorage.getItem(DISMISSED_SEEDS_FLAG) || '[]')
     const existing = readLocal()
-    if (existing.length > 0) {                             // el usuario ya tiene datos
-      localStorage.setItem(SEED_FLAG, '1'); return
+    
+    // Si ya hay datos de usuario, marca como sembrado y retorna
+    if (existing.length > 0 && !seeded) {
+      localStorage.setItem(SEED_FLAG, '1')
+      return
     }
+    
+    // Si ya está marcado como sembrado, solo agrega seeds que no fueron descartadas
+    if (seeded) {
+      const filtered = DEMO_SEED.filter(s => !dismissed.includes(s.id))
+      const current = readLocal()
+      const seedIds = new Set(filtered.map(s => s.id))
+      const userDesigns = current.filter(d => !d._isSeed)
+      const toWrite = [...filtered, ...userDesigns]
+      if (toWrite.length > 0 && JSON.stringify(current) !== JSON.stringify(toWrite)) {
+        writeLocal(toWrite)
+      }
+      return
+    }
+    
+    // Primera vez: escribe seeds completos
     writeLocal([...DEMO_SEED])
     localStorage.setItem(SEED_FLAG, '1')
   } catch { /* silencioso: localStorage deshabilitado */ }
+}
+
+function markSeedDismissed(seedId) {
+  try {
+    const dismissed = JSON.parse(localStorage.getItem(DISMISSED_SEEDS_FLAG) || '[]')
+    if (!dismissed.includes(seedId)) {
+      dismissed.push(seedId)
+      localStorage.setItem(DISMISSED_SEEDS_FLAG, JSON.stringify(dismissed))
+    }
+  } catch { /* silencioso */ }
 }
 
 function readLocal() {
@@ -158,7 +159,9 @@ export async function saveViable({ designName, params, category }) {
  * @returns {Promise<object[]>}
  */
 export async function listViable() {
-  if (DEMO_MODE) { ensureDemoSeed(); return readLocal() }
+  ensureDemoSeed()  // Siempre garantiza seeds si está vacío (modo y no-modo)
+  if (DEMO_MODE) { return readLocal() }
+  
   let server = []
   try {
     const res = await api.listViableDesigns()
@@ -167,7 +170,14 @@ export async function listViable() {
   const local = readLocal()
   const seen = new Set(server.map(d => d.id))
   const merged = [...server, ...local.filter(d => !seen.has(d.id))]
-  return merged.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+  const sorted = merged.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+  
+  // Si el resultado está vacío, retorna al menos las seeds (fallback absoluto)
+  if (sorted.length === 0) {
+    const dismissed = JSON.parse(localStorage.getItem(DISMISSED_SEEDS_FLAG) || '[]')
+    return DEMO_SEED.filter(s => !dismissed.includes(s.id))
+  }
+  return sorted
 }
 
 /**
@@ -176,6 +186,11 @@ export async function listViable() {
  * @returns {Promise<boolean>}
  */
 export async function removeViable(id) {
+  // Si es una seed, marcala como descartada
+  if (id && id.startsWith('seed:')) {
+    markSeedDismissed(id)
+  }
+  
   if (DEMO_MODE || isLocalId(id)) {
     const all = readLocal().filter(d => d.id !== id)
     writeLocal(all)

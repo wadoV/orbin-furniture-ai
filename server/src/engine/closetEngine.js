@@ -972,7 +972,6 @@ function generateFurniture(params) {
     if (cfg.doorType === 'sliding') {
       const slidingResult = calculateSlidingDoors(cfg, D, CD, T, BT, internalWidth, internalDepth, H, hasDoors, nextId)
       pieces.push(...slidingResult.pieces)
-      bom.push(...slidingResult.bomItems)
       
       // Avisar si hay restricciones
       for (const warning of slidingResult.warnings) {
@@ -1183,6 +1182,20 @@ function generateHardwareBOM(cfg) {
       - ((cfg.numDrawers || 0) > 0 ? (cfg.numDrawers * (cfg.drawerHeight || 180)) : 0)
     const perDoor = doorH > 1600 ? 4 : doorH > 900 ? 3 : 2
     bom.push({ type: 'Dobradica', description: 'Dobradica clip 35mm 110°', quantity: nDoors * perDoor, unit: 'un' })
+  }
+
+  if (hasDoors && doorType === 'sliding') {
+    const nSheets = Math.max(1, Math.min(4, cfg.slidingDoorSheets || 2))
+    const internalW = (cfg.width || 600) - 2 * (cfg.thickness || 18)
+    bom.push(
+      { type: 'Riel Corredor Inferior', description: `Riel Aluminio duplo 50mm x ${Math.round(internalW)}mm`, quantity: 1, unit: 'un' },
+      { type: 'Riel Corredor Superior', description: `Riel Aluminio duplo 50mm x ${Math.round(internalW)}mm`, quantity: 1, unit: 'un' },
+      { type: 'Carro Corredor', description: 'Carro deslizante com rolamentos ABEC-9 (kit superior + inferior)', quantity: nSheets * 2, unit: 'un' },
+      { type: 'Tope Lateral Riel', description: 'Tope de goma para fin de carrera (par)', quantity: 2, unit: 'par' }
+    )
+    if (cfg.puxadorCava45) {
+      bom.push({ type: 'Usinagem CNC', description: `Mecanizado Cava 45° (bisel + labio 3mm) — ${nSheets} hojas`, quantity: nSheets, unit: 'un' })
+    }
   }
 
   bom.push({ type: 'Parafuso Confirmat', description: 'Confirmat o7x50mm fixacao estrutural', quantity: 24, unit: 'un' })

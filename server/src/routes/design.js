@@ -269,7 +269,7 @@ function pickEngineParams(source = {}) {
 // Categorías de negocio de la Galería. `category` NO se deriva de moduleType
 // (un `standard` puede ser closet o baño); se captura explícita al guardar.
 // null = sin clasificar. Cualquier valor fuera de la lista se normaliza a null.
-const GALLERY_CATEGORIES = ['cocina', 'aereo', 'bano', 'closet', 'escritorio']
+const GALLERY_CATEGORIES = ['cocina', 'aereo', 'bano', 'closet', 'escritorio', 'cajonera', 'oficina', 'sala', 'dormitorio']
 
 const viableSchema = z.object({
   design_name: z.string().min(3).max(120).trim(),

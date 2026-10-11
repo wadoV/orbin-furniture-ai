@@ -11,7 +11,11 @@ export const GALLERY_CATEGORIES = [
   { value: 'aereo',      label: 'Aéreos' },
   { value: 'bano',       label: 'Baño' },
   { value: 'closet',     label: 'Closet / Ropero' },
+  { value: 'cajonera',   label: 'Cajonera' },
   { value: 'escritorio', label: 'Escritorio' },
+  { value: 'oficina',    label: 'Oficina' },
+  { value: 'sala',       label: 'Sala / Living' },
+  { value: 'dormitorio', label: 'Dormitorio' },
 ]
 
 export const CATEGORY_LABELS = GALLERY_CATEGORIES.reduce((acc, c) => {
