@@ -13,7 +13,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
-import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan, ZoomIn, ZoomOut } from 'lucide-react'
+import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan, ZoomIn, ZoomOut, FilePlus2 } from 'lucide-react'
 
 import PresentationMode from './PresentationMode.jsx'
 import AIVisualStylist from './AIVisualStylist.jsx'
@@ -111,6 +111,7 @@ export default function Viewer3D({
   onCaptureReady   = null,   // (fn) => void  — called once renderer is ready; fn() returns PNG dataURL
   onIsoCaptureReady = null,  // (fn) => void  — expone captura isométrica en gris CAD (PNG dataURL)
   onCadCaptureReady = null,  // (fn)=>void — fn(kind:'front'|'top'|'iso') captura gris CAD -> {url,fx,fy}
+  onNewDesign      = () => {}, // ★ ADITIVO 2026-10-11 — dispara el flujo guardar/descartar y resetea el lienzo
 }) {
   const { t, lang } = usePreferences()
   const mountRef = useRef(null)
@@ -1935,6 +1936,14 @@ export default function Viewer3D({
           title={lang === 'ES' ? 'Modo Presentación' : lang === 'PT' ? 'Modo Apresentação' : 'Presentation Mode'}
         >
           <MonitorPlay size={18} />
+        </button>
+        {/* ★ ADITIVO 2026-10-11 — Nuevo Diseño: dispara guardar/descartar si hay módulos sin guardar */}
+        <button
+          onClick={onNewDesign}
+          className="p-2.5 rounded-full hover:bg-white/10 text-white transition-all flex items-center justify-center"
+          title={lang === 'ES' ? 'Nuevo Diseño' : lang === 'PT' ? 'Novo Projeto' : 'New Design'}
+        >
+          <FilePlus2 size={18} />
         </button>
         <div className="w-[1px] h-4 bg-white/10" />
         <button

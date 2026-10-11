@@ -11,6 +11,7 @@ import ExportPanel from './components/ExportPanel.jsx'
 import MemoryPanel from './components/MemoryPanel.jsx'
 import DesignHealthPanel from './components/DesignHealthPanel.jsx'
 import WelcomeScreen from './components/WelcomeScreen.jsx'
+import UnsavedDesignModal from './components/UnsavedDesignModal.jsx'
 import OnboardingFlow from './components/OnboardingFlow.jsx'
 import OnboardingWizard from './components/OnboardingWizard.jsx'
 import MultiplayerLayer from './components/MultiplayerLayer.jsx'
@@ -104,6 +105,12 @@ export default function App() {
   const cadCaptureRef = useRef(null)
   const handleCadCaptureReady = useCallback(fn => { cadCaptureRef.current = fn }, [])
   const [showWelcome, setShowWelcome] = useState(true)
+  // ★ ADITIVO 2026-10-11 — flujo "cerrar sesión" / "Nuevo Diseño": antes de
+  // limpiar el lienzo (desde WelcomeScreen o desde el botón del visor 3D),
+  // preguntar si hay módulos sin guardar. 'welcome' | 'viewer' | null
+  const [pendingNewDesign, setPendingNewDesign] = useState(null)
+  const [newDesignSaving, setNewDesignSaving] = useState(false)
+  const [newDesignError, setNewDesignError] = useState(null)
   const [activeTab, setActiveTab] = useState('params')
   const [loading,   setLoading]   = useState(false)
   const [modules,   setModules]   = useState(() => {
@@ -698,6 +705,54 @@ export default function App() {
     refreshMemory()
   }
 
+  // ★ ADITIVO 2026-10-11 — "Nuevo Diseño": punto de entrada único, llamado desde
+  // WelcomeScreen.onStart (source='welcome') y desde el botón del visor 3D
+  // (source='viewer'). Si no hay módulos no hay nada que perder: resuelve directo.
+  const requestNewDesign = (source) => {
+    if (modules.length > 0) {
+      setNewDesignError(null)
+      setPendingNewDesign(source)
+    } else if (source === 'welcome') {
+      setShowWelcome(false)
+    }
+    // source === 'viewer' con lienzo ya vacío: no hay nada que hacer.
+  }
+
+  const finalizeNewDesign = () => {
+    const wasWelcome = pendingNewDesign === 'welcome'
+    setModules([])
+    setSelectedModuleId(null)
+    setSelectedPieceIds(new Set())
+    setHistory([])
+    setRedoStack([])
+    setPendingNewDesign(null)
+    setNewDesignError(null)
+    if (wasWelcome) setShowWelcome(false)
+  }
+
+  const handleNewDesignSave = async () => {
+    setNewDesignSaving(true)
+    setNewDesignError(null)
+    try {
+      const label = `Proyecto Modular ${new Date().toLocaleDateString()}`
+      await api.saveProject({ modules }, label)
+      finalizeNewDesign()
+    } catch (err) {
+      // Si el servidor rechaza por diseño insano (gate VALIDADO), el error ya
+      // viene con el detalle de qué módulo falló — se muestra tal cual.
+      setNewDesignError(err.message || 'No pudimos guardar el diseño.')
+    } finally {
+      setNewDesignSaving(false)
+    }
+  }
+
+  const handleNewDesignDiscard = () => finalizeNewDesign()
+
+  const handleNewDesignCancel = () => {
+    setPendingNewDesign(null)
+    setNewDesignError(null)
+  }
+
   const memVersions = getVersionHistory(projectMemory)
   const memActions = getRecentActions(projectMemory, 8)
   const memSummary = modules.length > 0 ? generateProjectSummary(projectMemory, modules) : null
@@ -707,7 +762,16 @@ export default function App() {
   if (showWelcome) {
     return (
       <ErrorBoundary>
-        <WelcomeScreen onStart={() => setShowWelcome(false)} />
+        <WelcomeScreen onStart={() => requestNewDesign('welcome')} />
+        <UnsavedDesignModal
+          open={!!pendingNewDesign}
+          moduleCount={modules.length}
+          saving={newDesignSaving}
+          error={newDesignError}
+          onSave={handleNewDesignSave}
+          onDiscard={handleNewDesignDiscard}
+          onCancel={handleNewDesignCancel}
+        />
       </ErrorBoundary>
     )
   }
@@ -893,6 +957,7 @@ export default function App() {
                         if (el) el.scrollIntoView({ behavior: 'smooth' })
                       }, 80)
                     }}
+                    onNewDesign={() => requestNewDesign('viewer')}
                   />
                   </Suspense>
                 ) : (
@@ -949,6 +1014,17 @@ export default function App() {
             <button onClick={() => setCheckoutAlert(null)} className="text-white/60 hover:text-white text-xs uppercase tracking-widest">✕</button>
           </div>
         )}
+
+        {/* ★ ADITIVO 2026-10-11 — guardar/descartar antes de "Nuevo Diseño" */}
+        <UnsavedDesignModal
+          open={!!pendingNewDesign}
+          moduleCount={modules.length}
+          saving={newDesignSaving}
+          error={newDesignError}
+          onSave={handleNewDesignSave}
+          onDiscard={handleNewDesignDiscard}
+          onCancel={handleNewDesignCancel}
+        />
 
       </div>
     </ErrorBoundary>
