@@ -82,6 +82,20 @@ const MODULE_TYPE_RULES = [
     note: 'Tipo: Escritorio' },
   { moduleType: 'base',  type: 'kitchen_island',
     kw: ['isla', 'ilha', 'island'], note: 'Tipo: Isla' },
+  // ★ ADITIVO 2026-10-12 — vocabulario de cocina que antes caía a 'standard' (clóset):
+  //   "módulo pia de cocina" y "módulo para horno" salían como ropero con techo macizo.
+  { moduleType: 'base',  type: 'kitchen_low',
+    kw: ['pia de cocina', 'modulo pia', 'módulo pia', 'modulo de pia', 'módulo de pia', 'fregadero', 'horno', 'forno'],
+    not: WARDROBE_WORDS,
+    defaults: { height: 900, depth: 600 }, extra: { hasCountertop: true }, note: 'Tipo: Módulo Bajo' },
+  // Nicho = caja ABIERTA colgada (sin puertas, sin rodapié, sin repisas). Va último: si la
+  // frase ya nombra otro tipo ("módulo base con nicho") ese tipo gana y "nicho" es un detalle.
+  { moduleType: 'aereo', type: 'kitchen_high',
+    kw: ['nicho', 'niche'],
+    not: WARDROBE_WORDS,
+    defaults: { height: 400, depth: 350 },
+    extra: { hasDoors: false, numDoors: 0, doorType: 'none', baseboard: false, hasCountertop: false, numShelves: 0 },
+    note: 'Tipo: Nicho abierto' },
 ]
 function detectModuleRule(text) {
   for (const r of MODULE_TYPE_RULES) {
@@ -267,6 +281,102 @@ function detectFeature(text, keywords) {
 
 // ─── Main Parser ──────────────────────────────────────────────────────────────
 
+// ─── Guardrail de intención (ADITIVO 2026-10-12) ─────────────────────────────
+const GREETING_REGEX = /^(hola|buenos?\s*d[ií]as?|buenas?\s*(tardes?|noches?)|ol[aá]|bom\s*dia|boa\s*(tarde|noite)|hi|hello|hey)[\s!.,?]*$/i
+const GREETING_REPLY = '¡Hola! Soy Orbin, tu asistente técnico de diseño. Contame qué mueble tenés en mente (armario, bajo mesada, alacena) y las medidas aproximadas en milímetros.'
+const NO_INTENT_REPLY = 'Soy Orbin, tu asistente técnico de diseño. No identifiqué un mueble ni medidas en tu mensaje: contame qué mueble tenés en mente (armario, bajo mesada, alacena) y las medidas aproximadas en milímetros.'
+// Vocabulario ES/PT de muebles, componentes y dimensiones. Un mensaje SIN dígitos y SIN ninguno
+// de estos términos no puede ser un pedido ni un refinamiento de diseño. Cualquier dígito cuenta
+// como intención (medidas, cantidades) para no bloquear refinamientos tipo "con 3 puertas".
+const DESIGN_INTENT_RE = new RegExp([
+  'arm[aá]rio|ropero|guarda.?roupa|closet|placard|wardrobe|vestidor|c[oô]moda|c[oó]moda|alacena|cocina|cozinha|escritorio|escrivaninha|\\bdesk\\b|\\bmesa\\b|bancada|isla|ilha|island',
+  'mueble|m[oó]vel|m[oó]dulo|gabinete|balc[aã]o|a[eé]reo|estante|repisa|prateleira|gaveta|caj[oó]n|cajones|gavetas',
+  'puerta|porta|corred|batiente|espejo|espelho|barra|colgar|cabide|divisor|z[oó]calo|rodap[eé]|tirador|puxador|encimera|tampo|pedestal|fald[oó]n|tamp[oó]n|tampo',
+  'ancho|alto|fondo|largo|largura|altura|profundidad|profundidade|\\b(?:mm|cm|metros?|mts?)\\b|medidas?|dimens',
+  'melamina|mdf|madera|madeira|tablero|chapa|color|cor\\b|blanco|branco|negro|preto|roble|carvalho|nogal',
+].join('|'), 'i')
+function hasDesignIntent(text) {
+  return /\d/.test(text) || DESIGN_INTENT_RE.test(text) || detectModuleRule(text) !== null
+}
+
+// ─── Carpintería avanzada (ADITIVO 2026-10-12) ───────────────────────────────
+// Antes de este bloque el parser IGNORABA por completo: cava 45°, "sin rodapié", rodapié
+// de N cm, fondo de N mm, horno/puerta falsa, tamponado inferior y travesaños. Con los
+// proveedores de IA caídos el fallback regex devolvía un mueble genérico que no
+// respetaba ninguna indicación del carpintero.
+
+// "fondo 15mm" = ESPESOR del fondo. Unidad obligatoria (sin unidad "fondo 60" es profundidad).
+// Typo frecuente: "fundo 15cm" por 15mm (150mm no es un espesor de panel) → se asume mm y
+// se declara en specAdjustments. Sólo para 15/18 (los espesores comerciales), para no
+// secuestrar profundidades reales tipo "fondo 20cm".
+const BACK_THICKNESS_RE = /(?:fondo|fundo)\s*(?:de\s*|:\s*)?(\d+(?:[.,]\d+)?)\s*(mm|cm)(?!\s*[x×*])/i
+function extractBackThickness(input) {
+  const m = input.match(BACK_THICKNESS_RE)
+  if (!m) return null
+  const n = parseFloat(m[1].replace(',', '.'))
+  if (!Number.isFinite(n)) return null
+  const unit = m[2].toLowerCase()
+  const mm = unit === 'cm' ? n * 10 : n
+  if (mm >= 3 && mm <= 18) return { value: Math.round(mm), assumed: false, raw: m[0].trim() }
+  if (unit === 'cm' && (n === 15 || n === 18)) return { value: n, assumed: true, raw: m[0].trim() }
+  return null
+}
+
+function applyCarpentryFlags(text, result, notes, specAdjustments) {
+  const has = (re) => re.test(text)
+  const isAereo = result.moduleType === 'aereo'
+
+  // Rodapié: "sin rodapié" / "no lleva rodapié" → false · "rodapié de 12cm" → altura.
+  if (has(/\b(?:sin|sem|no\s+(?:lleva|tiene|usa))\s+(?:el\s+|o\s+)?(?:rodap\w*|z[oó]calo|plinto)/i)) {
+    result.baseboard = false; notes.push('Sin rodapié')
+  } else {
+    const bh = text.match(/(?:rodap\w*|z[oó]calo|plinto)\s*(?:debe\s+ser\s+|ser\s+|es\s+|de\s+|:\s*)*(\d+(?:[.,]\d+)?)\s*mm/i)
+    if (bh) {
+      const v = Math.round(parseFloat(bh[1].replace(',', '.')))
+      if (v >= 30 && v <= 300) { result.baseboard = true; result.baseboardHeight = v; notes.push('Rodapié ' + v + 'mm') }
+    }
+  }
+
+  // Cava 45°.
+  const cava = has(/\bcavas?\s*(?:de\s*)?45|\b(?:tirador(?:es)?|puxador(?:es)?)\s+(?:tipo\s+|en\s+)?cavas?\b/i)
+  if (cava) {
+    if (isAereo) { result.puxadorCavaAereo = true } else { result.puxadorCava45 = true }
+    if ((result.numDrawers || 0) > 0 && !isAereo) result.drawerFrontStyle = 'cava45'
+    notes.push('Cava 45°')
+    // "1.5cm de largura mayor que la altura" → voladizo explícito de la puerta del aéreo.
+    const ov = text.match(/(\d+(?:[.,]\d+)?)\s*mm\s*(?:de\s+)?(?:largura|largo|alto|altura)\s+(?:mayor|extra|adicional)/i)
+    if (ov && isAereo) result.cavaOverhang = Math.round(parseFloat(ov[1].replace(',', '.')))
+  }
+
+  // Tamponado inferior (aéreo): "tamponado abajo / inferior" vs "sin tamponado".
+  if (has(/\bsin\s+tamponad/i)) { result.tamponadoInferior = false }
+  else if (has(/tamponad[oa]s?\s+(?:abajo|inferior|debajo|en\s+la\s+base)|(?:abajo|inferior)\s+tamponad/i)) { result.tamponadoInferior = true; notes.push('Tamponado inferior') }
+
+  // Módulo de horno: puerta falsa sobrepuesta + repisa estructural (reemplaza repisas genéricas).
+  if (has(/\b(?:horno|forno)\b/i) && !isAereo) {
+    result.ovenPanel = true
+    result.hasDoors = true; result.doorType = 'hinged'; result.numDoors = 1
+    result.numShelves = 0
+    notes.push('Módulo de horno (puerta falsa + repisa estructural)')
+  }
+
+  // Travesaños de amarre superiores (en vez de techo macizo) en módulos bajos.
+  const tie = text.match(/tra[nv]*vesa[\wñ]*|travessa\w*/i)
+  if (tie && !isAereo && result.moduleType !== 'desk') {
+    result.topTieRails = true
+    const th = text.match(/tra[nv]*vesa[\wñ]*\s+(?:de\s+)?(\d+(?:[.,]\d+)?)\s*mm/i)
+    if (th) { const v = Math.round(parseFloat(th[1].replace(',', '.'))); if (v >= 30 && v <= 200) result.tieRailHeight = v }
+    notes.push('Travesaños superiores')
+    const n = extractCount(text, ['tra[nv]*vesa[\\wñ]*'])
+    if (n > 1 && (result.numDrawers || 0) > 0) {
+      specAdjustments.push({
+        code: 'TIE_RAILS_BETWEEN_FRONTS_UNSUPPORTED', severity: 'warning', field: 'topTieRails', count: n,
+        message: `Pediste ${n} travesaños entre frentes de gaveta: esa disposición todavía no está soportada. Se generaron los travesaños de amarre superiores (frontal y trasero).`,
+      })
+    }
+  }
+}
+
 function parseNaturalLanguage(input) {
   if (!input || typeof input !== 'string') {
     return { params: { ...DEFAULTS }, confidence: 0, interpreted: 'Entrada vazia — usando padroes.', specAdjustments: [] }
@@ -275,8 +385,27 @@ function parseNaturalLanguage(input) {
   const rawInput = input.trim()
   const specAdjustments = []
 
+  // ★ ADITIVO 2026-10-12 — INTERCEPTOR DE SALUDOS / MENSAJES SIN INTENCIÓN DE DISEÑO.
+  //   Antes, "hola" caía a { ...DEFAULTS } (2400×2400×600) y el chat respondía
+  //   "¡Listo! Diseñé tu clóset…" + corría el motor. Sin intención de carpintería
+  //   NO se inventan parámetros: params:null + respuesta conversacional.
+  const greeting = GREETING_REGEX.test(rawInput)
+  if (greeting || !hasDesignIntent(rawInput)) {
+    return {
+      isGreeting: greeting,
+      noDesignIntent: true,
+      params: null,
+      reply: greeting ? GREETING_REPLY : NO_INTENT_REPLY,
+      confidence: 0,
+      interpreted: 'Sin intención de diseño — no se generan parámetros.',
+      specAdjustments: [],
+    }
+  }
+
   let text = rawInput
+  const backThickness = extractBackThickness(rawInput)
   text = normalizeMeasurements(text)
+  if (backThickness) text = text.replace(/(?:fondo|fundo)\s*(?:de\s*|:\s*)?\d+(?:[.,]\d+)?\s*(?:mm|cm)/i, ' ')
 
   // ★ 2026-07-26 (dedup): la detección de tipo estaba ESCRITA DOS VECES en este archivo
   //   (acá para la heurística de unidades, y más abajo para asignar el tipo). Dos listas
@@ -287,6 +416,17 @@ function parseNaturalLanguage(input) {
   const result = { ...DEFAULTS }
   const notes  = []
   let confidence = 0
+  if (backThickness) {
+    result.backThickness = backThickness.value
+    notes.push('Fondo ' + backThickness.value + 'mm')
+    if (backThickness.assumed) {
+      specAdjustments.push({
+        code: 'NLP_BACK_THICKNESS_ASSUMED', severity: 'warning', field: 'backThickness',
+        raw: backThickness.raw, value: backThickness.value, asDepth: backThickness.value * 10,
+        message: `"${backThickness.raw}" se interpretó como ${backThickness.value}mm de espesor de fondo (un fondo de ${backThickness.value * 10}mm no es un espesor de panel). Si querías ${backThickness.value} cm de profundidad, indicalo como "profundidad".`,
+      })
+    }
+  }
 
   // ★ FIX 2026-07-23 (bug demo aéreo): flags de "el usuario ESPECIFICÓ esta
   //   dimensión". La detección de tipo (abajo) forzaba height/depth de forma
@@ -438,6 +578,8 @@ function parseNaturalLanguage(input) {
   if (detectFeature(text, ['led', 'iluminação', 'iluminacion', 'lighting', 'luz'])) { result.hasLED = true; notes.push('LED'); confidence += 3 }
   if (detectFeature(text, ['push', 'push-to-open', 'toque', 'sem tirador', 'sin tirador', 'no handle'])) { result.handleType = 'push'; notes.push('Push') }
   if (detectFeature(text, ['gola', 'perfil gola', 'gola profile'])) { result.handleType = 'gola'; notes.push('Gola') }
+
+  applyCarpentryFlags(text, result, notes, specAdjustments)
 
   const interpreted = notes.length > 0
     ? 'Interpretado: ' + notes.join(' | ')

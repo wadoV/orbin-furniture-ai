@@ -14,6 +14,7 @@ const { detectConfirmation, buildPreviewMessage } = require('./hitlPreview')
 const { TTLStore } = require('./ttlStore')
 const { requireAuth } = require('../middleware/auth')
 const { checkPlanLimit } = require('../middleware/planLimits')
+const { degradedPayload } = require('../middleware/errorHandler')
 const z = require('zod')
 
 const contextSchema = z.object({
@@ -101,7 +102,9 @@ const consumesAI = (req) => !(req.body?.confirmFlow === true && req.body?.action
 
 router.post('/design', checkPlanLimit('chat.design', { when: consumesAI }), async (req, res) => {
   try {
-    const { message, sessionId, autoGenerate = true, lang, userName, company } = req.body
+    // ADITIVO 2026-10-12: un req.body ausente/no-objeto nunca debe llegar a la desestructuración.
+    const reqBody = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {}
+    const { message, sessionId, autoGenerate = true, lang, userName, company } = reqBody
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ success: false, error: 'El campo "message" es obligatorio.' })
     }
@@ -270,6 +273,11 @@ router.post('/design', checkPlanLimit('chat.design', { when: consumesAI }), asyn
       }
     } else if (result.params) {
       response.params = normalizeDesignParams(result.params)
+    } else {
+      // ADITIVO 2026-10-12: sin params (saludo / sin intención de diseño) → nunca se
+      // devuelve ni se genera diseño. Contrato explícito: params:null, design:null.
+      response.params = null
+      response.design = null
     }
 
     // BLOQUE 2 (HITL): flag determinista. Si la IA propuso un módulo (hay params),
@@ -283,7 +291,16 @@ router.post('/design', checkPlanLimit('chat.design', { when: consumesAI }), asyn
     // interno de la llamada a Gemini/Ollama). El detalle real ya queda logueado
     // arriba; al usuario le mostramos un mensaje seguro y genérico.
     console.error('[chat/design] Error:', err)
-    res.status(500).json({ success: false, error: 'No pudimos procesar tu mensaje. Intentá de nuevo en unos segundos.' })
+    // ADITIVO 2026-10-12: el chat NUNCA devuelve 500. El cliente mapea cualquier status ≥500 a
+    // "El servidor tuvo un problema inesperado" y el panel queda mudo. Se responde 200 con un
+    // payload degradado pero VÁLIDO (success:false, params/design null, reply legible).
+    const L = (req.body && ['ES', 'PT', 'EN'].includes(req.body.lang)) ? req.body.lang : 'ES'
+    const reply = {
+      ES: 'No pude procesar tu mensaje en este momento. Probá de nuevo en unos segundos o indicame ancho, alto y profundidad en mm.',
+      PT: 'Não consegui processar sua mensagem agora. Tente novamente em instantes ou informe largura, altura e profundidade em mm.',
+      EN: 'I could not process your message right now. Try again in a few seconds or tell me width, height and depth in mm.',
+    }[L]
+    return res.status(200).json({ ...degradedPayload(), reply, params: null, design: null, source: 'error-fallback' })
   }
 })
 
@@ -293,14 +310,15 @@ router.post('/design', checkPlanLimit('chat.design', { when: consumesAI }), asyn
 // cascada de proveedores). A diferencia de design.js POST /parse, que es regex local.
 router.post('/parse', checkPlanLimit('chat.parse'), async (req, res) => {
   try {
-    const { text } = req.body
+    const { text } = (req.body && typeof req.body === 'object') ? req.body : {}
     if (!text) return res.status(400).json({ success: false, error: 'El campo "text" es obligatorio.' })
 
     const result = await parseDesignIntent(text)
     res.json({ success: true, ...result })
   } catch (err) {
     console.error('[chat/parse] Error:', err)
-    res.status(500).json({ success: false, error: 'No pudimos interpretar el texto. Intentá de nuevo.' })
+    // ADITIVO 2026-10-12: sin 500 (ver /design). params:null = "no se pudo interpretar".
+    return res.status(200).json({ ...degradedPayload(), params: null, error: 'No pudimos interpretar el texto. Intentá de nuevo.' })
   }
 })
 

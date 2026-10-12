@@ -336,6 +336,16 @@ export const WORKSHOP_TEMPLATES = Object.freeze([
         'Acabado: pintura/enchapado Riviera en MDF 18 de estructura; frentes en acabado custom (cliente).',
       ],
     },
+    // ★ ADITIVO 2026-10-12 — parámetros de closetEngine por cuerpo (fuente única para motor y test).
+    //   No altera engineReady (la composición mixta base+aéreo sigue siendo manual).
+    //   Base: tamponados exteriores a ras de los frentes (el motor suma el espesor de puerta en Z).
+    //   Aéreo: cava inferior → puertas +30mm, tamponado lateral 780, tamponado inferior retranqueado 25.
+    engineParams: [
+      { ref: 'BASE-L', moduleType: 'base',  width: 1400, height: 850, depth: 550, thickness: 18, hasDoors: true, numDoors: 2, baseboard: true, baseboardHeight: 100, numDrawers: 0, tamponado: 'left',  puxadorCava45: true },
+      { ref: 'BASE-R', moduleType: 'base',  width: 1400, height: 850, depth: 550, thickness: 18, hasDoors: true, numDoors: 2, baseboard: true, baseboardHeight: 100, numDrawers: 0, tamponado: 'right', puxadorCava45: true },
+      { ref: 'AERO-L', moduleType: 'aereo', width: 1400, height: 750, depth: 320, thickness: 15, hasDoors: true, numDoors: 2, baseboard: false, backStyle: 'screwed', backThickness: 15, mountHeight: 1450, puxadorCavaAereo: true, cavaOverhang: 30, tamponadoInferior: true, tamponado: 'left' },
+      { ref: 'AERO-R', moduleType: 'aereo', width: 1400, height: 750, depth: 320, thickness: 15, hasDoors: true, numDoors: 2, baseboard: false, backStyle: 'screwed', backThickness: 15, mountHeight: 1450, puxadorCavaAereo: true, cavaOverhang: 30, tamponadoInferior: true, tamponado: 'right' },
+    ],
     viewerReady: false,
     materials: {
       MDF18: { label: 'MDF 18 (estructura base)', thickness: 18 },

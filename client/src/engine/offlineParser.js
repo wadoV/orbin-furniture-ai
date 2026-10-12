@@ -372,7 +372,7 @@ export function parseNaturalLanguage(input) {
   if (detect(text, ['25mm', 'espessura 25', 'grosor 25'])) { result.thickness = 25; confidence += 5 }
   if (detect(text, ['roble', 'oak', 'carvalho'])) result.materialFront = 'oak_light'
 
-  if (text.includes('2000') && text.includes('600')) {
+  if (text.includes('2000') && text.includes('600') && (detect(text, ['cocina', 'cozinha', 'balcao', 'balcão']) || !detect(text, WARDROBE_WORDS))) {
     result.width = 2600
     result.moduleType = 'base'
     result.height = 850

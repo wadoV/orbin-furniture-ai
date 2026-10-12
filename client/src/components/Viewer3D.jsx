@@ -13,7 +13,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
-import { Layers, Maximize, Download, Loader2, Move, Plus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan, ZoomIn, ZoomOut, RotateCw, Axis3d, DraftingCompass, FileImage, BookmarkPlus, Check, X, ShieldAlert } from 'lucide-react'
+import { Layers, Maximize, Download, Loader2, Move, Plus, FilePlus, Trash2, Box, GripVertical, Ruler, ArrowLeft, MonitorPlay, Scan, ZoomIn, ZoomOut, RotateCw, Axis3d, DraftingCompass, FileImage, BookmarkPlus, Check, X, ShieldAlert, Save } from 'lucide-react'
 // ★ 2026-10-10: "Guardar en Galería" desde el visor — guard de viabilidad compartido
 //   (mismo que ResultPanel) + store resiliente + categorías de la galería.
 import { evaluateViability } from '../engine/viabilityGate.js'
@@ -131,6 +131,8 @@ export default function Viewer3D({
   // ★ 2026-10-10 (ADITIVO): transformaciones del modelo de datos
   onRotateModule    = null,  // (id) => void — gira el módulo +90° en Y (App persiste `rotation`)
   onUpdateTransform = null,  // (id, { position:{x?,y?,z?} }) => void — mm; App persiste `position`
+  onNewProject  = () => {},  // () => void — reinicia el proyecto con confirmación
+  onSaveProject = () => {},  // () => void — abre modal de guardado en Galería
 }) {
   const { t, lang } = usePreferences()
   const mountRef = useRef(null)
@@ -2540,37 +2542,102 @@ export default function Viewer3D({
         </div>
       )}
 
-      {/* ★ 2026-10-10 (b) — Vistas técnicas + Ficha de taller */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 bg-black/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl">
-        {[
-          { id: 'iso',   label: '3D' },
-          { id: 'front', label: lang === 'PT' ? 'Frontal' : lang === 'EN' ? 'Front' : 'Frontal' },
-          { id: 'side',  label: lang === 'PT' ? 'Lateral' : lang === 'EN' ? 'Side' : 'Lateral' },
-        ].map(v => (
+      {/* ★ 2026-10-11 (refactor) — Barra HUD unificada top: vistas izquierda · acciones derecha */}
+      <div className="absolute top-4 left-4 right-4 z-30 flex items-center justify-between pointer-events-none">
+
+        {/* ── Grupo IZQUIERDO: tabs de vista ── */}
+        <div className="flex items-center gap-1 bg-black/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl pointer-events-auto">
+          {[
+            { id: 'iso',   label: '3D' },
+            { id: 'front', label: lang === 'PT' ? 'Frontal' : lang === 'EN' ? 'Front' : 'Frontal' },
+            { id: 'side',  label: lang === 'PT' ? 'Lateral' : lang === 'EN' ? 'Side' : 'Lateral' },
+          ].map(v => (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => setTechnicalView(v.id)}
+              aria-pressed={viewMode === v.id}
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                viewMode === v.id ? 'bg-primary text-black' : 'text-white/70 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+          <div className="w-px h-5 bg-white/10 mx-1" />
           <button
-            key={v.id}
             type="button"
-            onClick={() => setTechnicalView(v.id)}
-            aria-pressed={viewMode === v.id}
-            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-              viewMode === v.id ? 'bg-primary text-black' : 'text-white/70 hover:text-white hover:bg-white/10'
-            }`}
+            onClick={handleExportSheet}
+            disabled={isExportingSheet}
+            aria-label={lang === 'PT' ? 'Exportar Ficha Técnica (PNG)' : lang === 'EN' ? 'Export Technical Sheet (PNG)' : 'Exportar Ficha Técnica (PNG)'}
+            title={lang === 'PT' ? 'Ficha técnica: frontal + lateral ortogonais com cotas' : lang === 'EN' ? 'Technical sheet: orthographic front + side with dimensions' : 'Ficha técnica: frontal + lateral ortogonales con cotas'}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary/15 transition-all disabled:opacity-50"
           >
-            {v.label}
+            {isExportingSheet ? <Loader2 size={13} className="animate-spin" /> : <FileImage size={13} />}
+            {lang === 'EN' ? 'Sheet' : 'Ficha'}
           </button>
-        ))}
-        <div className="w-px h-5 bg-white/10 mx-1" />
-        <button
-          type="button"
-          onClick={handleExportSheet}
-          disabled={isExportingSheet}
-          aria-label={lang === 'PT' ? 'Exportar Ficha Técnica (PNG)' : lang === 'EN' ? 'Export Technical Sheet (PNG)' : 'Exportar Ficha Técnica (PNG)'}
-          title={lang === 'PT' ? 'Ficha técnica: frontal + lateral ortogonais com cotas' : lang === 'EN' ? 'Technical sheet: orthographic front + side with dimensions' : 'Ficha técnica: frontal + lateral ortogonales con cotas'}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary/15 transition-all disabled:opacity-50"
-        >
-          {isExportingSheet ? <Loader2 size={13} className="animate-spin" /> : <FileImage size={13} />}
-          {lang === 'EN' ? 'Sheet' : 'Ficha'}
-        </button>
+        </div>
+
+        {/* ── Grupo DERECHO: proyecto + export + AR ── */}
+        <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl pointer-events-auto">
+          {/* Nuevo Proyecto */}
+          <button
+            onClick={onNewProject}
+            className="p-2.5 rounded-xl transition-all duration-200 group/btn relative hover:bg-white/10 text-white/70 hover:text-primary"
+            aria-label={lang === 'ES' ? 'Nuevo Proyecto' : lang === 'PT' ? 'Novo Projeto' : 'New Project'}
+          >
+            <FilePlus size={17} className="text-primary" />
+            <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-[#0D0D0D] border border-white/10 text-[10px] text-white/90 font-black uppercase tracking-widest py-1.5 px-3 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+              {lang === 'ES' ? 'Nuevo Proyecto' : lang === 'PT' ? 'Novo Projeto' : 'New Project'}
+            </span>
+          </button>
+
+          {/* Guardar Diseño */}
+          <button
+            onClick={() => {
+              if (typeof onSaveProject === 'function') onSaveProject();
+              openSaveModal();
+            }}
+            className={`p-2.5 rounded-xl transition-all duration-200 group/btn relative
+                       ${viability.viable ? 'hover:bg-primary/20 text-primary' : 'text-white/35 hover:bg-white/5'}`}
+            aria-label={lang === 'ES' ? 'Guardar Diseño' : lang === 'PT' ? 'Salvar Design' : 'Save Design'}
+            aria-disabled={!viability.viable}
+            title={!viability.viable ? (blockedMsg || '') : undefined}
+          >
+            {viability.viable ? <Save size={17} className="text-primary" /> : <ShieldAlert size={17} />}
+            <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-[#0D0D0D] border border-white/10 text-[10px] text-white/90 font-black uppercase tracking-widest py-1.5 px-3 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+              {lang === 'ES' ? 'Guardar Diseño' : lang === 'PT' ? 'Salvar Design' : 'Save Design'}
+            </span>
+          </button>
+
+          <div className="w-px h-5 bg-white/10 mx-0.5" />
+
+          {/* Exportar PNG */}
+          <button
+            onClick={handleExport}
+            className="p-2.5 rounded-xl transition-all duration-200 group/btn relative hover:bg-white/10 text-white/70 hover:text-white"
+            aria-label={lang === 'ES' ? 'Exportar PNG' : lang === 'PT' ? 'Exportar PNG' : 'Export PNG'}
+          >
+            <Download size={17} />
+            <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-[#0D0D0D] border border-white/10 text-[10px] text-white/80 font-black uppercase tracking-widest py-1.5 px-3 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+              {lang === 'ES' ? 'Exportar PNG' : lang === 'PT' ? 'Exportar PNG' : 'Export PNG'}
+            </span>
+          </button>
+
+          {/* Vista AR */}
+          <button
+            onClick={handleViewInAR}
+            disabled={isExportingAR || isEmpty}
+            className="p-2.5 rounded-xl transition-all duration-200 group/btn relative hover:bg-primary/20 text-primary disabled:opacity-40 disabled:pointer-events-none"
+            aria-label={lang === 'ES' ? 'Ver en AR' : lang === 'PT' ? 'Ver em AR' : 'View in AR'}
+          >
+            {isExportingAR ? <Loader2 size={17} className="animate-spin" /> : <Scan size={17} />}
+            <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-[#0D0D0D] border border-white/10 text-[10px] text-white/80 font-black uppercase tracking-widest py-1.5 px-3 rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
+              {lang === 'ES' ? 'Ver en AR' : lang === 'PT' ? 'Ver em AR' : 'View in AR'}
+            </span>
+          </button>
+        </div>
+
       </div>
 
       {/* ─── PROFESSIONAL CAD TOOLBAR (SketchUp style - Always Visible) ─── */}
@@ -2733,7 +2800,7 @@ export default function Viewer3D({
             <Trash2 size={18} />
           </button>
         )}
-      
+
         {/* Celda 4 — Presentación */}
         <button
           onClick={() => setIsPresentationMode(true)}
@@ -2767,62 +2834,7 @@ export default function Viewer3D({
         />
       )}
 
-      {/* ─── Export & AR Top Right ─── */}
-      <div className="absolute top-4 right-16 z-20 flex gap-2 bg-black/60 backdrop-blur-xl p-2 rounded-2xl border border-white/10 shadow-2xl transition-all duration-300 hover:border-white/20">
-        {/* Celda 1 — Export PNG */}
-        <button
-          onClick={handleExport}
-          className="p-2.5 rounded-xl transition-all duration-200 group/btn relative
-                     hover:bg-white/10 text-white/80 hover:text-white"
-          title="Export PNG"
-          aria-label="Exportar imagen PNG"
-        >
-          <Download size={18} />
-          <span className="absolute right-12 top-1/2 -translate-y-1/2 bg-black border border-white/10
-                           text-[10px] text-white/80 font-black uppercase tracking-widest py-1.5 px-3 rounded-md
-                           opacity-0 group-hover/btn:opacity-100 pointer-events-none
-                           transition-opacity whitespace-nowrap shadow-lg">
-            {lang === 'ES' ? 'Exportar PNG' : lang === 'PT' ? 'Exportar PNG' : 'Export PNG'}
-          </span>
-        </button>
-        {/* Celda 2 — AR (Vista Aumentada) */}
-        <button
-          onClick={handleViewInAR}
-          disabled={isExportingAR || isEmpty}
-          className="p-2.5 rounded-xl transition-all duration-200 group/btn relative
-                     hover:bg-primary/20 text-primary disabled:opacity-40
-                     disabled:pointer-events-none"
-          title="Ver en mi espacio (Realidad Aumentada)"
-          aria-label="Ver en realidad aumentada"
-        >
-          {isExportingAR
-            ? <Loader2 size={18} className="animate-spin" />
-            : <Scan size={18} />}
-          <span className="absolute right-12 top-1/2 -translate-y-1/2 bg-black border border-white/10
-                           text-[10px] text-white/80 font-black uppercase tracking-widest py-1.5 px-3 rounded-md
-                           opacity-0 group-hover/btn:opacity-100 pointer-events-none
-                           transition-opacity whitespace-nowrap shadow-lg">
-            {lang === 'ES' ? 'Ver en AR' : lang === 'PT' ? 'Ver em AR' : 'View in AR'}
-          </span>
-        </button>
-        {/* Celda 3 — Guardar en Galería (Guardián de Integridad: solo diseños sanos) ★ 2026-10-10 */}
-        <button
-          onClick={openSaveModal}
-          className={`p-2.5 rounded-xl transition-all duration-200 group/btn relative
-                     ${viability.viable ? 'hover:bg-emerald-500/20 text-emerald-300' : 'text-white/35 hover:bg-white/5'}`}
-          title={viability.viable ? (lang === 'PT' ? 'Salvar na Galeria' : lang === 'EN' ? 'Save to Gallery' : 'Guardar en Galería') : (blockedMsg || '')}
-          aria-label="Guardar en Galería"
-          aria-disabled={!viability.viable}
-        >
-          {viability.viable ? <BookmarkPlus size={18} /> : <ShieldAlert size={18} />}
-          <span className="absolute right-12 top-1/2 -translate-y-1/2 bg-black border border-white/10
-                           text-[10px] text-white/80 font-black uppercase tracking-widest py-1.5 px-3 rounded-md
-                           opacity-0 group-hover/btn:opacity-100 pointer-events-none
-                           transition-opacity whitespace-nowrap shadow-lg">
-            {lang === 'PT' ? 'Salvar na Galeria' : lang === 'EN' ? 'Save to Gallery' : 'Guardar en Galería'}
-          </span>
-        </button>
-      </div>
+      {/* ─── [2026-10-11] Old standalone right toolbar — fusionada en barra unificada ─── */}
 
       {/* ─── Zoom controls (+ / -) — right side, vertically centered ─── */}
       <div className="absolute top-1/2 -translate-y-1/2 right-4 flex flex-col gap-2 bg-black/60 backdrop-blur-xl p-2 rounded-2xl border border-white/10 shadow-2xl z-30 transition-all duration-300 hover:border-white/20">

@@ -213,24 +213,10 @@ app.use((req, res) => {
 // hacia el cliente, pero quedaba en portugués ("Erro interno do servidor"),
 // inconsistente con el resto de la copy (CLAUDE.md exige español en UI).
 const IS_DEMO_MODE = process.env.DEMO_MODE === 'true' || process.env.NODE_ENV !== 'production'
-app.use((err, req, res, _next) => {
-  console.error('[Server Error Intercepted]', req.method, req.path, err)
-  // RESILIENCE [2026-10-09] — Bypass condicional (DEMO_MODE / dev):
-  //   ninguna excepción cruda llega al cliente. En modo piloto responde 200 con un
-  //   payload ESTRUCTURADO y vacío-pero-válido (el UI no se cae por shape inválido).
-  //   Fuera de demo vuelve al comportamiento original (500 sin stack trace).
-  if (res.headersSent) return
-  if (IS_DEMO_MODE) {
-    return res.status(200).json({
-      success: false,
-      degraded: true,
-      code: 'SERVER_FALLBACK',
-      error: 'Procesado con fallback de seguridad. Intentá de nuevo en unos segundos.',
-      design: null, modules: [], projects: [], pieces: [],
-    })
-  }
-  res.status(500).json({ success: false, error: 'Error interno del servidor. Intentá de nuevo en unos segundos.' })
-})
+const { apiErrorHandler } = require('./middleware/errorHandler')
+// ★ 2026-10-12: handler extraído a middleware/errorHandler.js (testeable). Respeta err.status
+//   (body-parser 400 ya no se disfraza de 500) y las rutas de chat nunca devuelven 500.
+app.use(apiErrorHandler)
 
 // ★ 2026-10-09: una promesa rechazada sin catch (ej. Supabase caído) no debe tumbar
 //   el proceso en plena demo. Se loguea y el servidor sigue atendiendo.

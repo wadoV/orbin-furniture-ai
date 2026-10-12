@@ -28,6 +28,11 @@ const ENGINE_PARAM_KEYS = [
   'hasHangingRod', 'hasLed', 'nicheHeight', 'tamponado', 'tamponadoThickness', 'frontMolding', 'panelVista', 'fijacion', 'grooveDepth',  'pedestalWidth', 'hasPedestal', 'puxadorCava45', 'pedestalSide', 'drawerPrivacyPanel', 'drawerRailHeight',
   'handleType', 'edgeBandingType', 'materialBody', 'materialFront',
   'mountHeight', 'type',
+  // ★ ADITIVO 2026-10-12 — carpintería avanzada. Estas llaves YA las leía closetEngine
+  //   (o las lee desde hoy) pero NO estaban acá, así que el contrato las descartaba en
+  //   silencio ("llaves fuera de contrato") y el LLM nunca podía pedir una cava.
+  'drawerFrontStyle', 'puxadorCavaAereo', 'tamponadoInferior', 'cavaOverhang',
+  'ovenPanel', 'ovenNicheHeight', 'topTieRails', 'tieRailHeight', 'slidingSheetOverlap',
 ]
 
 // ─── 2. Alias → llave canónica del motor ─────────────────────────────────────
@@ -48,6 +53,12 @@ const KEY_ALIASES = {
   doors: 'numDoors',
   dividers: 'numDividers',
   material: 'materialFront',
+  // ★ ADITIVO 2026-10-12 — nombres con los que el briefing/LLM suele referirse a lo mismo
+  hasCava45: 'puxadorCava45',
+  cava45: 'puxadorCava45',
+  doorOverlapBottom: 'puxadorCavaAereo',
+  ovenFalseDoor: 'ovenPanel',
+  falseDoor: 'ovenPanel',
 }
 
 // ─── Enums cerrados ──────────────────────────────────────────────────────────
@@ -95,9 +106,16 @@ const RANGES = {
   mountHeight: [0, 2400],
   slidingDoorSheets: [1, 4],
   alturaTraviesaCava: [0, 200],
+  // ★ ADITIVO 2026-10-12. NO están en DIMENSION_KEYS a propósito: son mm chicos y
+  //   toNumberMM leería "15" como 15 metros (inferencia "2.4" → 2400) → 15000 → clamp 100.
+  cavaOverhang: [0, 100],
+  ovenNicheHeight: [300, 1200],
+  tieRailHeight: [30, 200],
+  slidingSheetOverlap: [0, 300],
 }
 
-const BOOL_KEYS = ['hasDoors', 'hasCountertop', 'hasHangingRod', 'hasLed', 'baseboard', 'drawerPrivacyPanel', 'hasPedestal', 'puxadorCava45']
+const BOOL_KEYS = ['hasDoors', 'hasCountertop', 'hasHangingRod', 'hasLed', 'baseboard', 'drawerPrivacyPanel', 'hasPedestal', 'puxadorCava45',
+                   'puxadorCavaAereo', 'tamponadoInferior', 'ovenPanel', 'topTieRails']
 const NUM_KEYS = Object.keys(RANGES)
 
 // Sólo estas llaves son MEDIDAS: admiten unidad y la inferencia "2.4" → 2400mm.
@@ -322,6 +340,16 @@ R5. TRANSPARENCIA. Todo valor no dicho por el cliente viaja en "specAdjustments"
 
 R6. CERO INVENCIÓN DE INTENCIÓN. Si el cliente no mencionó puertas, no agregues
     puertas. Si no mencionó cajones, numDrawers es 0. Extraés lo dicho, no lo imaginado.
+
+R7. CARPINTERÍA AVANZADA (flags opcionales; omitilos si el cliente no los pidió):
+    · "cava 45°" en mueble bajo/gavetas → puxadorCava45:true (gavetas: drawerFrontStyle:"cava45").
+      NO calcules luces ni descuentos: el motor aplica solos los 30mm bajo el tampo y la traviesa.
+    · aéreo sin tirador con puertas que bajan → puxadorCavaAereo:true. tamponadoInferior:true si
+      lleva tamponado abajo (voladizo 15mm), false si no (30mm). NO calcules alturas de puerta.
+    · módulo de horno con puerta falsa y repisa → ovenPanel:true (hasDoors:true, numShelves:0).
+    · travesaños superiores de amarre en vez de techo macizo → topTieRails:true.
+    · "sin rodapié" → baseboard:false. Rodapié de N cm → baseboardHeight en mm.
+    · Nicho abierto → moduleType:"aereo", hasDoors:false, baseboard:false, numShelves:0.
 ════════════════════════════════════════════════════════════════════════
 `
 

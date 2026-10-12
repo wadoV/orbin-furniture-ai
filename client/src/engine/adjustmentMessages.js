@@ -73,6 +73,31 @@ const ADJUSTMENT_TEMPLATES = {
     'Altura da gaveta ajustada de {requested}mm para {applied}mm para que a pilha caiba na altura interna útil.',
     'Drawer height adjusted from {requested}mm to {applied}mm so the stack fits inside usable internal height.'
   ],
+  CAVA_RAIL_RAISED: [
+    'La traviesa de respaldo de la cava no puede ser menor a 50mm. Se ajustó de {requested}mm a {applied}mm.',
+    'A travessa de respaldo da cava não pode ser menor que 50mm. Foi ajustada de {requested}mm para {applied}mm.',
+    'The cava back-support rail cannot be smaller than 50mm. Adjusted from {requested}mm to {applied}mm.'
+  ],
+  OVEN_NO_ROOM: [
+    'No hay altura para un nicho de horno de {niche}mm más repisa y puerta falsa. Aumentá la altura del módulo o reducí el rodapié. Se omitió la puerta falsa.',
+    'Não há altura para um nicho de forno de {niche}mm mais prateleira e porta falsa. Aumente a altura do módulo ou reduza o rodapé. A porta falsa foi omitida.',
+    'Not enough height for a {niche}mm oven niche plus shelf and false door. Increase the module height or reduce the baseboard. The false door was omitted.'
+  ],
+  OVEN_NICHE_ASSUMED: [
+    'Se asumió un nicho de horno de {assumed}mm libres sobre la repisa estructural. La puerta falsa cubre la zona bajo la repisa. Podés cambiarlo con ovenNicheHeight.',
+    'Assumiu-se um nicho de forno de {assumed}mm livres sobre a prateleira estrutural. A porta falsa cobre a zona abaixo da prateleira. Você pode alterar com ovenNicheHeight.',
+    'An oven niche of {assumed}mm clear above the structural shelf was assumed. The false door covers the area below the shelf. You can change it with ovenNicheHeight.'
+  ],
+  TIE_RAILS_BETWEEN_FRONTS_UNSUPPORTED: [
+    'Pediste {count} travesaños entre frentes de gaveta: esa disposición todavía no está soportada. Se generaron los travesaños de amarre superiores (frontal y trasero).',
+    'Você pediu {count} travessas entre frentes de gaveta: essa disposição ainda não é suportada. Foram geradas as travessas de amarração superiores (frontal e traseira).',
+    'You asked for {count} rails between drawer fronts: that layout is not supported yet. The upper tie rails (front and rear) were generated instead.'
+  ],
+  NLP_BACK_THICKNESS_ASSUMED: [
+    '"{raw}" se interpretó como {value}mm de espesor de fondo (un fondo de {asDepth}mm no es un espesor de panel). Si querías {value} cm de profundidad, indicalo como "profundidad".',
+    '"{raw}" foi interpretado como {value}mm de espessura do fundo (um fundo de {asDepth}mm não é espessura de painel). Se queria {value} cm de profundidade, indique como "profundidade".',
+    '"{raw}" was interpreted as {value}mm back-panel thickness (a {asDepth}mm back is not a panel thickness). If you meant {value} cm of depth, say "depth".'
+  ],
   AEREO_BACK_FORCED_STRUCTURAL: [
     'Fondo de aéreo elevado de {requested}mm a {applied}mm (estructural atornillado): el fondo transmite la carga al riel de pared.',
     'Fundo do aéreo elevado de {requested}mm para {applied}mm (estrutural aparafusado): o fundo transmite a carga ao trilho de parede.',

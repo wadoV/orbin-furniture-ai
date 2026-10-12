@@ -127,6 +127,15 @@ const DEFAULTS = {
   slidingDoorSheets: 2,    // ★ 2026-10: hojas de correr (solo doorType='sliding')
   puxadorCava45: false,   // ★ 2026-10: mecanizado cava 45° CNC
   alturaTraviesaCava: 50,  // ★ 2026-10: altura de traviesa de respaldo en cava 45°
+  // ── ADITIVO 2026-10-12 (carpintería avanzada). Defaults APAGADOS → output idéntico.
+  puxadorCavaAereo: false,   // aéreo sin tirador: puerta con voladizo inferior
+  tamponadoInferior: true,   // aéreo con cava: ¿lleva tamponado inferior? (voladizo 15 vs 30)
+  cavaOverhang: null,        // mm: fuerza el voladizo (null = regla 15/30)
+  ovenPanel: false,          // módulo horno: puerta falsa sobrepuesta + repisa estructural
+  ovenNicheHeight: 600,      // mm libres sobre la repisa del horno
+  topTieRails: false,        // base: travesaños de amarre en vez de techo macizo
+  tieRailHeight: null,       // mm: alto de los travesaños superiores (null = 70 con encimera, 50 sin ella)
+  slidingSheetOverlap: 100,  // mm: traslape corredizas (vigente 100; el taller indica 30)
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -187,7 +196,8 @@ function calculateSlidingDoors(cfg, D, CD, T, BT, internalWidth, internalDepth, 
   
   const spaceForSlides = internalWidth - 40
   const nSheets = Math.max(1, Math.min(4, slidingDoorSheets || 2))
-  const sheetWidth = Math.round((spaceForSlides + (nSheets - 1) * SLIDING_SHEET_OVERLAP) / nSheets)
+  const sheetOverlap = (cfg.slidingSheetOverlap > 0) ? cfg.slidingSheetOverlap : SLIDING_SHEET_OVERLAP
+  const sheetWidth = FurnitureMath.carpentry.slidingSheetWidth(spaceForSlides, nSheets, sheetOverlap)
   
   const bh = (cfg.baseboard && cfg.moduleType !== "aereo") ? (cfg.baseboardHeight || 100) : 0
   const drawerH = ((cfg.numDrawers || 0) > 0) ? ((cfg.numDrawers || 0) * (cfg.drawerHeight || 180)) : 0
@@ -209,7 +219,7 @@ function calculateSlidingDoors(cfg, D, CD, T, BT, internalWidth, internalDepth, 
   const doorY = yBase + doorHeight / 2
   
   for (let i = 0; i < nSheets; i++) {
-    const xPos = (internalWidth / 2) + (i - (nSheets - 1) / 2) * (sheetWidth - SLIDING_SHEET_OVERLAP)
+    const xPos = (internalWidth / 2) + (i - (nSheets - 1) / 2) * (sheetWidth - sheetOverlap)
     const notes = puxadorCava45 ? "USINAGEM: Cava 45° superior + labio 3mm" : ""
     
     pieces.push(makePiece(
@@ -687,26 +697,48 @@ function generateFurniture(params) {
     ? cfg.topStyle : (moduleType === 'base' ? 'overlay' : 'inset')
   // Con travesaños (base + cubierta comprada aparte) no hay tapa de MDF que
   // apoyar: el lateral llega arriba y la encimera va sobre él.
-  const hasTopPanel = !(isBase && hasCountertop && moduleType !== 'standard')
+  const countertopTies = (isBase && hasCountertop && moduleType !== 'standard')
+  // ★ ADITIVO 2026-10-12: topTieRails=true reemplaza el techo macizo por travesaños de
+  //   amarre (frontal+trasero) también SIN encimera. Con encimera se conserva el alto
+  //   histórico de 70mm; sin ella usa cfg.tieRailHeight (50mm por defecto).
+  const useTieRails = countertopTies || (cfg.topTieRails === true && !isAereo)
+  //   Un tieRailHeight EXPLÍCITO manda siempre ("travesaños de 5cm" gana sobre el 70 histórico).
+  const tieH = cfg.tieRailHeight > 0
+    ? cfg.tieRailHeight
+    : (countertopTies ? 70 : FurnitureMath.carpentry.TIE_RAIL_HEIGHT)
+  const hasTopPanel = !useTieRails
   const topT = (topStyle === 'overlay' && hasTopPanel && !isAereo) ? T : 0
 
   const latBottom = onLegs ? BH3 : 0
   const baseDeduction = cfg.baseThicknessDeduction || 0
   const latH = FurnitureMath.calculatePanelHeight(H, baseDeduction, topT, latBottom)
   const latY = latBottom + baseDeduction + latH/2
+  // ★ ADITIVO 2026-10-12 — aéreo sin tirador (cava): la puerta rebasa hacia abajo y los
+  //   tamponados laterales acompañan su altura. Voladizo: 15mm con tamponado inferior,
+  //   30mm sin él (cfg.cavaOverhang manda). Opt-in: puxadorCavaAereo=false → sin efecto.
+  const aereoCava = (isAereo && hasDoors && cfg.puxadorCavaAereo && (cfg.doorType || 'hinged') === 'hinged')
+    ? FurnitureMath.carpentry.aereoCavaDoor({ carcassH: H, bottomTamponado: cfg.tamponadoInferior !== false, overhangOverride: cfg.cavaOverhang })
+    : null
+  const tampLatH = aereoCava ? aereoCava.tamponLateralH : latH
+  const tampLatY = aereoCava ? latY - aereoCava.overhang / 2 : latY
   pieces.push(makePiece(nextId('LAT-L'), 'Lateral Izquierdo', 'lateral', CD - MOLD, latH, T, 1, T/2, latY, CD/2, 'vertical', { front: true }))
   pieces.push(makePiece(nextId('LAT-R'), 'Lateral Derecho', 'lateral', CD - MOLD, latH, T, 1, W - T/2, latY, CD/2, 'vertical', { front: true }))
 
   // ── TAMPONADO: panel de acabamiento que tapa tornillos en el costado visible ──
   const tamp = cfg.tamponado || 'none'
+  // ★ ADITIVO 2026-10-12 — ALINEACIÓN EN Z: con puertas, el tamponado lateral llega a ras de la
+  //   cara EXTERIOR de la puerta (cara frontal en CD+T). overlay: CD+T = D · legacy: CD+T = D+T.
+  //   Sin puertas o sin tamponado el cálculo es el histórico (tampFlushExtra = 0).
+  const tampFlushExtra = (tamp !== 'none' && hasDoors) ? T : 0
+  const tampDepth = CD - MOLD + tampFlushExtra
   if (tamp === 'left' || tamp === 'both')
-    pieces.push(makePiece(nextId('TAMP-L'), 'Tampão Lateral Izq', 'tamponado', CD - MOLD, latH, tampT, 1, -tampT/2, latY, CD/2, 'vertical', { front: true }, `Tapatornillos ${tampT}mm — incluido en ancho acabado ${W_FIN}mm`))
+    pieces.push(makePiece(nextId('TAMP-L'), 'Tampão Lateral Izq', 'tamponado', tampDepth, tampLatH, tampT, 1, -tampT/2, tampLatY, CD/2 + tampFlushExtra/2, 'vertical', { front: true }, `Tapatornillos ${tampT}mm — incluido en ancho acabado ${W_FIN}mm`))
   if (tamp === 'right' || tamp === 'both')
-    pieces.push(makePiece(nextId('TAMP-R'), 'Tampão Lateral Der', 'tamponado', CD - MOLD, latH, tampT, 1, W + tampT/2, latY, CD/2, 'vertical', { front: true }, `Tapatornillos ${tampT}mm — incluido en ancho acabado ${W_FIN}mm`))
+    pieces.push(makePiece(nextId('TAMP-R'), 'Tampão Lateral Der', 'tamponado', tampDepth, tampLatH, tampT, 1, W + tampT/2, tampLatY, CD/2 + tampFlushExtra/2, 'vertical', { front: true }, `Tapatornillos ${tampT}mm — incluido en ancho acabado ${W_FIN}mm`))
 
-  if (isBase && hasCountertop && moduleType !== 'standard') {
-    pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal', 'tie_strip', internalWidth - PV, 70, T, 1, W/2, H - 70/2, T/2 + 20, 'horizontal', { front: true }, 'Refuerzo Estructural'))
-    pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero', 'tie_strip', internalWidth - PV, 70, T, 1, W/2, H - 70/2, D - BT - T/2, 'horizontal', { front: true }, 'Refuerzo Estructural'))
+  if (useTieRails) {
+    pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal', 'tie_strip', internalWidth - PV, tieH, T, 1, W/2, H - tieH/2, T/2 + 20, 'horizontal', { front: true }, 'Refuerzo Estructural'))
+    pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero', 'tie_strip', internalWidth - PV, tieH, T, 1, W/2, H - tieH/2, D - BT - T/2, 'horizontal', { front: true }, 'Refuerzo Estructural'))
   } else {
     // COHERENCIA OBLIGATORIA: si el lateral se acortó (overlay), la tapa se apoya
     // encima y debe cubrir el ancho COMPLETO. Con W−2T quedaría flotando dejando
@@ -718,7 +750,7 @@ function generateFurniture(params) {
   pieces.push(makePiece(nextId('BASE'), 'Base Inferior', 'piso', internalWidth - PV, CD - 2*MOLD, T, 1, W/2, BH3 + T/2, CD/2, 'horizontal', { front: true }))
 
   // BUG FIX #5 & VULN-05: base+countertop has traversaños (70mm) at top, not a techo (T).
-  const topDeduction = (isBase && hasCountertop && moduleType !== 'standard') ? 70 : T
+  const topDeduction = useTieRails ? tieH : T
   const baseBackH = H - BH3 - T - topDeduction
   const grooveDepth = cfg.grooveDepth || 8
   const backH = (cfg.backStyle === 'grooved') ? baseBackH + (2 * grooveDepth) : baseBackH
@@ -791,15 +823,25 @@ function generateFurniture(params) {
       const frontNotes = cfg.drawerFrontStyle === 'cava_cnc' 
         ? `Holgura 2mm/lado | USINAGEM: Cava central CNC ${cfg.cavaCncWidth}x${cfg.cavaCncDepth}mm R20`
         : cfg.drawerFrontStyle === 'cava45'
-        ? `Holgura 2mm/lado | Bisel 45° con labio plano 3mm`
+        ? `Holgura 2mm/lado | Bisel 45° con labio plano 3mm | Luz de agarre 30mm sobre el frente`
         : cfg.drawerFrontStyle === 'internal'
         ? `Holgura 2mm/lado | Gaveta embutida en interior`
         : `Holgura 2mm/lado`
 
+      // ★ ADITIVO 2026-10-12 — cava 45° en gavetas: cada frente cede 30mm de luz de agarre
+      //   en su borde superior (el frente nace al ras inferior de su casillero).
+      //   Con drawerFrontStyle distinto de 'cava45' el cálculo es el histórico, byte a byte.
+      const frontGap = HARDWARE.DRAWER_FRONT_GAP
+      const cavaDrawer = cfg.drawerFrontStyle === 'cava45'
+        ? FurnitureMath.carpentry.cavaOffsets({ nominalH: safeDrawerHeight - 2*frontGap, internalWidth: drawerW })
+        : null
+      const frontH = cavaDrawer ? cavaDrawer.leafH : safeDrawerHeight - 2*frontGap
+      const frontY = cavaDrawer ? (yPos - safeDrawerHeight/2 + frontGap + frontH/2) : yPos
+
       const frontPiece = makePiece(
         nextId('GAV-FF'), `Frente Gaveta ${i + 1}`, 'drawer_front',
-        drawerW - 2*HARDWARE.DRAWER_FRONT_GAP, safeDrawerHeight - 2*HARDWARE.DRAWER_FRONT_GAP, T, 1,
-        xPos, yPos, D - T/2, 'horizontal',
+        drawerW - 2*HARDWARE.DRAWER_FRONT_GAP, frontH, T, 1,
+        xPos, frontY, D - T/2, 'horizontal',
         { all: true }, frontNotes, 'drawer_front'
       )
 
@@ -967,7 +1009,11 @@ function generateFurniture(params) {
     ))
   }
 
-  if (hasDoors) {
+  // ★ ADITIVO 2026-10-12 — MÓDULO DE HORNO: puerta falsa sobrepuesta (panel fijo) +
+  //   repisa estructural. Reemplaza las puertas operables; la profundidad de carcasa
+  //   sigue siendo D−T (overlay), igual que con puertas reales.
+  const ovenMode = !!cfg.ovenPanel && !isAereo && hasDoors
+  if (hasDoors && !ovenMode) {
     // ★ ADITIVO 2026-10: Soporte para puertas de correr
     if (cfg.doorType === 'sliding') {
       const slidingResult = calculateSlidingDoors(cfg, D, CD, T, BT, internalWidth, internalDepth, H, hasDoors, nextId)
@@ -987,38 +1033,98 @@ function generateFurniture(params) {
       
       // ★ ADITIVO 2026-10-11: puxadorCavaAereo en módulos aéreos
       //   Extensión de puertas 30mm hacia abajo (overhang) + tamponado inferior retranqueado
-      const puxadorOverhang = (isAereo && cfg.puxadorCavaAereo) ? (cfg.cavaOverhang || 30) : 0
-      const doorH = H - BH3 - totalDrawerH - (isBase ? T : 0) - nicheOffset + puxadorOverhang
+      const puxadorOverhang = aereoCava ? aereoCava.overhang : 0
+      const doorHNominal = H - BH3 - totalDrawerH - (isBase ? T : 0) - nicheOffset + puxadorOverhang
+      // ★ ADITIVO 2026-10-12 — cava 45° en módulo bajo: altoHoja = altoNominal − 30mm.
+      const cavaBase = (isBase && cfg.puxadorCava45)
+        ? FurnitureMath.carpentry.cavaOffsets({ nominalH: doorHNominal, internalWidth, railHeight: cfg.alturaTraviesaCava })
+        : null
+      if (cavaBase && cavaBase.adjustments.length) {
+        cfg.specAdjustments = [...(cfg.specAdjustments || []), ...cavaBase.adjustments]
+      }
+      const doorH = cavaBase ? cavaBase.leafH : doorHNominal
+      // Aéreo con cava: altoHoja = H_carcasa + voladizo − 3mm (la puerta nace bajo la base).
+      const aereoLeafH = aereoCava
+        ? FurnitureMath.carpentry.aereoCavaDoor({ carcassH: H - BH3 - totalDrawerH - nicheOffset, bottomTamponado: cfg.tamponadoInferior !== false, overhangOverride: cfg.cavaOverhang }).leafH
+        : null
       if (doorH > 150) {
         const n = Math.min(4, Math.max(1, numDoors || 1))
         const leafW = (W / n) - HARDWARE.DOOR_GAP_W
-        const doorY = BH3 + totalDrawerH + nicheOffset + doorH/2
+        const doorY = aereoLeafH !== null
+          ? (BH3 + totalDrawerH + nicheOffset - puxadorOverhang + aereoLeafH/2)
+          : (BH3 + totalDrawerH + nicheOffset + doorH/2)
+        const leafPieceH = aereoLeafH !== null ? aereoLeafH : (doorH - HARDWARE.DOOR_GAP_H)
 
         for (let i = 0; i < n; i++) {
           const xPos = (W/n)/2 + i*(W/n)
           pieces.push(makePiece(
             nextId('PORTA'), `Puerta ${i + 1}`, 'standard_door',
-            leafW, doorH - HARDWARE.DOOR_GAP_H, T, 1,
+            leafW, leafPieceH, T, 1,
             xPos, doorY, CD + T/2,   // cara frontal en CD+T: con overlay = D exacto; en legacy = D+T
             'vertical', { all: true }, 'Bisagra Reforzada', 'standard_door'
           ))
+        }
+
+        // ★ ADITIVO 2026-10-12 — TRAVIESA_RESPALDO_CAVA: cierre tras la luz de agarre de 30mm
+        //   (alto ≥ 50mm, largo = vano interior). Si ya hay travesaños de amarre superiores
+        //   (encimera / topTieRails) el frontal cumple esa función → no se duplica.
+        if (cavaBase && !useTieRails) {
+          const railTopY = H - T   // cara inferior del techo
+          const railPiece = makePiece(
+            nextId('TRAV-CAVA'), 'Traviesa Respaldo Cava 45°', 'travesano',
+            cavaBase.rail.width, cavaBase.rail.height, T, 1,
+            W/2, FurnitureMath.carpentry.railCenterY(railTopY, cavaBase.rail.height), CD - T/2,
+            'horizontal', { front: true },
+            'Cierre visual y anti-polvo tras la luz de cava (30mm bajo el tampo)', 'travesano'
+          )
+          pieces.push({ ...railPiece, role: 'TRAVIESA_RESPALDO_CAVA' })
+        } else if (cavaBase && useTieRails) {
+          // El travesaño frontal superior (≥50mm) ya cierra la luz de cava: se etiqueta, no se duplica.
+          const frontTie = pieces.find(pc => typeof pc.id === 'string' && pc.id.startsWith('TRAV-F'))
+          if (frontTie && frontTie.height >= cavaBase.rail.height) {
+            frontTie.role = 'TRAVIESA_RESPALDO_CAVA'
+            frontTie.notes = 'Refuerzo Estructural + cierre tras la luz de cava (30mm bajo el tampo)'
+          }
         }
         
         // ★ ADITIVO 2026-10-11: Tamponado inferior aéreo (cierre visual + retranqueo Z)
         //   Se genera cuando isAereo && puxadorCavaAereo, para cerrar visualmente
         //   el espacio bajo la extensión de las puertas (30mm overhang).
-        if (isAereo && cfg.puxadorCavaAereo) {
+        if (aereoCava && cfg.tamponadoInferior !== false) {
           const tamponRetranqueo = cfg.tamponadoInferiorRetranqueo || 25  // retranqueado en Z
           pieces.push(makePiece(
             nextId('TAMPON-INF-AERO'), 'Tamponado Inferior Aéreo', 'tampon_bottom',
             internalWidth - 2, internalDepth - tamponRetranqueo, cfg.tamponadoThickness || T, 1,
-            W/2, BH3 + totalDrawerH + nicheOffset + (puxadorOverhang - tamponRetranqueo) / 2, 
+            W/2, Math.max((cfg.tamponadoThickness || T) / 2, BH3 + totalDrawerH + nicheOffset + (puxadorOverhang - tamponRetranqueo) / 2), 
             internalDepth/2 + BT - tamponRetranqueo/2,
             'horizontal', { front: true },
             'Cierre visual inferior — retranqueado 25mm en profundidad'
           ))
         }
       }
+    }
+  }
+
+  // ── ADITIVO 2026-10-12: MÓDULO DE HORNO — repisa estructural + puerta falsa sobrepuesta.
+  if (ovenMode) {
+    const lay = FurnitureMath.carpentry.ovenLayout({
+      ceilingY: useTieRails ? H : H - T, floorY: BH3 + T, baseY: BH3,
+      thickness: T, width: W, ovenNiche: cfg.ovenNicheHeight,
+    })
+    cfg.specAdjustments = [...(cfg.specAdjustments || []), ...lay.adjustments]
+    if (lay.ok) {
+      pieces.push(makePiece(
+        nextId('REPISA-HORNO'), 'Repisa Estructural Horno', 'repisa',
+        internalWidth - 2 - PV, internalDepth, T, 1,
+        W/2, lay.shelf.centerY, internalDepth/2 + BT, 'horizontal', { front: true },
+        `Soporta el horno — fija, estructural. Nicho libre ${cfg.ovenNicheHeight || FurnitureMath.carpentry.OVEN_NICHE_HEIGHT}mm sobre la repisa`
+      ))
+      pieces.push(makePiece(
+        nextId('PORTA-FALSA'), 'Puerta Falsa (panel fijo sobrepuesto)', 'standard_door',
+        lay.falseDoor.width, lay.falseDoor.height, T, 1,
+        W/2, lay.falseDoor.centerY, CD + T/2,
+        'vertical', { all: true }, 'PANEL FIJO — sin bisagras, sin apertura. Fijar con escuadras interiores', 'standard_door'
+      ))
     }
   }
 
@@ -1190,7 +1296,9 @@ function generateHardwareBOM(cfg) {
     bom.push({ type: 'Pino para Prateleira', description: 'Pino metalico o5mm', quantity: numShelves * 4, unit: 'un' })
   }
 
-  if (hasDoors && doorType === 'hinged') {
+  if (hasDoors && cfg.ovenPanel && cfg.moduleType !== 'aereo') {
+    bom.push({ type: 'Escuadra', description: 'Escuadra de fijación interior para puerta falsa (panel fijo)', quantity: 4, unit: 'un' })
+  } else if (hasDoors && doorType === 'hinged') {
     // ★ AUDIT FIX 2026-07-19 (aditivo-compatible): antes ignoraba cfg.numDoors
     // (ceil(width/600) daba 2 dobradiças para 2 puertas). Regla de taller:
     // puerta ≤900mm → 2 bisagras · ≤1600 → 3 · >1600 → 4. Fallback al cálculo

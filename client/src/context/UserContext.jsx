@@ -21,7 +21,7 @@
  * PROMO_CODES en billing.js) — ya no viven en este bundle.
  */
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import { supabase } from '../lib/supabase.js'
+import { supabase, signInWithGoogle } from '../lib/supabase.js'
 import { api } from '../api/client.js'
 import { DEMO_MODE, DEMO_TALLER_USER } from '../config/demoMode.js'
 
@@ -131,7 +131,7 @@ export function UserProvider({ children }) {
       return  // no Supabase subscription needed
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } = {} }) => {
       if (session) {
         setUser({
           id: session.user.id,
@@ -156,9 +156,12 @@ export function UserProvider({ children }) {
         localStorage.removeItem('orbin-user-session')
         setUser({ ...defaultUser, loading: false })
       }
+    }).catch(err => {
+      console.warn('[UserContext] Error al recuperar sesión de Supabase:', err?.message || err)
+      setUser({ ...defaultUser, loading: false })
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: { subscription } = {} } = supabase.auth.onAuthStateChange((_e, session) => {
       if (session) {
         setUser({
           id: session.user.id,
@@ -174,8 +177,10 @@ export function UserProvider({ children }) {
         localStorage.removeItem('orbin-user-session')
         setUser({ ...defaultUser, loading: false })
       }
-    })
-    return () => subscription.unsubscribe()
+    }) || {}
+    return () => {
+      if (subscription?.unsubscribe) subscription.unsubscribe()
+    }
   }, [redeemPendingPromo])
 
   const login = useCallback(async (email, password) => {
@@ -225,13 +230,19 @@ export function UserProvider({ children }) {
   // signInWithOAuth redirige fuera de la app; el retorno pasa por
   // supabase.auth.onAuthStateChange (ya registrado arriba), que crea la sesión
   // normalmente — no requiere lógica adicional de creación de usuario aquí.
-  const loginWithGoogle = useCallback(async () => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/app` }
-    })
-    if (error) throw error
-    return data
+  const loginWithGoogle = useCallback(async (customRedirect) => {
+    try {
+      const redirectUrl = customRedirect || (typeof window !== 'undefined' ? `${window.location.origin}/app` : undefined)
+      const { data, error } = await signInWithGoogle(redirectUrl)
+      if (error) {
+        console.error('[UserContext] Error en loginWithGoogle:', error.message || error)
+        throw error
+      }
+      return data
+    } catch (err) {
+      console.error('[UserContext] Excepción capturada en loginWithGoogle:', err)
+      throw err
+    }
   }, [])
 
   const logout = useCallback(async () => {

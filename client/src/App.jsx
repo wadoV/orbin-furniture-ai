@@ -171,39 +171,31 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('params')
   const [loading,   setLoading]   = useState(false)
+  // ★ 2026-10-11: arranque limpio — nunca inyecta mod-base-demo.
+  //   Si hay autosave válido → pendingRecovery=true via useEffect; modules=[] hasta decisión.
+  //   Si no hay autosave   → modules=[], visor vacío listo para recibir módulos.
   const [modules,   setModules]   = useState(() => {
     try {
-      // ★ 2026-10-09 (piloto): `/app?reset` en DEMO_MODE descarta el autosave y arranca
-      //   limpio con el módulo base — botón de pánico antes de mostrarle la pantalla al cliente.
+      // Botón de pánico: /app?reset borra autosave y arranca limpio (DEMO_MODE)
       if (DEMO_MODE && new URLSearchParams(window.location.search).has('reset')) {
         localStorage.removeItem('orbin-autosave')
         localStorage.removeItem('orbin-autosave-ts')
-        localStorage.removeItem('orbin-project-id')   // proyecto nuevo tras el reset
+        localStorage.removeItem('orbin-project-id')
         const url = new URL(window.location.href); url.searchParams.delete('reset')
         window.history.replaceState({}, '', url)
-        return [DEFAULT_INITIAL_MODULE]
+        return []
       }
-      const saved = localStorage.getItem('orbin-autosave')
-      if (!saved) return [DEFAULT_INITIAL_MODULE]
-      const parsed = JSON.parse(saved)
-      if (!Array.isArray(parsed) || parsed.length === 0) return [DEFAULT_INITIAL_MODULE]
-      const valid = parsed
-        .filter(m => m && typeof m === 'object' && (m.configuration || m.pieces))
-        // ★ 2026-10-09: migra el placeholder viejo escrito a mano (piezas 'mod-base-demo-*',
-        //   sin cajas de cajón) que pudo quedar en autosave → snapshot real del motor.
-        .map(m => (m.id === 'mod-base-demo' && Array.isArray(m.pieces) && m.pieces.length > 0 &&
-                   m.pieces.every(p => String(p?.id || '').startsWith('mod-base-demo-')))
-          ? { ...DEFAULT_INITIAL_MODULE, position: m.position }
-          : m)
-      return valid.length > 0 ? sanitizeModulesPositions(valid) : [DEFAULT_INITIAL_MODULE]
-    } catch { return [DEFAULT_INITIAL_MODULE] }
+      return []   // siempre vacío — el modal de recuperación carga si hay autosave
+    } catch { return [] }
   })
   // ★ FIX: ref siempre actualizado para evitar stale closure en saveHistory/undo
   const modulesRef = useRef([])
   const [history,   setHistory]   = useState([])
   const [redoStack, setRedoStack] = useState([])
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [selectedModuleId, setSelectedModuleId] = useState('mod-base-demo')
+  // ★ 2026-10-11: modal de recuperación — true cuando hay autosave pendiente de decidir
+  const [pendingRecovery, setPendingRecovery] = useState(false)
+  const [selectedModuleId, setSelectedModuleId] = useState(null)
 
   // ★ FIX [form-sync]: el formulario de InputPanel mantiene su propio estado local y
   //   solo se sincroniza con el módulo seleccionado si editMode está activo (protección
@@ -244,18 +236,32 @@ export default function App() {
   const [socket, setSocket] = useState(null)
 
   // TASK 3: UNSAVED CHANGES GUARD & SESSION CONTROLS
+  // ★ 2026-10-11: detectar autosave al montar y activar modal de recuperación
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).has('reset')) {
+        return
+      }
+      const saved = localStorage.getItem('orbin-autosave')
+      if (!saved) return
+      const parsed = JSON.parse(saved)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        setPendingRecovery(true)
+      }
+    } catch { /* autosave corrupto — ignorar */ }
+  }, [])  // solo al montar
+
   useEffect(() => {
     const handleBeforeUnload = (e) => {
-      // DEMO_MODE: sin diálogo "¿Salir del sitio?" — el autosave (localStorage) ya
-      // persiste el diseño en cada cambio; en planta el F5 no debe frenar la demo.
-      if (hasUnsavedChanges && !DEMO_MODE) {
+      // Advertir al usuario si hay módulos en el lienzo o cambios sin guardar
+      if ((modules.length > 0 || hasUnsavedChanges) && !DEMO_MODE) {
         e.preventDefault();
         e.returnValue = '¿Desea guardar los cambios del diseño antes de salir?';
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [hasUnsavedChanges]);
+  }, [hasUnsavedChanges, modules.length]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -936,6 +942,31 @@ export default function App() {
       setSavingProject(false)
     }
   }
+
+  // ★ [2026-10-11] ADITIVO: Nuevo Proyecto + limpieza de estado
+  const handleNewProject = () => {
+    if (modules.length > 0) {
+      const confirmed = window.confirm(
+        lang === 'PT'
+          ? 'Descartar todas as mudanças e iniciar um novo projeto em branco? (Não pode ser desfeito.)'
+          : lang === 'EN'
+          ? 'Discard all changes and start a blank project? (Cannot be undone.)'
+          : '¿Descartar todos los cambios e iniciar un nuevo proyecto en blanco? (No se puede deshacer.)'
+      )
+      if (!confirmed) return
+    }
+    setModules([])
+    modulesRef.current = []
+    setHistory([])
+    setRedoStack([])
+    setSelectedModuleId(null)
+    setSelectedPieceIds(new Set())
+    setHasUnsavedChanges(false)
+    localStorage.removeItem('orbin-autosave')
+    localStorage.removeItem('orbin-autosave-ts')
+    localStorage.removeItem('orbin-project-id')
+    flashPaste('ok', lang === 'PT' ? 'Novo projeto em branco iniciado' : lang === 'EN' ? 'New blank project started' : 'Nuevo proyecto en blanco iniciado')
+  }
   // Descarga el JSON completo (módulos + despiece + nesting + herrajes) con un clic.
   const handleDownloadProjectJson = () => {
     const project = buildProjectPayload()
@@ -1094,6 +1125,65 @@ export default function App() {
             }}
           />
         )}
+        {/* ★ 2026-10-11: Modal de Recuperación de Sesión (Charcoal) */}
+        {pendingRecovery && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="bg-[#0D0D0D] border border-white/10 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">🗂️</span>
+                <h2 className="text-white font-black text-lg tracking-tight">
+                  {lang === 'PT' ? '¿Continuar o último projeto?' : lang === 'EN' ? 'Continue your last project?' : '¿Continuar tu último proyecto?'}
+                </h2>
+              </div>
+              <p className="text-white/50 text-sm mb-6 leading-relaxed">
+                {lang === 'PT' ? 'Detectamos um design salvo na memória local.' : lang === 'EN' ? 'We detected a saved design in local memory.' : 'Detectamos un diseño guardado en la memoria local.'}
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    try {
+                      const saved = localStorage.getItem('orbin-autosave')
+                      if (saved) {
+                        const parsed = JSON.parse(saved)
+                        const valid = Array.isArray(parsed)
+                          ? parsed.filter(m => m && typeof m === 'object' && (m.configuration || m.pieces))
+                          : []
+                        const loaded = valid.length > 0 ? sanitizeModulesPositions(valid) : []
+                        setModules(loaded)
+                        modulesRef.current = loaded
+                        if (loaded.length > 0) setSelectedModuleId(loaded[0].id)
+                      }
+                    } catch {}
+                    setPendingRecovery(false)
+                    flashPaste('ok', lang === 'PT' ? 'Projeto recuperado' : lang === 'EN' ? 'Project recovered' : 'Proyecto recuperado')
+                  }}
+                  className="w-full py-3 rounded-xl bg-primary text-black font-black text-sm uppercase tracking-widest hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(245,166,35,0.3)]"
+                >
+                  {lang === 'PT' ? 'Continuar Design' : lang === 'EN' ? 'Continue Design' : 'Continuar Diseño'}
+                </button>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('orbin-autosave')
+                    localStorage.removeItem('orbin-autosave-ts')
+                    localStorage.removeItem('orbin-project-id')
+                    setModules([])
+                    modulesRef.current = []
+                    setHistory([])
+                    setRedoStack([])
+                    setSelectedModuleId(null)
+                    setHasUnsavedChanges(false)
+                    setPendingRecovery(false)
+                    flashPaste('ok', lang === 'PT' ? 'Novo projeto em branco' : lang === 'EN' ? 'New blank project' : 'Nuevo proyecto en blanco')
+                  }}
+                  className="w-full py-3 rounded-xl border border-red-500/30 text-red-400 font-bold text-sm uppercase tracking-widest hover:bg-red-500/10 transition-all"
+                >
+                  {lang === 'PT' ? 'Começar do Zero' : lang === 'EN' ? 'Start Fresh' : 'Comenzar de Nuevo'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header containing inline pricing dropdown */}
         <Header
           modules={modules}
@@ -1318,6 +1408,8 @@ export default function App() {
                         if (el) el.scrollIntoView({ behavior: 'smooth' })
                       }, 80)
                     }}
+                    onNewProject={handleNewProject}
+                    onSaveProject={handleSaveProject}
                   />
                   </Suspense>
                 ) : (

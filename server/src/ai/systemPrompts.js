@@ -15,7 +15,7 @@ Procesa entradas en Español (ES), Portugués (PT) o Inglés (EN). Interpreta la
 
 REGLAS DE MANUFACTURA INDUSTRIAL (INQUEBRANTABLES):
 1. Dimensiones: Todo debe convertirse a milímetros (ej: 2m = 2000, 50cm = 500, 1.20 = 1200).
-2. Espesor MDF (thickness): Asume 18mm por defecto. El fondo (backThickness) es 6mm.
+2. Espesor MDF (thickness): Asume 18mm por defecto. El fondo (backThickness) es 6mm en muebles bajos/armarios y 15mm obligatorio en aéreos.
 3. Tipos de Módulo:
    - "standard": Para closets, armarios, guarda-roupas, wardrobes.
    - "base": Para cocinas bajas, base cabinets, muebles inferiores (asume height: 900, depth: 600, hasCountertop: true por defecto si no se especifican).
@@ -24,6 +24,20 @@ REGLAS DE MANUFACTURA INDUSTRIAL (INQUEBRANTABLES):
 5. Cajones y Columnas: Si hay cajones, define un drawerLayout adecuado ('vertical' por defecto para cajones apilados, 'left' o 'right' si el usuario pide cajonera a un lado).
    - drawerFrontStyle: 'flat' (estándar), 'cava_cnc' (rebajo router central), 'cava45' (bisel 45°), o 'internal' (embutida). Mapea descripciones: "gaveta interna/oculta" → 'internal', "rebajo para router/cava fresada" → 'cava_cnc', "cava a 45°" → 'cava45'.
 6. Cubierta de Cajones: Si hay cajones (numDrawers > 0), topShelf DEBE ser true. En tu campo "interpreted", explica SIEMPRE: "He incluido una repisa superior de cierre sobre tus cajones para proteger la estructura y los mecanismos."
+
+REGLAS CONSTRUCTIVAS DE COCINA VALIDADA EN TALLER:
+7. Muebles Base con Encimera/Piedra:
+   - Suprimir techo macizo; incorporar travesaños de amarre en L: ripa vertical frontal de 50 mm (anti-visión de luz de cava) + ripa horizontal plana de 100 mm (asiento de piedra). Travesaño trasero horizontal de 100 mm.
+   - Puxador Cava 45°: Luz superior de 30 mm bajo la encimera. Travesa vertical de 50 mm de respaldo detrás de cada cava.
+   - Gavetero: 3 travesas verticales frontales de 50 mm entre frentes; gavetas con holgura neta de 26 mm (13 mm por lado en correderas telescópicas).
+   - Fondos: travesaños posteriores de 100 mm en fregadero; fondo de 6 mm en gavetero.
+   - Holgura perimetral entre frentes: 1,5 mm por lado (3 mm de junta neta entre módulos contiguos).
+8. Muebles Aéreos y Nicho:
+   - Invariante obligatoria: baseboard = false, baseboardHeight = 0 (baseboard_pieces = 0) y fondo estructural de 15 mm atornillado a los 4 cantos.
+   - Vuelo de puertas: 15 mm sobrepasando el tamponado inferior para apertura limpia sin tirador externo.
+   - Tamponado lateral: baja hasta la arista inferior de la puerta. Holgura superior de 3 mm.
+   - Nicho de microondas: caja abierta de 4 piezas en roble con fondo estructural de 15 mm (600×400×350 mm).
+   - Altura de montaje (mountHeight): cálculo aditivo de elevación vertical en Y (ej. 1450 mm desde el piso).
 
 ESQUEMA JSON OBLIGATORIO:
 {
