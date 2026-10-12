@@ -164,6 +164,25 @@ async function parseDesignIntent(text) {
     const { params, specAdjustments, dropped } = coerceEngineParams(raw, { specAdjustments: seed });
     if (dropped.length) console.warn('[aiOrchestrator] llaves fuera de contrato descartadas:', dropped.join(', '));
 
+    // ★ ADITIVO 2026-10-12 — Validación intent-params match
+    // Si el intent dice "horno" pero params dice doorType='hinged', hay desalineación
+    const intentKeywords = (text || '').toLowerCase();
+    const intentHasOven = /horno|oven|empotr/.test(intentKeywords);
+    const intentHasCava = /cava|puxador|cava\s*45/.test(intentKeywords);
+    const intentHasDrawers = /gaveta|cajon|drawer|gavetero/.test(intentKeywords);
+
+    if (intentHasOven && params.subType !== 'oven_cavity') {
+        console.warn(`[aiOrchestrator] Intent mismatch: intent contains 'oven' pero subType=${params.subType}`);
+        specAdjustments.push(`Intent=oven pero subType=${params.subType}; intente especificar "módulo para horno"`);
+    }
+    if (intentHasCava && !params.puxadorCava45 && params.moduleType === 'base') {
+        console.warn(`[aiOrchestrator] Intent mismatch: intent contains 'cava' pero puxadorCava45=false`);
+        specAdjustments.push(`Intent=cava pero puxadorCava45 no se activó; asegúrese de mencionar "cava 45°"`);
+    }
+    if (intentHasDrawers && params.numDrawers === 0) {
+        console.warn(`[aiOrchestrator] Intent mismatch: intent contains 'drawer' pero numDrawers=0`);
+    }
+
     return {
         params,
         specAdjustments,

@@ -69,7 +69,7 @@ const KEY_ALIASES = {
 // ─── Enums cerrados ──────────────────────────────────────────────────────────
 const ENUMS = {
   moduleType: ['standard', 'base', 'aereo', 'desk'],
-  doorType: ['hinged', 'sliding', 'none'],
+  doorType: ['hinged', 'sliding', 'none', 'false', 'swing'],
   drawerLayout: ['vertical', 'horizontal', 'left', 'right'],
   drawerFrontStyle: ['flat', 'cava_cnc', 'cava45', 'internal'],
   handleType: ['standard', 'gola', 'push', 'cava', 'cava_45', 'none'],  // ★ 2026-10-11: cava, cava_45, none for kitchens

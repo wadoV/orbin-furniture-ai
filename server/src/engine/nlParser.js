@@ -483,6 +483,27 @@ function parseNaturalLanguage(input) {
   if (detectFeature(text, ['gola', 'perfil gola', 'gola profile'])) { result.handleType = 'gola'; notes.push('Gola') }
   if (detectFeature(text, ['sin tirador', 'sem puxador', 'no handle', 'sin manija'])) { result.handleType = 'none'; notes.push('Sin tirador') }
 
+  // ★ ADITIVO 2026-10-12 — Cava 45° en módulos base
+  if (detectFeature(text, ['cava 45', 'cava45', 'puxador cava', 'cava tirador', 'cava puxador', 'tirador cava', '45 graus'])) {
+    result.puxadorCava45 = true
+    notes.push('Puxador cava 45°')
+    confidence += 5
+  }
+
+  // ★ ADITIVO 2026-10-12 — Puerta falsa sobrepuesta
+  if (detectFeature(text, ['puerta falsa', 'porta falsa', 'sobrepuesta', 'sobrepuesto', 'false door', 'overlay door', 'fake door'])) {
+    result.doorType = 'false'
+    notes.push('Puerta falsa sobrepuesta')
+    confidence += 5
+  }
+
+  // ★ ADITIVO 2026-10-12 — Puertas basculantes (aéreos)
+  if (detectFeature(text, ['basculante', 'pivote', 'swing door', 'bisagra superior', 'puerta oscilatoria', 'abatible'])) {
+    result.doorType = 'swing'
+    notes.push('Puerta basculante')
+    confidence += 5
+  }
+
   const interpreted = notes.length > 0
     ? 'Interpretado: ' + notes.join(' | ')
     : 'Nenhum dado especifico — usando padroes (' + result.width + 'x' + result.height + 'x' + result.depth + 'mm)'

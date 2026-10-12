@@ -120,17 +120,23 @@ function generateFurniture(params) {
       //   el interior, sin dejar hueco abierto arriba. CLEAR (16mm) es la holgura de
       //   corredera que el validador exige por gaveta (drawerHeight+16)·filas ≤ interna,
       //   así que repartimos: drawerHeight = floor(interna/filas) − CLEAR ⇒ pila == interna.
+
+      // ★ ADITIVO 2026-10-12 — Si hay travesaños físicos de 50mm entre gavetas,
+      //   restar (numDrawers - 1) × 50 mm del presupuesto
+      const crossbeamsBudget = cfg.puxadorCava45 ? (cfg.numDrawers - 1) * 50 : 0
+      const adjustedAvailableHeight = availableHeight - crossbeamsBudget
+
       const drawerOnly = (cfg.numShelves || 0) === 0 && !cfg.hasDoors
       if (drawerOnly) {
-        let maxRows = Math.max(1, Math.floor(availableHeight / (MINH + CLEAR)))
+        let maxRows = Math.max(1, Math.floor(adjustedAvailableHeight / (MINH + CLEAR)))
         if (maxRows < rows) {                 // ni al mínimo caben todas → reduce cantidad
           cfg.numDrawers = Math.max(1, maxRows * cols)
           rows = Math.ceil(cfg.numDrawers / cols)
         }
-        cfg.drawerHeight = Math.max(MINH, Math.floor(availableHeight / rows) - CLEAR)
+        cfg.drawerHeight = Math.max(MINH, Math.floor(adjustedAvailableHeight / rows) - CLEAR)
       } else {
         // Mixto (gavetas abajo + estantes/puertas arriba): reservar ~17% (validador < 85%).
-        const budget = availableHeight * 0.83
+        const budget = adjustedAvailableHeight * 0.83
         let maxDH = Math.floor(budget / rows) - CLEAR
         if ((cfg.drawerHeight || 0) > maxDH) cfg.drawerHeight = Math.max(MINH, maxDH)
         const maxRows = Math.floor(budget / (MINH + CLEAR))
@@ -245,6 +251,19 @@ function generateFurniture(params) {
       `Retroceso ${recess}mm para agarre cava`))
   } else {
     pieces.push(makePiece(nextId('BASE'), 'Base Inferior', 'piso', internalWidth, D, T, 1, W/2, BH3 + T/2, D/2, 'horizontal', { front: true }))
+  }
+
+  // ★ ADITIVO 2026-10-12 — Base module con puxador cava 45°: top crossbeam + recessed bottom
+  if (isBase && cfg.puxadorCava45) {
+    const cavaGapTop = 50  // 50mm travesaño físico en la parte superior
+    // Travesaño superior (50mm de altura) de amarre para soporte de puertas cava
+    pieces.push(makePiece(
+      nextId('TRAV-CAVA'), 'Travesaño Cava Superior', 'tie_strip',
+      internalWidth, cavaGapTop, T, 1,
+      W/2, H - cavaGapTop/2 - (isBase && hasCountertop ? 0 : T), T/2 + 20,
+      'horizontal', { front: true }, 'Amarre superior para cava 45°'
+    ))
+    // Nota: la altura de gavetas se ajusta automáticamente vía auto-fit (resta el travesaño)
   }
 
   // BUG FIX #5: base+countertop has traversaños (70mm) at top, not a techo (T).
@@ -420,6 +439,19 @@ function generateFurniture(params) {
         ))
       }
     }
+  }
+
+  // ★ ADITIVO 2026-10-12 — False door (sobrepuesta): cubre toda la caja desde frente
+  if (hasDoors && cfg.doorType === 'false' && subType !== 'oven_cavity') {
+    const falseDoorH = H - (isBase ? (BH3 || 0) : 0) - (isBase && hasCountertop ? 0 : T)
+    const falseDoorY = BH3 + falseDoorH / 2
+    const falseDoorW = W - T  // Cubre ancho completo, sobrepuesta en laterales
+    pieces.push(makePiece(
+      nextId('PORTA-FALSA'), 'Puerta Falsa Sobrepuesta', 'false_door',
+      falseDoorW, falseDoorH, T, 1,
+      W/2, falseDoorY, D + T/2,  // Z = D + T/2 (SOBRE los laterales)
+      'vertical', { all: true }, 'Puerta sobrepuesta — cubre caja', 'false_door'
+    ))
   }
 
   return { pieces, config: cfg, internalDimensions: { width: internalWidth, height: structuralHeight, depth: internalDepth } }

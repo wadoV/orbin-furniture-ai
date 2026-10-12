@@ -90,6 +90,9 @@ const TYPE_COLORS = {
   drawer_bottom: 0xF0E0C0,
   feet:          0x222222,
   countertop:    0xeeeeee,
+  // ★ ADITIVO 2026-10-12: nuevos tipos de piezas
+  false_door:    0x7A9BB5,  // Same as standard_door (blue)
+  tie_strip:     0x9B8B7D,  // Light brown for horizontal support beams
 }
 
 const SELECTION_COLOR = 0xFFD700
