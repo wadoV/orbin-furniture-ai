@@ -493,8 +493,15 @@ function parseNaturalLanguage(input) {
   // ★ ADITIVO 2026-10-12 — Puerta falsa sobrepuesta
   if (detectFeature(text, ['puerta falsa', 'porta falsa', 'sobrepuesta', 'sobrepuesto', 'false door', 'overlay door', 'fake door'])) {
     result.doorType = 'false'
+    result.hasDoors = true    // ★ 2026-10-12 FIX: puerta falsa ES una puerta
+    result.numDoors = result.numDoors || 1
     notes.push('Puerta falsa sobrepuesta')
     confidence += 5
+    // ★ ovenPanel: si es módulo horno con puerta falsa
+    if (result.subType === 'oven_cavity') {
+      result.ovenPanel = true
+      notes.push('Oven panel')
+    }
   }
 
   // ★ ADITIVO 2026-10-12 — Puertas basculantes (aéreos)
@@ -502,6 +509,56 @@ function parseNaturalLanguage(input) {
     result.doorType = 'swing'
     notes.push('Puerta basculante')
     confidence += 5
+  }
+
+  // ★ ADITIVO 2026-10-12 — Baseboard/rodapié detection
+  if (detectFeature(text, ['sin rodapie', 'sin rodapié', 'no lleva rodapie', 'no lleva rodapié', 'sem rodapé', 'sem rodape', 'no baseboard', 'without baseboard'])) {
+    result.baseboard = false
+    notes.push('Sin rodapié')
+    confidence += 3
+  }
+
+  // ★ ADITIVO 2026-10-12 — baseboardHeight extraction
+  // NOTE: normalizeMeasurements() already converts cm→mm in text, so match both units
+  const baseboardHMatch = text.match(/rodapi[eé]?\s+(?:(?:debe\s+)?ser\s+(?:de\s+)?|de\s+)?(\d+(?:[.,]\d+)?)\s*(?:mm|cm)/i) || text.match(/baseboard\s+(\d+(?:[.,]\d+)?)\s*(?:mm|cm)/i)
+  if (baseboardHMatch) {
+    const rawVal = parseFloat(baseboardHMatch[1].replace(',', '.'))
+    const isMM = /mm/i.test(baseboardHMatch[0])
+    result.baseboardHeight = isMM ? Math.round(rawVal) : Math.round(rawVal * 10)
+    notes.push(`Rodapié ${result.baseboardHeight}mm`)
+    confidence += 3
+  }
+
+  // ★ ADITIVO 2026-10-12 — topTieRails + tieRailHeight (travesaños inter-gaveta)
+  // NOTE: normalizeMeasurements() already converts cm→mm in text, so match both units
+  const tieRailMatch = text.match(/tran?v(?:esa[ñn]os?|esanos?)\s+(?:de\s+)?(\d+(?:[.,]\d+)?)\s*(?:mm|cm)/i)
+  if (tieRailMatch || detectFeature(text, ['travesaño entre gaveta', 'travesanos entre gaveta', 'tranvesaño entre', 'tranvesanos entre', 'tie rail', 'inter-drawer rail', 'travesaños entre', 'tranvesaños entre'])) {
+    result.topTieRails = true
+    if (tieRailMatch) {
+      const rawVal = parseFloat(tieRailMatch[1].replace(',', '.'))
+      const isMM = /mm/i.test(tieRailMatch[0])
+      result.tieRailHeight = isMM ? Math.round(rawVal) : Math.round(rawVal * 10)
+    }
+    notes.push(`Travesaños inter-gaveta${result.tieRailHeight ? ' ' + result.tieRailHeight + 'mm' : ''}`)
+    confidence += 3
+  }
+
+  // ★ ADITIVO 2026-10-12 — tamponadoInferior (cierre inferior aéreo)
+  if (detectFeature(text, ['tamponado abajo', 'tamponado inferior', 'tampon abajo', 'tampon inferior', 'cierre inferior', 'bottom tampon', 'tamponado embaixo'])) {
+    result.tamponadoInferior = true
+    notes.push('Tamponado inferior')
+    confidence += 3
+  }
+
+  // ★ ADITIVO 2026-10-12 — cavaOverhang from prompt (e.g., "1.5cm de largura mayor")
+  // NOTE: normalizeMeasurements() converts cm→mm, so match both
+  const cavaOhMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:mm|cm)\s+(?:de\s+)?(?:largura|extensi[oó]n|sobresalir|mayor|extend)/i)
+  if (cavaOhMatch && (result.puxadorCava45 || result.puxadorCavaAereo)) {
+    const rawVal = parseFloat(cavaOhMatch[1].replace(',', '.'))
+    const isMM = /mm/i.test(cavaOhMatch[0])
+    result.cavaOverhang = isMM ? Math.round(rawVal) : Math.round(rawVal * 10)
+    notes.push(`Cava overhang ${result.cavaOverhang}mm`)
+    confidence += 2
   }
 
   const interpreted = notes.length > 0

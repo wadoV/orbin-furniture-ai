@@ -93,6 +93,8 @@ const TYPE_COLORS = {
   // ★ ADITIVO 2026-10-12: nuevos tipos de piezas
   false_door:    0x7A9BB5,  // Same as standard_door (blue)
   tie_strip:     0x9B8B7D,  // Light brown for horizontal support beams
+  repisa:        0xD4B483,  // ★ 2026-10-12: same as shelf (warm wood tone)
+  tampon_bottom: 0xC8A96E,  // ★ 2026-10-12: same as structural
 }
 
 const SELECTION_COLOR = 0xFFD700

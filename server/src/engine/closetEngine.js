@@ -442,7 +442,8 @@ function generateFurniture(params) {
   }
 
   // ★ ADITIVO 2026-10-12 — False door (sobrepuesta): cubre toda la caja desde frente
-  if (hasDoors && cfg.doorType === 'false' && subType !== 'oven_cavity') {
+  // ★ FIX 2026-10-12: oven_cavity SÍ puede tener puerta falsa (es su caso principal)
+  if (hasDoors && cfg.doorType === 'false') {
     const falseDoorH = H - (isBase ? (BH3 || 0) : 0) - (isBase && hasCountertop ? 0 : T)
     const falseDoorY = BH3 + falseDoorH / 2
     const falseDoorW = W - T  // Cubre ancho completo, sobrepuesta en laterales
@@ -452,6 +453,38 @@ function generateFurniture(params) {
       W/2, falseDoorY, D + T/2,  // Z = D + T/2 (SOBRE los laterales)
       'vertical', { all: true }, 'Puerta sobrepuesta — cubre caja', 'false_door'
     ))
+  }
+
+  // ★ ADITIVO 2026-10-12 — Tamponado inferior (cierre inferior para aéreos)
+  if (cfg.tamponadoInferior && isAereo) {
+    const tamponW = internalWidth
+    const tamponD = D
+    pieces.push(makePiece(
+      nextId('TAMPON-INF'), 'Tamponado Inferior', 'tampon_bottom',
+      tamponW, tamponD, T, 1,
+      W/2, T/2, D/2,
+      'horizontal', { front: true }, 'Cierre inferior aéreo', 'tampon_bottom'
+    ))
+  }
+
+  // ★ ADITIVO 2026-10-12 — Travesaños inter-gaveta (topTieRails)
+  if (cfg.topTieRails && cfg.numDrawers > 1) {
+    const tieH = cfg.tieRailHeight || 50
+    const tieW = internalWidth
+    const numTies = cfg.numDrawers - 1
+    // Calculate positions between drawers (simplified: evenly spaced)
+    const drawerZoneStart = BH3 + T
+    const drawerZoneH = structuralHeight - (cfg.numShelves > 0 ? T : 0) - T
+    const slotH = drawerZoneH / cfg.numDrawers
+    for (let i = 0; i < numTies; i++) {
+      const tieY = drawerZoneStart + slotH * (i + 1)
+      pieces.push(makePiece(
+        nextId('TRAV-GAV'), 'Travesaño Inter-Gaveta', 'tie_strip',
+        tieW, tieH, T, 1,
+        W/2, tieY, D/2,
+        'horizontal', { front: true }, 'Travesaño entre gavetas', 'TRAV_INTER_GAVETA'
+      ))
+    }
   }
 
   return { pieces, config: cfg, internalDimensions: { width: internalWidth, height: structuralHeight, depth: internalDepth } }

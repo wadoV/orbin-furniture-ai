@@ -36,6 +36,11 @@ const ENGINE_PARAM_KEYS = [
   'cavaOverhang',      // mm de extensión inferior del frente para tirador cava (30mm típico)
   'puxadorCavaAereo',  // boolean: aéreo con puxador cava inferior
   'crossbeamHeight',   // altura del travesaño de amarre (módulo bacha) en mm
+  // ★ ADITIVO 2026-10-12: params para auditoría CEO
+  'topTieRails',       // boolean: travesaños entre gavetas
+  'tieRailHeight',     // mm de altura de cada travesaño inter-gaveta (default 50)
+  'tamponadoInferior', // boolean: cierre inferior aéreo (tapa abajo)
+  'ovenPanel',         // boolean: puerta falsa (panel sobrepuesto) en módulo horno
 ]
 
 // ─── 2. Alias → llave canónica del motor ─────────────────────────────────────
@@ -125,9 +130,10 @@ const RANGES = {
   cavaOverhang: [0, 50],            // mm de extensión inferior del frente para cava
   crossbeamHeight: [50, 150],       // travesaño de amarre módulo bacha
   positionIndex: [0, 20],           // índice de posición en composición
+  tieRailHeight: [20, 150],         // ★ 2026-10-12: altura travesaño inter-gaveta
 }
 
-const BOOL_KEYS = ['hasDoors', 'hasCountertop', 'hasHangingRod', 'hasLed', 'baseboard', 'drawerPrivacyPanel', 'hasPedestal', 'puxadorCava45', 'puxadorCavaAereo']
+const BOOL_KEYS = ['hasDoors', 'hasCountertop', 'hasHangingRod', 'hasLed', 'baseboard', 'drawerPrivacyPanel', 'hasPedestal', 'puxadorCava45', 'puxadorCavaAereo', 'topTieRails', 'tamponadoInferior', 'ovenPanel']
 const NUM_KEYS = Object.keys(RANGES)
 
 // Sólo estas llaves son MEDIDAS: admiten unidad y la inferencia "2.4" → 2400mm.
@@ -137,7 +143,7 @@ const NUM_KEYS = Object.keys(RANGES)
 //   "colgalo a metro y medio" producía un aéreo a 1.5 mm del piso.
 const DIMENSION_KEYS = ['width', 'height', 'depth', 'thickness', 'backThickness',
                         'drawerHeight', 'baseboardHeight', 'nicheHeight', 'drawerRailHeight',
-                        'mountHeight', 'cavaOverhang', 'crossbeamHeight']
+                        'mountHeight', 'cavaOverhang', 'crossbeamHeight', 'tieRailHeight']
 
 function toNumberMM(v, isDimension = false) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -295,7 +301,8 @@ function coerceEngineParams(raw, opts = {}) {
       assumed: out.numDoors,
     })
   }
-  if (out.hasDoors === false) { out.numDoors = 0; out.doorType = 'none' }
+  // ★ ADITIVO 2026-10-12: doorType='false' (puerta falsa) prevalece sobre hasDoors=false
+  if (out.hasDoors === false && out.doorType !== 'false') { out.numDoors = 0; out.doorType = 'none' }
   if (out.numDrawers > 0 && !out.drawerLayout) out.drawerLayout = 'vertical'
 
   return { params: out, specAdjustments, dropped }
