@@ -4,7 +4,7 @@
 > completas con módulos base + aéreo a través del chat IA de Orbin.
 >
 > Cada prompt fue validado E2E contra el pipeline `NLP → paramContract → closetEngine`
-> (99/99 checks PASS, 52/52 tests unitarios PASS).
+> (86/86 checks PASS, 52/52 tests unitarios PASS — 2026-10-13).
 >
 > **Regla de posicionamiento**: Los módulos aéreos se instalan a 1400mm del piso
 > (mountHeight default). Los módulos base van al suelo. El visor 3D los posiciona
@@ -36,7 +36,7 @@ crea un modulo para horno de 640x850x580mm con una puerta falsa y una repisa int
 ```
 crea un modulo base cajonera de 500x850x580mm con 4 gavetas con cava 45 grados
 ```
-**Genera**: 27 piezas — 4 frentes cava, 4 cajas de gaveta (lateral+estructural+fondo cada una), separadores.
+**Genera**: 24 piezas — 4 frentes cava, 4 cajas de gaveta (lateral+estructural+fondo cada una), sin separadores (cajonera pura).
 
 ### B5 — Base estrecho (especiero/botellero)
 ```
@@ -64,7 +64,7 @@ crea un mueble aereo de 800x700x350mm con 2 puertas cavas45 grados y tamponado a
 ```
 nicho abierto aereo de 600x400x350mm sin puertas
 ```
-**Genera**: 7 piezas — caja abierta sin puertas, ideal para microondas.
+**Genera**: 5 piezas — caja abierta sin puertas (2 laterales, piso, techo, fondo W×H completo), ideal para microondas.
 
 ### A4 — Aéreo estrecho 1 puerta
 ```
