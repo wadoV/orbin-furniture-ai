@@ -274,12 +274,16 @@ function generateFurniture(params) {
   const backH = H - BH3 - T - topDeduction
   // ── Fondo: ancho según método (manifiesto = SSOT). Default = vano interno (sin cambios).
   //   'grooved' (ranurado) = internalSpan + 2·grooveDepth ; 'nailed' (clavado) = W − 2mm.
-  const backWidth = (cfg.backStyle === 'grooved')
-    ? FurnitureMath.backPanels.groovedWidth(internalWidth, cfg.grooveDepth || 8)
-    : (cfg.backStyle === 'nailed')
-      ? FurnitureMath.backPanels.nailedWidth(W)
-      : internalWidth
-  pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', backWidth, backH, BT, 1, W/2, BH3 + T + backH/2, D - BT/2, 'none'))
+  // ★ FIX 2026-10-13: open_niche → fondo covers full rear (W × H), nailed from behind.
+  const isOpenNiche = subType === 'open_niche'
+  const backWidth = isOpenNiche ? W
+    : (cfg.backStyle === 'grooved')
+      ? FurnitureMath.backPanels.groovedWidth(internalWidth, cfg.grooveDepth || 8)
+      : (cfg.backStyle === 'nailed')
+        ? FurnitureMath.backPanels.nailedWidth(W)
+        : internalWidth
+  const nicheBackH = isOpenNiche ? H : backH
+  pieces.push(makePiece(nextId('FUNDO'), 'Fondo', 'fondo', backWidth, nicheBackH, BT, 1, W/2, BH3 + T + (isOpenNiche ? H/2 : backH/2), D - BT/2, 'none'))
 
   if (baseType === 'recessed' && BH3 > 0) {
     pieces.push(makePiece(nextId('RDPE-F'), 'Zócalo Frontal', 'baseboard', internalWidth, BH3, T, 1, W/2, BH3/2, D - T/2 - 50, 'vertical', { front: true }))
@@ -323,7 +327,11 @@ function generateFurniture(params) {
       const boxOuterW = FurnitureMath.drawerBox.netWidth(drawerW)
       const boxInnerW = FurnitureMath.drawerBox.headerWidth(boxOuterW, T)
       const boxD = D - 50
-      const boxH = safeDrawerHeight - 40
+      // ★ FIX 2026-10-13: Box height must be SIGNIFICANTLY shorter than front.
+      // Real carpentry: front overlaps box ~30mm top + ~30mm bottom minimum.
+      // Formula: 60% of front height, capped at 150mm, minimum 40mm.
+      const frontH = safeDrawerHeight - 2 * HARDWARE.DRAWER_FRONT_GAP
+      const boxH = Math.max(40, Math.min(150, Math.round(frontH * 0.6)))
       const boxZ = D/2 + BT/2
 
       // BUG FIX #2: skip drawer box if it's physically impossible (too narrow)
@@ -350,8 +358,11 @@ function generateFurniture(params) {
 
   let shelfYStart = drawerYStart + (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight + T/2
 
-  // ★ PROTECTED: Separator shelf on top of drawer zone (closes gap visually)
-  if (numDrawers > 0) {
+  // ★ FIX 2026-10-13: Separator shelf ONLY when there are shelves or doors above drawers.
+  //   A pure drawer module (cómoda) has NO separator — drawers fill the full height.
+  //   Previously always generated when numDrawers > 0, which made no sense for drawer-only modules.
+  const drawerOnly = (numShelves || 0) === 0 && !hasDoors
+  if (numDrawers > 0 && !drawerOnly && numShelves > 0) {
     const sepY = shelfYStart
     if (sepY < H - 100) {
       const technicalDepth = hasDoors ? (internalDepth - 20) : internalDepth
