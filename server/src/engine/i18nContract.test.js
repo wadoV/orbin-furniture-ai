@@ -72,6 +72,14 @@ const OUT_OF_SCOPE = {
   BASEBOARD_OVERFLOW:  'stressTest: diagnóstico interno de QA, no user-facing',
   DIVIDERS_OVERFLOW:   'stressTest: diagnóstico interno de QA, no user-facing',
   EXTREME_SPAN:        'stressTest: diagnóstico interno de QA, no user-facing',
+  
+  // furnitureMathSpecs.js — funciones puras del drawerSystem: errores en cálculos internos
+  DRAWER_NO_HEIGHT:     'drawerSystem: función pura de validación matemática, error interno sin i18n',
+  DRAWER_REST_TOO_SHORT:'drawerSystem: función pura de validación matemática, error interno sin i18n',
+  DRAWER_HEIGHTS_EXCEED:'drawerSystem: función pura de validación matemática, error interno sin i18n',
+  DRAWER_TOO_WIDE:      'drawerSystem: función pura de validación matemática, error interno sin i18n',
+  
+
 }
 
 function codesIn(relPaths) {

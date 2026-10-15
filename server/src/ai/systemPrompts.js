@@ -23,6 +23,11 @@ REGLAS DE MANUFACTURA INDUSTRIAL (INQUEBRANTABLES):
 4. Puertas y Ancho: Si el ancho > 600mm y hay puertas, fuerza un mínimo de 'numDoors: 2'.
 5. Cajones y Columnas: Si hay cajones, define un drawerLayout adecuado ('vertical' por defecto para cajones apilados, 'left' o 'right' si el usuario pide cajonera a un lado).
    - drawerFrontStyle: 'flat' (estándar), 'cava_cnc' (rebajo router central), 'cava45' (bisel 45°), o 'internal' (embutida). Mapea descripciones: "gaveta interna/oculta" → 'internal', "rebajo para router/cava fresada" → 'cava_cnc', "cava a 45°" → 'cava45'.
+   - DISTRIBUCIÓN DE GAVETAS (Sistema Maestro Padrão Brasil):
+     * drawerDistributionMode: 'equal' (todas iguales), 'custom' (alturas fijas + residual), 'kitchen_standard' (cocina: arriba), 'closet_bottom' (clóset: abajo).
+     * drawerFrontHeights: Array mixto de números y 'rest'. Ej: "dos gavetas de 15 cm y el resto abajo" → [150, 150, 'rest'].
+     * drawerStackAlignment: 'auto' (por tipología), 'top' (pegadas arriba/cocina), 'bottom' (abajo/clóset).
+     * drawerBottomStyle: 'grooved_6mm' (fondo ranurado 6mm), 'screwed_15mm' (fondo atornillado 15mm para carga pesada).
 6. Cubierta de Cajones: Si hay cajones (numDrawers > 0), topShelf DEBE ser true. En tu campo "interpreted", explica SIEMPRE: "He incluido una repisa superior de cierre sobre tus cajones para proteger la estructura y los mecanismos."
 
 REGLAS CONSTRUCTIVAS DE COCINA VALIDADA EN TALLER:
@@ -56,6 +61,10 @@ ESQUEMA JSON OBLIGATORIO:
     "doorType": "hinged" | "sliding" | "none",
     "drawerLayout": "vertical" | "left" | "right" | "horizontal",
     "drawerFrontStyle": "flat" | "cava_cnc" | "cava45" | "internal",
+    "drawerDistributionMode": "equal" | "custom" | "kitchen_standard" | "closet_bottom",
+    "drawerFrontHeights": [number | "rest"],
+    "drawerStackAlignment": "auto" | "top" | "bottom",
+    "drawerBottomStyle": "grooved_6mm" | "screwed_15mm",
     "cavaCncWidth": number (80-250, default 140),
     "cavaCncDepth": number (20-50, default 35),
     "handleType": "standard" | "gola" | "push",

@@ -167,6 +167,7 @@ module.exports = {
       SLIDING_RAIL_SETBACK: 80,      // mm: retranqueo interno de divisiones
       TIE_RAIL_HEIGHT: 50,           // mm: amarre superior de módulos bajos
       OVEN_NICHE_HEIGHT: 600,        // mm: luz libre sobre la repisa para el horno
+      OVEN_MIN_BELOW_SHELF: 60,      // mm: franja mínima fabricable bajo la repisa para la puerta falsa (antes 100)
       FALSE_DOOR_GAP: 4,             // mm: holgura vertical de la puerta falsa
     }
     const fin = (v, d) => (typeof v === 'number' && Number.isFinite(v)) ? v : d
@@ -254,14 +255,18 @@ module.exports = {
        * @returns {{ ok, shelf?, falseDoor?, adjustments }} ok=false si no hay espacio
        */
       ovenLayout(args) {
-        const { ceilingY, floorY, baseY, thickness, width, ovenNiche } = args || {}
+        const { ceilingY, floorY, baseY, thickness, width, ovenNiche, panelVistaThickness } = args || {}
         const T = pos(thickness, 18)
+        const PV = Math.max(0, fin(panelVistaThickness, 0))
+        // Luz comercial del horno con puerta falsa: 3mm por lado (el usuario pidió luces generosas
+        //   para que el aire del nicho fluya). Retranqueada entre laterales: W − 2T − 2·3.
+        const FD_SIDE = 3
         const niche = pos(ovenNiche, CONST.OVEN_NICHE_HEIGHT)
         const ceil = fin(ceilingY, 0), floor = fin(floorY, 0), base = fin(baseY, floor)
         const shelfTopY = ceil - niche
         const adjustments = []
-        // Mínimo 100 mm bajo la repisa para que la puerta falsa tenga sentido.
-        if (shelfTopY - T - floor < 100) {
+        // Mínimo OVEN_MIN_BELOW_SHELF (60 mm) bajo la repisa para que la puerta falsa tenga sentido.
+        if (shelfTopY - T - floor < CONST.OVEN_MIN_BELOW_SHELF) {
           adjustments.push({ code: 'OVEN_NO_ROOM', severity: 'warning', field: 'ovenPanel', niche,
             message: `No hay altura para un nicho de horno de ${niche}mm más repisa y puerta falsa. Aumentá la altura del módulo o reducí el rodapié. Se omitió la puerta falsa.` })
           return { ok: false, adjustments }
@@ -274,11 +279,109 @@ module.exports = {
         return {
           ok: true,
           shelf: { centerY: shelfTopY - T / 2, thickness: T, topY: shelfTopY },
-          falseDoor: { width: Math.max(0, fin(width, 0) - 6), height: Math.max(0, doorTop - doorBottom),
+          falseDoor: { width: Math.max(0, fin(width, 0) - 2 * T - 2 * FD_SIDE - PV), height: Math.max(0, doorTop - doorBottom),
                        centerY: (doorTop + doorBottom) / 2 },
           adjustments,
         }
       },
     }
-  })()
+  })(),
+
+  // ── UNIONES MECÁNICAS Y ARTESANALES (V4.7 ADITIVO — JointSCAD / compas_wood / Tsugite / O-LAP) ──
+  joinery: {
+    // Caja y Espiga (Mortise and Tenon - JointSCAD)
+    mortiseAndTenon: {
+      tenonThickness: (boardThickness, tenonProportion = 0.33) => Number((boardThickness * tenonProportion).toFixed(2)),
+      mortiseDepth: (boardThickness, depthProportion = 0.75) => Number((boardThickness * depthProportion).toFixed(2)),
+      pinRadius: 3.5, // mm (pasadores / tarugos estándar)
+    },
+
+    // Cola de Milano (Dovetail - JointSCAD)
+    dovetail: {
+      pinWidth: (width, count) => {
+        const c = Math.max(1, Math.floor(count || 1))
+        return Number((width / (2 * c)).toFixed(2))
+      },
+      pocketDepth: (boardThickness) => boardThickness,
+      jointTolerance: 0.20, // mm
+    },
+
+    // Peines / Ensamble entallado (Finger Joint - O-LAP / woodworking)
+    fingerJoint: {
+      fingerWidth: (width, count) => {
+        const c = Math.max(1, Math.floor(count || 1))
+        return Number((width / c).toFixed(2))
+      },
+      fingerDepth: (boardThickness) => boardThickness,
+      jointTolerance: 0.15, // mm
+    },
+  },
+
+  // ── TOLERANCIAS CNC Y FABRICACIÓN DIGITAL (Tsugite / compas_wood) ──────────
+  cncTolerances: {
+    millingBitDiameter: 3.175,    // mm (1/8 pulgada fresa estándar CNC)
+    cornerReliefRadius: 1.6,      // mm (alivio dogbone / bone-corner)
+    interlockingTolerance: 0.25,  // mm (holgura de ensamble a presión/deslizamiento)
+    assemblyVector: [1],          // vector unidereccional de ensamble
+  },
+
+  // ── TOLERANCIAS DE HARDWARE ORBIN (SSOT) ───────────────────────────────────
+  hardwareTolerances: {
+    telescopicSlideClearance: 13, // mm por lado (26mm total)
+    slidingDoorTrackDepth: 80,    // mm (profundidad de riel de corredera)
+    slidingDoorOverlap: 100,      // mm (traslape estándar entre hojas)
+    cava45LightClearance: 30,     // mm (luz superior de agarre cava 45°)
+  },
+
+  // ── SISTEMA MAESTRO DE GAVETAS (PADRÃO BRASIL 2026-10-13) ──────────────────
+  drawerSystem: {
+    HARDWARE_CLEARANCE_TOTAL: 26,
+    BOX_DEPTH_STEPS: [250, 300, 350, 400, 450, 500, 550],
+    MIN_FRONT_HEIGHT: 80,
+    BOX_HEIGHT_DEDUCTION: 40,
+    FRONT_GAP_PER_SIDE: 1.5,
+
+    boxNetWidth: (vanoWidth) => Math.max(0, (vanoWidth || 0) - 26),
+
+    boxDepth: (bodyDepth, minClearance = 50) => {
+      const available = (bodyDepth || 0) - minClearance
+      const steps = [250, 300, 350, 400, 450, 500, 550]
+      let best = 0
+      for (const step of steps) { if (step <= available) best = step }
+      return best
+    },
+
+    distributeDrawerFronts: ({ availableHeight, numDrawers, mode = 'equal', frontHeights = null, cavaOffset = 0, gapPerDrawer = 3 }) => {
+      const adjustments = [], n = Math.max(1, numDrawers || 1), H = availableHeight || 0
+      const Hdisponible = H - (n - 1) * gapPerDrawer - cavaOffset
+      if (Hdisponible <= 0) return { ok: false, heights: [], boxHeights: [], adjustments: [{ code: 'DRAWER_NO_HEIGHT', severity: 'error', message: `No hay altura disponible (${Hdisponible}mm).` }] }
+      if (mode === 'equal' || !frontHeights || !Array.isArray(frontHeights)) {
+        const h = Math.max(80, Math.floor(Hdisponible / n))
+        return { ok: true, heights: Array(n).fill(h), boxHeights: Array(n).fill(Math.max(40, h - 40)), restIndex: -1, adjustments }
+      }
+      const heights = []; let restIndex = -1, sumFixed = 0
+      for (let i = 0; i < frontHeights.length && i < n; i++) {
+        if (frontHeights[i] === 'rest') { restIndex = i; heights.push(0) }
+        else { heights.push(frontHeights[i] || 0); sumFixed += frontHeights[i] || 0 }
+      }
+      while (heights.length < n) { heights.push(80); sumFixed += 80 }
+      const Hrest = Hdisponible - sumFixed
+      if (restIndex >= 0) {
+        if (Hrest < 80) return { ok: false, heights: [], boxHeights: [], adjustments: [{ code: 'DRAWER_REST_TOO_SHORT', severity: 'error', message: `Residual ${Hrest}mm < 80mm.` }] }
+        heights[restIndex] = Hrest
+      } else if (Hrest < 0) return { ok: false, heights: [], boxHeights: [], adjustments: [{ code: 'DRAWER_HEIGHTS_EXCEED', severity: 'error', message: `Excede ${-Hrest}mm.` }] }
+      return { ok: true, heights, boxHeights: heights.map(fh => Math.max(40, fh - 40)), restIndex, adjustments }
+    },
+
+    internalSetback: (doorType) => doorType === 'sliding' ? 80 : (doorType === 'hinged' ? 20 : 0),
+
+    stackAlignment: (moduleType, explicit = 'auto') => {
+      if (explicit && explicit !== 'auto') return explicit
+      return moduleType === 'base' ? 'top' : 'bottom'
+    },
+
+    validateDrawerConfinement: (drawerWidth, maxVanoWidth = 1000) => drawerWidth > maxVanoWidth
+      ? { ok: false, code: 'DRAWER_TOO_WIDE', message: `Frente ${drawerWidth}mm > máximo ${maxVanoWidth}mm.` }
+      : { ok: true },
+  },
 };

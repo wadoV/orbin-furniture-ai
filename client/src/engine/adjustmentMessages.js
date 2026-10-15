@@ -88,6 +88,16 @@ const ADJUSTMENT_TEMPLATES = {
     'Assumiu-se um nicho de forno de {assumed}mm livres sobre a prateleira estrutural. A porta falsa cobre a zona abaixo da prateleira. Você pode alterar com ovenNicheHeight.',
     'An oven niche of {assumed}mm clear above the structural shelf was assumed. The false door covers the area below the shelf. You can change it with ovenNicheHeight.'
   ],
+  OVEN_NICHE_WIDTH: [
+    'Ancho libre del nicho: {clearWidth}mm (horno estándar 560–600mm: entra con holgura lateral).',
+    'Largura livre do nicho: {clearWidth}mm (forno padrão 560–600mm: entra com folga lateral).',
+    'Clear niche width: {clearWidth}mm (standard oven 560–600mm: fits with side clearance).'
+  ],
+  OVEN_NARROW: [
+    'El ancho libre ({clearWidth}mm) es menor que el nicho comercial de 560mm: el horno no entra. Aumentá el ancho del módulo.',
+    'A largura livre ({clearWidth}mm) é menor que o nicho comercial de 560mm: o forno não entra. Aumente a largura do módulo.',
+    'The clear width ({clearWidth}mm) is below the 560mm commercial niche: the oven will not fit. Increase the module width.'
+  ],
   TIE_RAILS_BETWEEN_FRONTS_UNSUPPORTED: [
     'Pediste {count} travesaños entre frentes de gaveta: esa disposición todavía no está soportada. Se generaron los travesaños de amarre superiores (frontal y trasero).',
     'Você pediu {count} travessas entre frentes de gaveta: essa disposição ainda não é suportada. Foram geradas as travessas de amarração superiores (frontal e traseira).',
@@ -127,6 +137,22 @@ const ADJUSTMENT_TEMPLATES = {
     '"{rawStr}" para {field} puede ser {listStr}; se interpretó {chosen}mm (típico para {moduleType}). Confirmá si no es lo que querías.',
     '"{rawStr}" para {field} pode ser {listStr}; interpretou-se {chosen}mm (típico para {moduleType}). Confirme se não é o que pretendia.',
     '"{rawStr}" for {field} could be {listStr}; interpreted as {chosen}mm (typical for {moduleType}). Confirm if this was intended.'
+  ],
+  
+  SEPARATOR_OMITTED: [
+    'No hay espacio suficiente para el separador estructural encima de las gavetas.',
+    'Não há espaço suficiente para o separador estrutural acima das gavetas.',
+    'There is not enough space for the structural separator above the drawers.'
+  ],
+  SHELVES_OMITTED_DRAWERS_FILL: [
+    'Las gavetas ocupan todo el frente: se omitieron {requested} estante(s) y el separador (no hay vano).',
+    'As gavetas ocupam toda a frente: {requested} prateleira(s) e o separador foram omitidos (não há vão).',
+    'Drawers fill the whole front: {requested} shelf(ves) and the separator were omitted (no bay available).'
+  ],
+  DRAWER_COLUMNS_FROM_DIVIDERS: [
+    'Con {dividers} divisor(es) las gavetas se distribuyen en {cols} columnas (una por vano).',
+    'Com {dividers} divisor(es) as gavetas são distribuídas em {cols} colunas (uma por vão).',
+    'With {dividers} divider(s) the drawers are laid out in {cols} columns (one per bay).'
   ]
 }
 

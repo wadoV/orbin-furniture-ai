@@ -17,7 +17,7 @@ const FurnitureMath = require('../ai/furnitureMathSpecs')
 // ★ Ley física (chapa + herrajes): FUENTE ÚNICA en ./constants.
 //   Generador y validador leen el MISMO MATERIAL y el MISMO HARDWARE para evitar
 //   que el motor genere piezas que su propio validador rechaza (P0 resuelto 2026-07-19).
-const { MATERIAL, HARDWARE, BASEBOARD, PANEL_VISTA, AEREO } = require('./constants')
+const { MATERIAL, HARDWARE, BASEBOARD, PANEL_VISTA, AEREO, STRUCTURAL_LIMITS } = require('./constants')
 
 // ★ RODAPIÉ UNIVERSAL 2026-07-20 — recuo con guard de fondo.
 //   El zócalo frontal se coloca en `z = D − T/2 − inset` y el trasero en `z = T/2 + inset`.
@@ -504,6 +504,25 @@ function generateFurniture(params) {
   //    el proyecto (y de ahí a UI/PDF). Un marcenario que pide 5 gavetas y recibe 4 sin
   //    aviso pierde la confianza en la herramienta de forma irreversible.
   const specAdjustments = []
+
+  // ★ ADITIVO 2026-10-15 — gavetas por VANO: con divisores verticales cada vano es una columna
+  //   de gavetas (spanWidth = (iW − nDiv·T)/(nDiv+1)). Antes la gaveta usaba el ancho interno
+  //   TOTAL e ignoraba los divisores → frentes irreales (p. ej. 2360mm) sin corredera posible.
+  //   Reusa el sistema de drawerColumns (2..4) y sus montantes DIV-GAV. Sin divisores, o con
+  //   columnas ya explícitas, no cambia nada.
+  if (cfg.moduleType !== 'desk' && (cfg.numDrawers || 0) > 1 && (cfg.numDividers || 0) > 0 &&
+      !(cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) && cfg.numDividers + 1 <= 4) {
+    cfg.drawerColumns = cfg.numDividers + 1
+    specAdjustments.push({
+      code: 'DRAWER_COLUMNS_FROM_DIVIDERS',
+      severity: 'info',
+      field: 'drawerColumns',
+      requested: null,
+      applied: cfg.drawerColumns,
+      params: { cols: cfg.drawerColumns, dividers: cfg.numDividers },
+      message: `Con ${cfg.numDividers} divisor(es) las gavetas se distribuyen en ${cfg.drawerColumns} columnas (una por vano).`
+    })
+  }
   const requestedDrawers      = cfg.numDrawers
   const requestedDrawerHeight = cfg.drawerHeight
 
@@ -706,6 +725,10 @@ function generateFurniture(params) {
   const tieH = cfg.tieRailHeight > 0
     ? cfg.tieRailHeight
     : (countertopTies ? 70 : FurnitureMath.carpentry.TIE_RAIL_HEIGHT)
+  // ★ FIX 2026-10-15 — base + tampo + gavetas SIN puertas: las gavetas llegan hasta el tampo
+  //   (luz de 3mm) y queda UN solo travesaño, el trasero, oculto tras los frentes. Antes había
+  //   un travesaño frontal de 70mm que asomaba por el hueco de ~18mm sobre el último frente.
+  const drawerTopFlush = countertopTies && (numDrawers || 0) > 0 && !hasDoors && !cfg.topShelf && cfg.drawerFrontStyle !== 'cava45' && cfg.topTieRails !== true
   const hasTopPanel = !useTieRails
   const topT = (topStyle === 'overlay' && hasTopPanel && !isAereo) ? T : 0
 
@@ -737,7 +760,7 @@ function generateFurniture(params) {
     pieces.push(makePiece(nextId('TAMP-R'), 'Tampão Lateral Der', 'tamponado', tampDepth, tampLatH, tampT, 1, W + tampT/2, tampLatY, CD/2 + tampFlushExtra/2, 'vertical', { front: true }, `Tapatornillos ${tampT}mm — incluido en ancho acabado ${W_FIN}mm`))
 
   if (useTieRails) {
-    pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal', 'tie_strip', internalWidth - PV, tieH, T, 1, W/2, H - tieH/2, T/2 + 20, 'horizontal', { front: true }, 'Refuerzo Estructural'))
+    if (!drawerTopFlush) pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal', 'tie_strip', internalWidth - PV, tieH, T, 1, W/2, H - tieH/2, T/2 + 20, 'horizontal', { front: true }, 'Refuerzo Estructural'))
     pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero', 'tie_strip', internalWidth - PV, tieH, T, 1, W/2, H - tieH/2, D - BT - T/2, 'horizontal', { front: true }, 'Refuerzo Estructural'))
   } else {
     // COHERENCIA OBLIGATORIA: si el lateral se acortó (overlay), la tapa se apoya
@@ -776,13 +799,58 @@ function generateFurniture(params) {
     pieces.push(makePiece(nextId('RODAPIE-TRASERO'), 'Zócalo Trasero', 'baseboard', internalWidth - PV, BH3, T, 1, W/2, BH3/2, T/2 + bbInset, 'vertical', { front: true }, bbNote))
   }
 
+  // ★ ADITIVO 2026-10-13 — SISTEMA MAESTRO DE GAVETAS (Padrão Brasil)
+  // === COMPORTAMIENTO HISTÓRICO PRESERVADO PARA ESTABILIDAD ===
+  // Restaurado código original del motor clósets sin cambios en la funcionalidad de gavetas
+  const drawerAlignment = cfg.moduleType === 'base' ? 'top' : 'bottom'
+  
+  // 2. Calcular altura de vano disponible para gavetas (código histórico)
+  const FLUSH_GAP = 3   // luz entre el último frente y la cara inferior del tampo
+  // ★ FIX 2026-10-15 — zona de relleno medida en FILAS (no en nº de gavetas) y descontando las
+  //   juntas de 3mm entre filas. Antes: n gavetas en 2-3 columnas llegaban sólo a media altura
+  //   (zona/n), y la pila de n filas excedía la zona por (n−1)·3mm → frente pisaba techo/base 7-8mm.
+  const fillCols = (numDrawers > 1)
+    ? ((cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) ? Math.floor(cfg.drawerColumns) : (drawerLayout === 'horizontal' ? 2 : 1))
+    : 1
+  const fillRows = Math.max(1, Math.ceil(numDrawers / fillCols))
+  const drawerZoneHeight = (drawerTopFlush
+    ? H - BH3 - T - FLUSH_GAP                           // pila exacta: [BH3+T, H−3]
+    : H - BH3 - 2*T - (cfg.topShelf ? T : 0)) - (fillRows - 1) * 3
+  
+  // 3. Fórmula histórica para distribución equal
+  const equalHeight = Math.floor(drawerZoneHeight / fillRows)
   const safeDrawerHeight = Math.max(100, drawerHeight)
+  
+  // Variables para compatibilidad con sistema de cierre estructural
+  // ★ FIX 2026-10-15 — clóset (gavetas ABAJO + puertas/estantes ARRIBA): el bloque de gavetas
+  //   mide `drawerHeight` por fila, no zona/numDrawers. Antes los frentes se estiraban por todo
+  //   el mueble (4 × 562mm), pisaban la SEP y las puertas. Pitch = safeDrawerHeight exacto
+  //   (frente + 3mm de junta), coherente con shelfYStart/nicho/divisores y con el visor 3D.
+  //   Cómoda pura (sin puertas ni estantes) y módulos 'base' conservan la fórmula histórica.
+  // ★ FIX 2026-10-15 (base MIXTO) — base con gavetas + puertas (o estantes): los frentes miden
+  //   `drawerHeight` (no zona/n), las gavetas van ARRIBA (bajo el tampo, como en cocina), la SEP
+  //   cierra el bloque 16mm bajo el último frente y las puertas ocupan EXACTAMENTE el vano de abajo.
+  //   Exige PUERTAS: un gavetero sin puertas (aunque el parser le deje estantes por defecto) conserva
+  //   su relleno histórico. Base de sólo puertas, gavetero y puertas de correr / horno: intactos.
+  const baseMixed = cfg.moduleType === 'base' && numDrawers > 0 && hasDoors
+    && !drawerTopFlush && cfg.doorType !== 'sliding' && !cfg.ovenPanel
+  const closetStack = (cfg.moduleType !== 'base' && (hasDoors || (cfg.numShelves || 0) > 0)) || baseMixed
+  const frontHeights = Array(numDrawers).fill(closetStack ? Math.max(80, safeDrawerHeight - 3) : Math.max(80, equalHeight))
+  const boxHeights = frontHeights.map(fh => Math.max(40, fh - 5)) // 5mm deducción histórica
+  
+  // 5. Determinar posición inicial según alineación
   let drawerYStart = BH3 + T
-  // ★ 2026-07-20: `SLIDE_GAP` eliminada — estaba declarada y NUNCA usada. La holgura
-  //   real de corredera (26mm) entra por FurnitureMath.drawerBox.netWidth(), que lee
-  //   HARDWARE.DRAWER_SLIDE_TOTAL. La variable muerta sugería un segundo punto de
-  //   aplicación que no existía.
-
+  if (drawerAlignment === 'top') {
+    // Cocinas: empiezan arriba, dejando espacio para cava bajo encimera
+    const totalFrontHeights = fillRows * frontHeights[0]
+    const totalGaps = (fillRows - 1) * 3 // 3mm por gap
+    
+    if (H - totalFrontHeights - totalGaps - BH3 - T > 0) {
+      drawerYStart = H - totalFrontHeights - totalGaps - ((drawerTopFlush || (baseMixed && countertopTies)) ? FLUSH_GAP : T) // pegadas bajo encimera
+    }
+    // Si no cabe, fallback al comportamiento histórico (BH3 + T)
+  }
+  
   const numDivs = cfg.numDividers || 0
   // ★ ADITIVO 2026-07-19 (work item N columnas): drawerColumns (2..4) generaliza el
   //   layout horizontal. Sin el parámetro, cols = 2 en 'horizontal' → drawerW
@@ -792,6 +860,14 @@ function generateFurniture(params) {
   const cols = (explicitCols !== null && numDrawers > 1) ? explicitCols : (isHorizontal ? 2 : 1)
   const drawersPerCol = Math.ceil(numDrawers / cols)
   const drawerW = cols > 1 ? (internalWidth - (cols - 1) * T) / cols : internalWidth
+
+  // ★ 2026-10-15 — altura (mm) del bloque de gavetas medida desde drawerYStart. En clóset va
+  //   hasta el borde superior del último frente + DRAWER_TOP_CLEARANCE (16mm de holgura de
+  //   corredera) y es donde nace la SEP. Fuera de clóset es la fórmula histórica (filas × altura).
+  const drawerRows = isHorizontal ? drawersPerCol : numDrawers
+  const stackMM = (closetStack && drawerRows > 0)
+    ? (drawerRows - 1) * (frontHeights[0] + 3) + frontHeights[0] - HARDWARE.DRAWER_FRONT_GAP + STRUCTURAL_LIMITS.DRAWER_TOP_CLEARANCE
+    : drawerRows * safeDrawerHeight
 
   // ★ AUDIT FIX 2026-07-19 (aditivo): con columnas de gavetas no existía montante:
   // las corredicas interiores no tenían superficie de fijación (mueble no montable).
@@ -810,11 +886,24 @@ function generateFurniture(params) {
     }
   }
 
+  // ★ ADITIVO 2026-10-12 (R1) — travesaños físicos de 50mm entre gavetas cava45.
+  //   Pieza visible en el frente, cierra el acceso a los herrajes y da apoyo a la cava.
+  //   Opt-in: sólo cuando drawerFrontStyle='cava45'. Default: sin travesaños (comportamiento histórico).
+  const cava45Drawers = cfg.drawerFrontStyle === 'cava45' && numDrawers > 0
+  const CAVA45_RAIL_H = FurnitureMath.carpentry.CAVA_RAIL_MIN_HEIGHT   // 50mm
+  
   for (let i = 0; i < numDrawers; i++) {
     const colIdx = isHorizontal ? (i % cols) : 0
     const rowIdx = isHorizontal ? Math.floor(i / cols) : i
     const xPos = isHorizontal ? (T + (colIdx * (drawerW + T)) + drawerW/2) : W/2
-    const yPos = drawerYStart + (rowIdx * safeDrawerHeight) + safeDrawerHeight/2
+    
+    // 6. Calcular posición Y acumulativa usando alturas individuales
+    const individualHeight = frontHeights[i] || drawerSystem.MIN_FRONT_HEIGHT
+    let yPos = drawerYStart
+    for (let j = 0; j < rowIdx; j++) {
+      yPos += frontHeights[j] + 3 // gap de 3mm entre frentes
+    }
+    yPos += individualHeight/2 // centro de la gaveta actual
 
     if (yPos < H - 50) {
       const drawerId = `DRW-${i + 1}`
@@ -829,14 +918,13 @@ function generateFurniture(params) {
         : `Holgura 2mm/lado`
 
       // ★ ADITIVO 2026-10-12 — cava 45° en gavetas: cada frente cede 30mm de luz de agarre
-      //   en su borde superior (el frente nace al ras inferior de su casillero).
       //   Con drawerFrontStyle distinto de 'cava45' el cálculo es el histórico, byte a byte.
       const frontGap = HARDWARE.DRAWER_FRONT_GAP
       const cavaDrawer = cfg.drawerFrontStyle === 'cava45'
-        ? FurnitureMath.carpentry.cavaOffsets({ nominalH: safeDrawerHeight - 2*frontGap, internalWidth: drawerW })
+        ? FurnitureMath.carpentry.cavaOffsets({ nominalH: individualHeight - 2*frontGap, internalWidth: drawerW })
         : null
-      const frontH = cavaDrawer ? cavaDrawer.leafH : safeDrawerHeight - 2*frontGap
-      const frontY = cavaDrawer ? (yPos - safeDrawerHeight/2 + frontGap + frontH/2) : yPos
+      const frontH = cavaDrawer ? cavaDrawer.leafH : individualHeight - 2*frontGap
+      const frontY = cavaDrawer ? (yPos - individualHeight/2 + frontGap + frontH/2) : yPos
 
       const frontPiece = makePiece(
         nextId('GAV-FF'), `Frente Gaveta ${i + 1}`, 'drawer_front',
@@ -866,24 +954,34 @@ function generateFurniture(params) {
       // VULN-03 FIX: Profundidad comercial basada en espacio útil con 20mm de holgura trasera
       const maxAvailableD = D - drawerDepthClearance(T, BT, cfg.backStyle, cfg.grooveDepth)
       const boxD = pickSlideDepth(maxAvailableD)
-      const boxH = safeDrawerHeight - 40
+      
+      // ★ ADITIVO 2026-10-13 — Altura de caja individual según distribución
+      const individualBoxHeight = boxHeights[i] || Math.max(40, individualHeight - drawerSystem.BOX_HEIGHT_DEDUCTION)
+      
+      // ★ ADITIVO 2026-10-13 — Tipo de fondo según configuración
+      const bottomThickness = (cfg.drawerBottomStyle === 'screwed_15mm') ? 15 : 6
       const boxZ = D/2 + BT/2
 
       // BUG FIX #2: skip drawer box if it's physically impossible (too narrow)
-      if (boxOuterW > 2 * T && boxInnerW > 10 && boxD > 50 && boxH > 20) {
+      if (boxOuterW > 2 * T && boxInnerW > 10 && boxD > 50 && individualBoxHeight > 20) {
         pieces.push({
-          ...makePiece(nextId('GAV-LAT'), `Lateral Cajón ${i+1}`, 'drawer_box', boxD, boxH, T, 2, xPos, yPos, boxZ, 'horizontal', { front: true }),
+          ...makePiece(nextId('GAV-LAT'), `Lateral Cajón ${i+1}`, 'drawer_box', boxD, individualBoxHeight, T, 2, xPos, yPos, boxZ, 'horizontal', { front: true }),
           drawerGroupId: drawerId
         })
 
         pieces.push({
-          ...makePiece(nextId('GAV-EST'), `Frente/Trasera Cajón ${i+1}`, 'drawer_box', boxInnerW, boxH, T, 2, xPos, yPos, boxZ, 'horizontal', { front: true }),
+          ...makePiece(nextId('GAV-EST'), `Frente/Trasera Cajón ${i+1}`, 'drawer_box', boxInnerW, individualBoxHeight, T, 2, xPos, yPos, boxZ, 'horizontal', { front: true }),
           drawerGroupId: drawerId
         })
 
+        const bottomNotes = (cfg.drawerBottomStyle === 'screwed_15mm')
+          ? 'Fondo estructural atornillado 15mm (carga pesada)'
+          : 'Fondo ranurado 6mm (estándar)'
+
         pieces.push({
-          ...makePiece(nextId('GAV-FUNDO'), `Fondo Cajón ${i+1}`, 'drawer_bottom', boxOuterW, boxD, 6, 1, xPos, yPos - boxH/2 + 3, boxZ, 'horizontal', { none: true }),
-          drawerGroupId: drawerId
+          ...makePiece(nextId('GAV-FUNDO'), `Fondo Cajón ${i+1}`, 'drawer_bottom', boxOuterW, boxD, bottomThickness, 1, xPos, yPos - individualBoxHeight/2 + 3, boxZ, 'horizontal', { none: true }),
+          drawerGroupId: drawerId,
+          notes: bottomNotes
         })
       } else {
         console.warn(`[Engine] Cajón ${i+1}: caja imposible (boxOuterW=${boxOuterW}, boxInnerW=${boxInnerW}) — solo frente generado.`)
@@ -891,30 +989,101 @@ function generateFurniture(params) {
     }
   }
 
-  let shelfYStart = drawerYStart + (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight + T/2
+  // ★ ADITIVO 2026-10-12 (R1) — travesaños entre gavetas cava45 (N-1 por columna, altura 50mm).
+  //   Z: a ras del frente de la carcasa (= cara exterior visible). Cierran la vista al interior.
+  if (cava45Drawers) {
+    const nRows = isHorizontal ? drawersPerCol : numDrawers
+    for (let c = 0; c < cols; c++) {
+      for (let r = 1; r < nRows; r++) {
+        const idxFirst = isHorizontal ? ((r - 1) * cols + c) : (r - 1)
+        if (isHorizontal && idxFirst >= numDrawers) continue
+        if (!isHorizontal && idxFirst >= numDrawers - 1) continue
+        const xTrav = isHorizontal ? (T + c * (drawerW + T) + drawerW/2) : W/2
+        const yTopOfLowerFront = drawerYStart + (r - 1) * safeDrawerHeight + safeDrawerHeight - HARDWARE.DRAWER_FRONT_GAP
+        const yCenter = yTopOfLowerFront + CAVA45_RAIL_H / 2
+        pieces.push(makePiece(
+          nextId('TRAV-GAV'), `Travesaño Gavetas ${c + 1}·${r}`, 'tie_strip',
+          drawerW - 2*HARDWARE.DRAWER_FRONT_GAP, CAVA45_RAIL_H, T, 1,
+          xTrav, yCenter, D - T/2, 'horizontal', { front: true },
+          'Travesaño visible entre gavetas cava 45° (apoyo y cierre visual)'
+        ))
+      }
+    }
+  }
+
+  let shelfYStart = baseMixed ? BH3 + T : drawerYStart + stackMM + T/2
+  let baseMixedZoneTop = null   // cara inferior de la SEP (o del bloque de gavetas): techo del vano de puertas
   // ★ ADITIVO 2026-07-19 (nicho): estantes interiores arrancan sobre el nicho abierto
   if (hasDoors && (cfg.nicheHeight || 0) > 0) shelfYStart += (cfg.nicheHeight || 0) + T
 
   // HARD_CONSTRAINT: Structural closure required for all drawer modules
-  // ★ PROTECTED: Separator shelf on top of drawer zone (closes gap visually)
-  if (numDrawers > 0) {
-    const sepY = shelfYStart
-    if (sepY < H - 100) {
+  // ★ ADITIVO 2026-10-13 — Cierre estructural OBLIGATORIO para clósets
+  if (numDrawers > 0 && !drawerTopFlush) {
+    // Calcular posición optimizada del separador
+    let sepY
+    
+    if (baseMixed) {
+      // Base mixto: SEP bajo el bloque (arriba), su cara superior a DRAWER_TOP_CLEARANCE del borde
+      // inferior del último frente (drawerYStart + holgura de frente).
+      sepY = drawerYStart + HARDWARE.DRAWER_FRONT_GAP - STRUCTURAL_LIMITS.DRAWER_TOP_CLEARANCE - T/2
+    } else if (drawerAlignment === 'bottom' || cfg.moduleType === 'standard') {
+      // ★ CERRADO: Clósets — partición inmediatamente sobre la última gaveta
+      //   Clóset: la SEP nace en drawerYStart + stackMM (= último frente + 16mm de holgura).
+      //   Resto: fórmula histórica.
+      const lastDrawerBottomEdge = drawerYStart + numDrawers * (safeDrawerHeight + 3) - 3
+      sepY = closetStack
+        ? drawerYStart + stackMM + T/2
+        : lastDrawerBottomEdge + T/2 + 3 // 3mm de holgura bajo el separador
+    } else {
+      // Caso histórico: cocinas (comportamiento conservador)
+      sepY = shelfYStart
+    }
+    
+    if (sepY < H - 100 && sepY > BH3 + 2*T) {
       const technicalDepth = (hasDoors ? (internalDepth - 20) : internalDepth) - 2*MOLD
+      const separatorType = (!baseMixed && (drawerAlignment === 'bottom' || cfg.moduleType === 'standard'))
+        ? 'SEP'  
+        : (cfg.drawerPrivacyPanel ? 'PRIV_SEP' : 'SEP')
+      
       pieces.push(makePiece(
-        nextId('SEP'), 'Repisa Separadora (encima gavetas)', 'shelf',
+        nextId(separatorType), 
+        'Repisa Separadora (encima gavetas)', 'shelf',
         internalWidth - 2 - PV, technicalDepth, T, 1,
         W/2, sepY, internalDepth/2 + BT, 'horizontal', { front: true },
-        'Separador estructural gavetas/estantes'
+        `Separador estructural gavetas/estantes${separatorType === 'SEP' ? ' • Clóset: aislación obligatoria' : ''}`
       ))
-      shelfYStart = sepY + T + 10  // offset regular shelves above separator
+      shelfYStart = baseMixed ? BH3 + T : (drawerAlignment === 'bottom' ? sepY + T + 10 : shelfYStart + T + 10)
+      if (baseMixed) baseMixedZoneTop = sepY - T/2
+    }
+    
+    // ★ ADITIVO 2026-10-13 — Si el separador no cabe físicamente, generar aviso
+    if (sepY >= H - 100 || sepY <= BH3 + 2*T) {
+      cfg.specAdjustments = [...(cfg.specAdjustments || []), {
+        code: 'SEPARATOR_OMITTED',
+        severity: 'warning',
+        field: 'topShelf',
+        message: 'No hay espacio suficiente para el separador estructural encima de las gavetas.'
+      }]
     }
   }
 
   // BUG FIX #9: dynamic shelf spacing — distribute evenly in available zone.
-  const shelfZoneTop = H - T - 50
+  if (baseMixed && baseMixedZoneTop === null) baseMixedZoneTop = drawerYStart   // SEP omitida: el vano llega al bloque
+  const shelfZoneTop = baseMixed ? baseMixedZoneTop - 20 : H - T - 50
   const shelfZoneH   = Math.max(0, shelfZoneTop - shelfYStart)
-  const shelfSpacing = numShelves > 0 ? Math.floor(shelfZoneH / (numShelves + 1)) : 0
+  // ★ FIX 2026-10-15 — con las gavetas llenando todo el frente (drawerTopFlush) no hay vano para
+  //   estantes ni separador: antes el parser/UI dejaba numShelves=2 y salían PRIV_SEP + 2 Estantes
+  //   (3 tiras de MDF) dentro del cajón. Se omiten y se REGISTRA (transparencia).
+  const shelvesToBuild = drawerTopFlush ? 0 : numShelves
+  if (drawerTopFlush && numShelves > 0) {
+    cfg.numShelves = 0
+    cfg.specAdjustments = [...(cfg.specAdjustments || []), {
+      code: 'SHELVES_OMITTED_DRAWERS_FILL', severity: 'info', field: 'numShelves',
+      requested: numShelves, applied: 0, params: { requested: numShelves },
+      message: `Las gavetas ocupan todo el frente: se omitieron ${numShelves} estante(s) y el separador (no hay vano).`
+    }]
+  }
+  const shelfSpacing = shelvesToBuild > 0 ? Math.floor(shelfZoneH / (shelvesToBuild + 1)) : 0
 
   // ── ADITIVO 2026-07-19: con divisores, los estantes se generan POR COMPARTIMENTO.
   //    Antes: estante de ancho completo atravesaba los divisores (colisión física
@@ -932,7 +1101,7 @@ function generateFurniture(params) {
     shelfCompartments.push({ center: W / 2, span: internalWidth - PV })
   }
 
-  for (let i = 0; i < numShelves; i++) {
+  for (let i = 0; i < shelvesToBuild; i++) {
     const yPos = shelfYStart + (i + 1) * shelfSpacing
     if (yPos > shelfYStart && yPos < shelfZoneTop) {
       const technicalDepth = (hasDoors ? (internalDepth - 20) : internalDepth) - 2*MOLD
@@ -952,11 +1121,15 @@ function generateFurniture(params) {
   // ★ PROTECTED: Central Dividers — stop at drawer zone, not full height
   // VULN-04 FIX: divStartY arranca SOBRE la repisa separadora (+T) para no colisionar 18mm con SEP
   if (numDivs > 0) {
-    const totalDrawerH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0)
+    const totalDrawerH = (numDrawers > 0 ? stackMM : 0)
     let divStartY, divHeight
     // ★ ADITIVO 2026-07-19 (nicho): los divisores arrancan sobre el nicho abierto
     const divNicheOffset = ((cfg.nicheHeight || 0) > 0 && hasDoors) ? (cfg.nicheHeight || 0) + T : 0
-    if (numDrawers > 0) {
+    if (baseMixed) {
+      // Vano de puertas = bajo la SEP: de la base hasta la cara inferior de la SEP
+      divStartY = BH3 + T + divNicheOffset
+      divHeight = baseMixedZoneTop - divStartY
+    } else if (numDrawers > 0) {
       divStartY = BH3 + T + totalDrawerH + T + divNicheOffset
       divHeight = H - divStartY - T
     } else {
@@ -985,7 +1158,7 @@ function generateFurniture(params) {
   // ★ TRANSPARENCIA 2026-07-19: si el nicho no deja sitio para puertas (mín. 150mm),
   //   se recorta y se REGISTRA — el motor nunca altera el pedido en silencio.
   if (hasDoors && nicheH > 0) {
-    const drawersH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0)
+    const drawersH = (numDrawers > 0 ? (baseMixed ? (H - drawerYStart + 3 - T) : stackMM) : 0)
     const availForNiche = H - BH3 - drawersH - (isBase ? T : 0) - T - 151  // 151: el guard de puertas exige doorH > 150 estricto
     if (nicheH > availForNiche) {
       const applied = Math.max(0, Math.floor(availForNiche))
@@ -1000,7 +1173,7 @@ function generateFurniture(params) {
     }
   }
   if (hasDoors && nicheH > 0) {
-    const nicheTopY = BH3 + (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) * safeDrawerHeight : 0) + nicheH
+    const nicheTopY = BH3 + (numDrawers > 0 && !baseMixed ? stackMM : 0) + nicheH
     pieces.push(makePiece(
       nextId('PRAT-NICHO'), 'Repisa Cierre Nicho', 'repisa',
       internalWidth - 2, internalDepth, T, 1,
@@ -1028,13 +1201,26 @@ function generateFurniture(params) {
       }
     } else {
       // Lógica original: puertas sobrepuestas (hinged)
-      const totalDrawerH = (numDrawers > 0 ? (isHorizontal ? drawersPerCol : numDrawers) : 0)
+      // ★ FIX 2026-10-15: en clóset `totalDrawerH` eran MILÍMETROS (bloque + base + SEP); antes era
+      //   el CONTEO de gavetas (4 → 4mm) y las puertas medían casi la altura total, pisando
+      //   gavetas y SEP. Fuera de clóset se conserva el valor histórico (conteo).
+      //   Base MIXTO: bloque arriba → consume (H − drawerYStart + 3 de junta) desde el techo; se resta T
+      //   porque doorHNominal ya descuenta T en módulos base. La hoja nace en el piso (doorLift = 0).
+      const totalDrawerH = (numDrawers > 0)
+        ? (baseMixed ? (H - drawerYStart + 3 - T) : (closetStack ? stackMM + 2*T : drawerRows))
+        : 0
+      const doorLift = baseMixed ? 0 : totalDrawerH
       const nicheOffset = nicheH > 0 ? nicheH + T : 0
       
       // ★ ADITIVO 2026-10-11: puxadorCavaAereo en módulos aéreos
       //   Extensión de puertas 30mm hacia abajo (overhang) + tamponado inferior retranqueado
       const puxadorOverhang = aereoCava ? aereoCava.overhang : 0
-      const doorHNominal = H - BH3 - totalDrawerH - (isBase ? T : 0) - nicheOffset + puxadorOverhang
+      // ★ ADITIVO 2026-10-12 (R3) — plinthReveal: la puerta nace 3mm por encima del rodapié
+      //   (regla de taller del 12-oct). Opt-in: activo si el usuario lo pide o si lleva cava45
+      //   (en cocinas premium el rodapié SIEMPRE queda visible). Default 0 → cero regresión.
+      const plinthReveal = (isBase && BH3 > 0 && (cfg.plinthVisible === true || cfg.puxadorCava45))
+        ? (cfg.plinthReveal > 0 ? cfg.plinthReveal : 3) : 0
+      const doorHNominal = H - BH3 - plinthReveal - totalDrawerH - (isBase ? T : 0) - nicheOffset + puxadorOverhang
       // ★ ADITIVO 2026-10-12 — cava 45° en módulo bajo: altoHoja = altoNominal − 30mm.
       const cavaBase = (isBase && cfg.puxadorCava45)
         ? FurnitureMath.carpentry.cavaOffsets({ nominalH: doorHNominal, internalWidth, railHeight: cfg.alturaTraviesaCava })
@@ -1052,7 +1238,7 @@ function generateFurniture(params) {
         const leafW = (W / n) - HARDWARE.DOOR_GAP_W
         const doorY = aereoLeafH !== null
           ? (BH3 + totalDrawerH + nicheOffset - puxadorOverhang + aereoLeafH/2)
-          : (BH3 + totalDrawerH + nicheOffset + doorH/2)
+          : (BH3 + plinthReveal + doorLift + nicheOffset + doorH/2 - (plinthReveal > 0 ? HARDWARE.DOOR_GAP_H/2 : 0))
         const leafPieceH = aereoLeafH !== null ? aereoLeafH : (doorH - HARDWARE.DOOR_GAP_H)
 
         for (let i = 0; i < n; i++) {
@@ -1095,7 +1281,7 @@ function generateFurniture(params) {
           pieces.push(makePiece(
             nextId('TAMPON-INF-AERO'), 'Tamponado Inferior Aéreo', 'tampon_bottom',
             internalWidth - 2, internalDepth - tamponRetranqueo, cfg.tamponadoThickness || T, 1,
-            W/2, Math.max((cfg.tamponadoThickness || T) / 2, BH3 + totalDrawerH + nicheOffset + (puxadorOverhang - tamponRetranqueo) / 2), 
+            W/2, Math.max((cfg.tamponadoThickness || T) / 2, BH3 + doorLift + nicheOffset + (puxadorOverhang - tamponRetranqueo) / 2), 
             internalDepth/2 + BT - tamponRetranqueo/2,
             'horizontal', { front: true },
             'Cierre visual inferior — retranqueado 25mm en profundidad'
@@ -1108,11 +1294,21 @@ function generateFurniture(params) {
   // ── ADITIVO 2026-10-12: MÓDULO DE HORNO — repisa estructural + puerta falsa sobrepuesta.
   if (ovenMode) {
     const lay = FurnitureMath.carpentry.ovenLayout({
-      ceilingY: useTieRails ? H : H - T, floorY: BH3 + T, baseY: BH3,
-      thickness: T, width: W, ovenNiche: cfg.ovenNicheHeight,
+      // ★ 2026-10-12 FIX: el nicho se mide contra la cara INFERIOR de la estructura superior
+      //   (travesaño de amarre tieH, o techo T), no contra H: con travesaños de 70mm el hueco real
+      //   quedaba en 530 en vez de los 600 comerciales.
+      ceilingY: useTieRails ? H - tieH : H - T, floorY: BH3 + T, baseY: BH3,
+      thickness: T, width: W, panelVistaThickness: PV, ovenNiche: cfg.ovenNicheHeight,
     })
     cfg.specAdjustments = [...(cfg.specAdjustments || []), ...lay.adjustments]
     if (lay.ok) {
+      // Hueco comercial europeo: el horno estándar pide ≥560mm libres de ancho (nicho de 600).
+      const clearW = Math.round(internalWidth - PV)
+      cfg.specAdjustments.push(clearW >= 560
+        ? { code: 'OVEN_NICHE_WIDTH', severity: 'info', field: 'width', clearWidth: clearW,
+            message: `Ancho libre del nicho: ${clearW}mm (horno estándar 560–600mm: entra con holgura lateral).` }
+        : { code: 'OVEN_NARROW', severity: 'warning', field: 'width', clearWidth: clearW,
+            message: `El ancho libre (${clearW}mm) es menor que el nicho comercial de 560mm: el horno no entra. Aumentá el ancho del módulo.` })
       pieces.push(makePiece(
         nextId('REPISA-HORNO'), 'Repisa Estructural Horno', 'repisa',
         internalWidth - 2 - PV, internalDepth, T, 1,

@@ -178,6 +178,51 @@ router.post('/design', checkPlanLimit('chat.design', { when: consumesAI }), asyn
       : {}
     const result = await chatDesign(history, message, options)
 
+    // GUARD DEFENSIVO ADITIVO: Saludo o mensaje conversacional sin diseño (BLINDAJE QUIRÚRGICO)
+    const greetingsRegex = /^(hola|buen(d|s)*\s*(d[ií]a|tardes|noches)|saludos|buenas|hey|hello|hi|¿?c[oó]mo\s*est[aá]s\??|¿?qu[eé]\s*tal\??)$/i;
+    const conversationOnlyRegex = /^(gracias?|thank|no sé|no se|no entiendo|i don'?t|help|ayuda|perdón|sorry|explícame|por favor|please|me podés|puedes|te gusta|dime|tengo una|pregunta|qu[eé] opinas|qu[eé] te parece)$/i;
+    
+    // PROTECCIÓN ROBUSTA: si hay param nulos o es saludo reconocido
+    const isRecognizedGreeting = result.isGreeting === true || result.source === 'greeting' 
+      || /^(hola|HOLA|¡h|hello|hi|buen|saludos|gracias|no entiendo|ayuda)$/i.test(message.trim());
+    
+    const shouldHandleAsGreeting = isRecognizedGreeting || !result.params || 
+      typeof result.params !== 'object' || Object.keys(result.params).length === 0
+    
+    if (shouldHandleAsGreeting) {
+      // ★ 2026-10-15: un modelo puede devolver sólo JSON ({"specAdjustments":[]}) o un bloque ```json
+      //   como "respuesta conversacional". Eso NUNCA debe llegar al usuario como mensaje.
+      const rawReply = result.message || result.reply || ''
+      const looksLikeMachineOutput = (t) => {
+        const x = String(t || '').trim()
+        return x === '' || /^```/.test(x) || (/^[\[{]/.test(x) && /[\]}]$/.test(x))
+      }
+      const reply = looksLikeMachineOutput(rawReply)
+        ? (isRecognizedGreeting
+            ? "¡Hola! Soy Orbin, tu asistente técnico de diseño. ¿Qué mueble deseas proyectar hoy?"
+            : 'Entendido. Para avanzar necesito medidas: ¿qué tipo de módulo (armario, bajo, aéreo) y qué ancho, alto y profundidad? Si ya hay un diseño en pantalla, indicame qué cambiar.')
+        : rawReply
+      
+      // Update history con la respuesta definitiva del saludo
+      const newHistory = [
+        ...history,
+        { role: 'user',      content: message },
+        { role: 'assistant', content: reply },
+      ]
+      const trimmed = newHistory.slice(-20)
+      if (sessionId) sessions.set(sessionId, trimmed)
+
+      return res.status(200).json({
+        success: true,
+        message: reply,
+        reply: reply,
+        params: null,
+        design: null,
+        source: result.source || 'greeting',
+        isGreeting: true
+      })
+    }
+
     // Update history
     const newHistory = [
       ...history,
@@ -207,7 +252,7 @@ router.post('/design', checkPlanLimit('chat.design', { when: consumesAI }), asyn
     // ESPERA la confirmación del usuario (Fase 2). 100% aditivo: si confirmFlow
     // no viene, este bloque se salta y el flujo legacy queda idéntico.
     // ═══════════════════════════════════════════════════════════════════════
-    if (confirmFlow && result.params) {
+    if (confirmFlow && result.params && typeof result.params === 'object') {
       let safeParams, validation = null
       try {
         safeParams = normalizeDesignParams(result.params)
@@ -245,7 +290,7 @@ router.post('/design', checkPlanLimit('chat.design', { when: consumesAI }), asyn
     }
 
     // If params were extracted and autoGenerate is on, run the engine
-    if (result.params && autoGenerate) {
+    if (result.params && typeof result.params === 'object' && autoGenerate) {
       try {
         const safeParams = normalizeDesignParams(result.params)
         response.design  = generateProject(safeParams)
@@ -271,19 +316,18 @@ router.post('/design', checkPlanLimit('chat.design', { when: consumesAI }), asyn
         console.error('[chat/design] Engine error:', engineErr.message)
         response.engineError = engineErr.message
       }
-    } else if (result.params) {
+    } else if (result.params && typeof result.params === 'object') {
       response.params = normalizeDesignParams(result.params)
     } else {
-      // ADITIVO 2026-10-12: sin params (saludo / sin intención de diseño) → nunca se
-      // devuelve ni se genera diseño. Contrato explícito: params:null, design:null.
-      response.params = null
-      response.design = null
+      // ★ Manejado por GUARDA DEFENSIVA TEMPRANA (arriba) - este código ya no debería ejecutarse
+      // response.params = null
+      // response.design = null
     }
 
     // BLOQUE 2 (HITL): flag determinista. Si la IA propuso un módulo (hay params),
     // se marca pending_validation y el cliente NO persiste nada hasta que el usuario
     // confirme. No depende de que el modelo emita el flag por su cuenta.
-    if (result.params) response.status = 'pending_validation'
+    if (result.params && typeof result.params === 'object') response.status = 'pending_validation'
 
     res.json(response)
   } catch (err) {

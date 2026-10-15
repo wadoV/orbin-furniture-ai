@@ -158,6 +158,18 @@ function validateDesign(design) {
     const vCols = (cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) ? Math.floor(cfg.drawerColumns) : null
     const isHorizontal = (cfg.drawerLayout === 'horizontal' && cfg.numDrawers > 1) || (vCols !== null && cfg.numDrawers > 1)
     const cols = (vCols !== null && cfg.numDrawers > 1) ? vCols : (isHorizontal ? 2 : 1)
+    // ★ 2026-10-15: ancho de UNA caja por vano/columna. Con divisores el motor reparte las
+    //   gavetas en (numDividers+1) columnas (ver closetEngine), así que se valida el vano real.
+    const boxCols = (vCols === null && !isHorizontal && cfg.moduleType !== 'desk' && (cfg.numDividers || 0) > 0 && cfg.numDrawers > 1 && cfg.numDividers + 1 <= 4)
+      ? cfg.numDividers + 1 : cols
+    const spanBoxW = Math.round((drawerZoneWidth - (boxCols - 1) * cfg.thickness) / boxCols - HARDWARE.DRAWER_SLIDE_TOTAL)
+    if (spanBoxW > STRUCTURAL_LIMITS.DRAWER_BOX_WIDTH_MAX) {
+      errors.push('Caja de gaveta de ' + spanBoxW + 'mm supera el máximo de ' + STRUCTURAL_LIMITS.DRAWER_BOX_WIDTH_MAX +
+        'mm de una corredera telescópica comercial. Agregue divisores/columnas de gavetas.')
+    } else if (spanBoxW > STRUCTURAL_LIMITS.DRAWER_BOX_WIDTH_WARN) {
+      warnings.push('Caja de gaveta de ' + spanBoxW + 'mm supera ' + STRUCTURAL_LIMITS.DRAWER_BOX_WIDTH_WARN +
+        'mm: riesgo de alabeo del frente. Considere dividir en columnas.')
+    }
     const drawersPerCol = Math.ceil(cfg.numDrawers / cols)
     // BUG FIX: Each drawer needs its nominal height PLUS top clearance for the slide
     // mechanism (DRAWER_TOP_CLEARANCE = 16mm). Without this, 20×100mm drawers in

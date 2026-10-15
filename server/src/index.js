@@ -164,7 +164,8 @@ if (stressTestRouter) {
   console.log('[Dev] Stress-test route active at /api/v1/stress-test')
 }
 
-app.get('/api/health', (_req, res) => {
+// ★ 2026-10-15: alias /health (sondas de Railway/uptime sin prefijo /api)
+app.get(['/api/health', '/health'], (_req, res) => {
   res.json({
     status:    'ok',
     service:   'orbin-api',

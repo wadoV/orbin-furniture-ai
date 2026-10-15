@@ -1,0 +1,106 @@
+--- a/server/src/ai/paramContract.js
++++ b/server/src/ai/paramContract.js
+@@ -59,8 +59,19 @@
+   doorOverlapBottom: 'puxadorCavaAereo',
+   ovenFalseDoor: 'ovenPanel',
+   falseDoor: 'ovenPanel',
++  // ★ ADITIVO 2026-10-12 (módulo de horno) — sinónimos de "puerta falsa" y "zócalo" que emite el LLM
++  hasFalseDoor: 'ovenPanel',
++  blindFront: 'ovenPanel',
++  frenteCiego: 'ovenPanel',
++  puertaFalsa: 'ovenPanel',
++  plinthHeight: 'baseboardHeight',
++  zocaloHeight: 'baseboardHeight',
+ }
+ 
++// ★ ADITIVO 2026-10-12 — tipologías de horno que el LLM emite como moduleType/type/subType.
++//   No existen en el enum del motor: antes caían a 'standard' (clóset) y el horno se perdía.
++const OVEN_TYPES = ['oven', 'oven_cavity', 'oven_module', 'horno', 'forno', 'modulo_horno', 'nicho_horno']
++
+ // ─── Enums cerrados ──────────────────────────────────────────────────────────
+ const ENUMS = {
+   moduleType: ['standard', 'base', 'aereo', 'desk'],
+@@ -176,6 +187,11 @@
+   // 2.b — moduleType primero (define los defaults comerciales del resto)
+   let moduleType = typeof norm.moduleType === 'string' ? norm.moduleType.toLowerCase().trim() : null
+   const typeMap = { kitchen_low: 'base', kitchen_high: 'aereo', kitchen_island: 'base', closet: 'standard' }
++  // ★ ADITIVO 2026-10-12: horno declarado como tipología → base + ovenPanel (no clóset).
++  const _lc = (v) => (typeof v === 'string' ? v.toLowerCase().trim() : '')
++  const ovenDeclared = [norm.moduleType, norm.type, src.subType, src.subtype, src.moduleSubType].some(v => OVEN_TYPES.includes(_lc(v)))
++  if (OVEN_TYPES.includes(moduleType)) moduleType = 'base'
++  if (!moduleType && OVEN_TYPES.includes(_lc(norm.type))) moduleType = 'base'
+   if (!moduleType && typeof norm.type === 'string') moduleType = typeMap[norm.type.toLowerCase()] || null
+   if (!ENUMS.moduleType.includes(moduleType)) moduleType = 'standard'
+   out.moduleType = moduleType
+@@ -192,6 +208,15 @@
+     //   0 legítimo, así que 1.5 pasaría silencioso → aéreo a 1.5 mm del piso.
+     //   Dominio DISJUNTO: ninguna altura de instalación real cae entre 0 y 10 mm, así que
+     //   interpretar ese tramo como metros es seguro y no colisiona con el 0 = "apoyado".
++    // ★ ADITIVO 2026-10-12 — zócalo en CENTÍMETROS crudos ("rodapié de 12cm" → 12). Ningún zócalo
++    //   real mide 3–29 mm, así que ese tramo se lee como cm (12 → 120mm). Dominio disjunto.
++    if (k === 'baseboardHeight' && n !== null && n >= 3 && n < 30) {
++      specAdjustments.push({
++        code: 'NLP_UNIT_INFERRED', severity: 'warning', field: k,
++        message: `"baseboardHeight" recibido como ${n}. Se interpretó como ${Math.round(n * 10)}mm (${n}cm).`,
++      })
++      n = Math.round(n * 10)
++    }
+     if (k === 'mountHeight' && n !== null && n > 0 && n < 10) {
+       const asMM = Math.round(n * 1000)
+       specAdjustments.push({
+@@ -240,6 +265,9 @@
+     if (b !== null) out[k] = b
+   }
+ 
++  // ★ ADITIVO 2026-10-12: tipología de horno sin flag explícito → ovenPanel (un ovenPanel explícito manda).
++  if (ovenDeclared && out.ovenPanel === undefined) out.ovenPanel = true
++
+   // 2.f — enums
+   for (const [k, allowed] of Object.entries(ENUMS)) {
+     if (k === 'moduleType' || norm[k] === undefined) continue
+--- a/server/src/engine/closetEngine.js
++++ b/server/src/engine/closetEngine.js
+@@ -1108,11 +1108,21 @@
+   // ── ADITIVO 2026-10-12: MÓDULO DE HORNO — repisa estructural + puerta falsa sobrepuesta.
+   if (ovenMode) {
+     const lay = FurnitureMath.carpentry.ovenLayout({
+-      ceilingY: useTieRails ? H : H - T, floorY: BH3 + T, baseY: BH3,
++      // ★ 2026-10-12 FIX: el nicho se mide contra la cara INFERIOR de la estructura superior
++      //   (travesaño de amarre tieH, o techo T), no contra H: con travesaños de 70mm el hueco real
++      //   quedaba en 530 en vez de los 600 comerciales.
++      ceilingY: useTieRails ? H - tieH : H - T, floorY: BH3 + T, baseY: BH3,
+       thickness: T, width: W, ovenNiche: cfg.ovenNicheHeight,
+     })
+     cfg.specAdjustments = [...(cfg.specAdjustments || []), ...lay.adjustments]
+     if (lay.ok) {
++      // Hueco comercial europeo: el horno estándar pide ≥560mm libres de ancho (nicho de 600).
++      const clearW = Math.round(internalWidth - PV)
++      cfg.specAdjustments.push(clearW >= 560
++        ? { code: 'OVEN_NICHE_WIDTH', severity: 'info', field: 'width', clearWidth: clearW,
++            message: `Ancho libre del nicho: ${clearW}mm (horno estándar 560–600mm: entra con holgura lateral).` }
++        : { code: 'OVEN_NARROW', severity: 'warning', field: 'width', clearWidth: clearW,
++            message: `El ancho libre (${clearW}mm) es menor que el nicho comercial de 560mm: el horno no entra. Aumentá el ancho del módulo.` })
+       pieces.push(makePiece(
+         nextId('REPISA-HORNO'), 'Repisa Estructural Horno', 'repisa',
+         internalWidth - 2 - PV, internalDepth, T, 1,
+--- a/server/src/ai/furnitureMathSpecs.js
++++ b/server/src/ai/furnitureMathSpecs.js
+@@ -167,6 +167,7 @@
+       SLIDING_RAIL_SETBACK: 80,      // mm: retranqueo interno de divisiones
+       TIE_RAIL_HEIGHT: 50,           // mm: amarre superior de módulos bajos
+       OVEN_NICHE_HEIGHT: 600,        // mm: luz libre sobre la repisa para el horno
++      OVEN_MIN_BELOW_SHELF: 60,      // mm: franja mínima fabricable bajo la repisa para la puerta falsa (antes 100)
+       FALSE_DOOR_GAP: 4,             // mm: holgura vertical de la puerta falsa
+     }
+     const fin = (v, d) => (typeof v === 'number' && Number.isFinite(v)) ? v : d
+@@ -260,8 +261,8 @@
+         const ceil = fin(ceilingY, 0), floor = fin(floorY, 0), base = fin(baseY, floor)
+         const shelfTopY = ceil - niche
+         const adjustments = []
+-        // Mínimo 100 mm bajo la repisa para que la puerta falsa tenga sentido.
+-        if (shelfTopY - T - floor < 100) {
++        // Mínimo OVEN_MIN_BELOW_SHELF (60 mm) bajo la repisa para que la puerta falsa tenga sentido.
++        if (shelfTopY - T - floor < CONST.OVEN_MIN_BELOW_SHELF) {
+           adjustments.push({ code: 'OVEN_NO_ROOM', severity: 'warning', field: 'ovenPanel', niche,
+             message: `No hay altura para un nicho de horno de ${niche}mm más repisa y puerta falsa. Aumentá la altura del módulo o reducí el rodapié. Se omitió la puerta falsa.` })
+           return { ok: false, adjustments }

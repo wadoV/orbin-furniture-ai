@@ -77,6 +77,10 @@ const STRUCTURAL_LIMITS = {
   //   que sí es la fuente única que lee el motor.
   DRAWER_TOP_CLEARANCE: 16,
   DRAWER_BACK_CLEARANCE: 50,
+  // ★ 2026-10-15: ancho máximo de UNA caja de gaveta sobre corredera telescópica comercial.
+  //   >1000 se desaconseja (flecha/alabeo del frente); >1200 no existe herraje que lo soporte.
+  DRAWER_BOX_WIDTH_WARN: 1000,
+  DRAWER_BOX_WIDTH_MAX: 1200,
 }
 
 // ── RODAPIÉ / ZÓCALO (sóculo) — SSOT universal de mueble de piso ─────────────
@@ -141,6 +145,60 @@ const AEREO = {
   PLUG_SPACING_PER_MM: 600,
 }
 
+// ── GAVETAS: SISTEMA MAESTRO (PADRÃO BRASIL 2026-10-13) ────────────────────────
+// Constantes industriales para el sistema blindado de gavetas.
+const DRAWER_SYSTEM = {
+  // Holgura de correderas telescópicas (ya existe en HARDWARE, pero centralizado aquí también)
+  HARDWARE_CLEARANCE_PER_SIDE: 13,  // mm (13mm × 2 = 26mm total)
+  HARDWARE_CLEARANCE_TOTAL: 26,     // mm netos
+
+  // Profundidades comerciales de caja (snap al paso inferior más cercano)
+  BOX_DEPTH_STEPS: [250, 300, 350, 400, 450, 500, 550],
+
+  // Holgura mínima entre caja y fondo del mueble
+  BOX_REAR_CLEARANCE_MIN: 50,       // mm
+
+  // Holgura perimetral en frentes (junta/luz limpia entre frentes)
+  FRONT_GAP_PER_SIDE: 1.5,          // mm (3mm de junta neta entre frentes)
+
+  // Construcción de fondos de gaveta
+  BOTTOM_GROOVE_THICKNESS: 6,       // mm (fondo ranurado default)
+  BOTTOM_GROOVE_INSET: 10,          // mm (ranura a 10-12mm del borde inferior)
+  BOTTOM_GROOVE_DEPTH: 8,           // mm (entrada de ranura en laterales/testeras)
+  BOTTOM_SCREWED_THICKNESS: 15,     // mm (fondo estructural atornillado)
+
+  // Cava 45° en gavetas
+  CAVA_GRIP_CLEARANCE: 30,          // mm (luz libre de agarre)
+  CAVA_BACK_RAIL_MIN_HEIGHT: 50,    // mm (travesaño vertical de respaldo mínimo)
+
+  // Cava CNC (gavetas internas embutidas)
+  CNC_POCKET_WIDTH: 140,            // mm (rebajo central en U)
+  CNC_POCKET_DEPTH: 35,             // mm
+  CNC_POCKET_RADIUS: 20,            // mm (R de las esquinas)
+
+  // Retranqueos para gavetas internas tras puertas
+  SETBACK_HINGED_DOORS: 20,         // mm (puertas batientes)
+  SETBACK_SLIDING_DOORS: 80,        // mm (puertas de correr riel doble)
+
+  // Altura mínima de frente viable
+  MIN_FRONT_HEIGHT: 80,             // mm
+
+  // Altura de caja = frente - 40mm (snap a herraje comercial)
+  BOX_HEIGHT_DEDUCTION: 40,         // mm
+}
+
+// ── ALINEACIÓN DE GAVETAS POR TIPOLOGÍA ────────────────────────────────────────
+const DRAWER_STACK_ALIGNMENT = {
+  // Cocinas/Base: gavetas arriba, pegadas a la encimera
+  base: 'top',
+  // Clósets/Roperos: gavetas abajo
+  standard: 'bottom',
+  // Escritorios: confinadas al pedestal
+  desk: 'pedestal',
+  // Aéreos: no aplica (sin gavetas típicamente)
+  aereo: 'bottom',
+}
+
 const DEFAULTS = {
   type: 'closet',
   width: 2400,
@@ -173,6 +231,12 @@ const DEFAULTS = {
   mountHeight: null,
   drawerPrivacyPanel: true,
   drawerRailHeight: 50,
+  // ★ ADITIVO 2026-10-13 — Sistema maestro de gavetas
+  drawerFrontStyle: 'flat',
+  drawerDistributionMode: 'equal',
+  drawerFrontHeights: null,         // Array mixto de enteros y 'rest', null = equal
+  drawerStackAlignment: 'auto',     // 'auto' | 'top' | 'bottom'
+  drawerBottomStyle: 'grooved_6mm', // 'grooved_6mm' | 'screwed_15mm'
 }
 
-module.exports = { MATERIAL, EDGE_BANDING, HARDWARE, STRUCTURAL_LIMITS, BASEBOARD, PANEL_VISTA, DEFAULTS, AEREO }
+module.exports = { MATERIAL, EDGE_BANDING, HARDWARE, STRUCTURAL_LIMITS, BASEBOARD, PANEL_VISTA, DEFAULTS, AEREO, DRAWER_SYSTEM, DRAWER_STACK_ALIGNMENT }

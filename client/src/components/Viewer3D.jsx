@@ -238,6 +238,8 @@ export default function Viewer3D({
   const appliedPosRef = useRef({})        // id → JSON de la última `position` de datos aplicada
   const onUpdateTransformRef = useRef(onUpdateTransform)
   onUpdateTransformRef.current = onUpdateTransform
+  const onUpdateModuleRef = useRef(onUpdateModule)
+  onUpdateModuleRef.current = onUpdateModule
   // Las capturas CAD del plano NO deben llevar cotas/ejes del visor (el plano tiene las suyas).
   const withOverlaysHidden = (fn) => {
     const d = dimsGroupRef.current, a = axesGroupRef.current
@@ -314,12 +316,14 @@ export default function Viewer3D({
       if (otherId === moduleId || snapped) return
       const otherBox = new THREE.Box3().setFromObject(otherGroup)
 
-      // Check face-to-face proximity on X and Z axes
+      // Check face-to-face proximity on X, Z and Y axes
       const gaps = [
         { mine: myBox.max.x, other: otherBox.min.x, axis: 'x' },
         { mine: myBox.min.x, other: otherBox.max.x, axis: 'x' },
         { mine: myBox.max.z, other: otherBox.min.z, axis: 'z' },
         { mine: myBox.min.z, other: otherBox.max.z, axis: 'z' },
+        // ★ ADITIVO V4.7: Magnetismo Vertical en Eje Y (sobremuebles / aéreos sobre bases)
+        { mine: myBox.min.y, other: otherBox.max.y, axis: 'y' },
       ]
 
       for (const gap of gaps) {
@@ -327,7 +331,12 @@ export default function Viewer3D({
         if (dist < SNAP_THRESHOLD) {
           // ★ Snap to adjacent face
           if (gap.axis === 'x') mGroup.position.x += (gap.other - gap.mine)
-          else mGroup.position.z += (gap.other - gap.mine)
+          else if (gap.axis === 'z') mGroup.position.z += (gap.other - gap.mine)
+          else if (gap.axis === 'y') {
+            mGroup.position.y += (gap.other - gap.mine)
+            // Marcar en userData para persistencia de elevación en drag end
+            mGroup.userData.snappedVerticalMount = Math.max(0, Math.round(mGroup.position.y / SCALE))
+          }
 
           // Also align front faces when X-snapping
           if (gap.axis === 'x') {
@@ -345,10 +354,14 @@ export default function Viewer3D({
             const sx = gap.other
             pts.push(new THREE.Vector3(sx, Math.min(updatedBox.min.y, otherBox.min.y), Math.max(updatedBox.max.z, otherBox.max.z) + 2))
             pts.push(new THREE.Vector3(sx, Math.max(updatedBox.max.y, otherBox.max.y), Math.max(updatedBox.max.z, otherBox.max.z) + 2))
-          } else {
+          } else if (gap.axis === 'z') {
             const sz = gap.other
             pts.push(new THREE.Vector3(Math.min(updatedBox.min.x, otherBox.min.x) - 2, updatedBox.min.y, sz))
             pts.push(new THREE.Vector3(Math.max(updatedBox.max.x, otherBox.max.x) + 2, updatedBox.min.y, sz))
+          } else if (gap.axis === 'y') {
+            const sy = gap.other
+            pts.push(new THREE.Vector3(Math.min(updatedBox.min.x, otherBox.min.x), sy, Math.min(updatedBox.min.z, otherBox.min.z)))
+            pts.push(new THREE.Vector3(Math.max(updatedBox.max.x, otherBox.max.x), sy, Math.max(updatedBox.max.z, otherBox.max.z)))
           }
           const geo = new THREE.BufferGeometry().setFromPoints(pts)
           const mat = new THREE.LineBasicMaterial({ color: SNAP_COLOR, linewidth: 2, depthTest: false, transparent: true, opacity: 0.8 })
@@ -633,10 +646,16 @@ export default function Viewer3D({
             const off = mGroup.userData.rotOffset || { dx: 0, dz: 0 }
             const ax = mGroup.position.x - off.dx, az = mGroup.position.z - off.dz
             modulePositionsRef.current[moduleId] = { x: ax, z: az, y: mGroup.position.y }
-            // …y lo persiste en el modelo de datos (mm). `y` no se toca: en aéreos la manda mountHeight.
+            // …y lo persiste en el modelo de datos (mm). `y` no se toca salvo que haya ocurrido snap vertical.
             const Wm = mGroup.userData.moduleWidth || 0
             if (typeof onUpdateTransformRef.current === 'function') {
               onUpdateTransformRef.current(moduleId, { position: { x: Math.round((ax - Wm / 2) / SCALE), z: Math.round(az / SCALE) } })
+            }
+            // ★ ADITIVO V4.7: Si hubo snap vertical (apoyo sobre otro módulo), actualizar mountHeight
+            if (mGroup.userData.snappedVerticalMount !== undefined && typeof onUpdateModuleRef.current === 'function') {
+              const newMount = mGroup.userData.snappedVerticalMount
+              mGroup.userData.snappedVerticalMount = undefined
+              onUpdateModuleRef.current(moduleId, { mountHeight: newMount })
             }
             setOverlayVersion(v => v + 1)
           }
@@ -1483,9 +1502,31 @@ export default function Viewer3D({
       mGroup.add(rp)
 
       // === TOP ===
-      const tp = makeMesh(iW, T, D, bodyColor, 'Techo', 'structural')
-      tp.position.set(xOffset, yBase + H - T / 2, D / 2)
-      mGroup.add(tp)
+      // ★ 2026-10-15 — espejo de useTieRails del motor: base + encimera (no 'standard') o
+      //   topTieRails → 2 travesaños (70mm con encimera, 50mm sin) y NO un Techo macizo.
+      //   Antes el visor dibujaba siempre un Techo de 18mm: con gavetas pegadas al tampo se
+      //   veían tiras de MDF que el despiece no tiene.
+      const vizTieRails = (cfg.moduleType === 'base' && cfg.hasCountertop && cfg.moduleType !== 'standard')
+        || (cfg.topTieRails === true && cfg.moduleType !== 'aereo')
+      if (vizTieRails) {
+        const tieHU = (cfg.tieRailHeight > 0 ? cfg.tieRailHeight : ((cfg.moduleType === 'base' && cfg.hasCountertop) ? 70 : 50)) * SCALE
+        // Espejo de drawerTopFlush del motor: base+tampo+gavetas sin puertas → SOLO el travesaño
+        // trasero (el frontal asomaba sobre el último frente).
+        const topFlush = cfg.moduleType === 'base' && cfg.hasCountertop && (cfg.numDrawers || 0) > 0 &&
+          !cfg.hasDoors && !cfg.topShelf && cfg.drawerFrontStyle !== 'cava45' && cfg.topTieRails !== true
+        if (!topFlush) {
+          const trF = makeMesh(iW, tieHU, T, bodyColor, 'Travesaño Frontal', 'structural')
+          trF.position.set(xOffset, yBase + H - tieHU / 2, D - T / 2 - 20 * SCALE)
+          mGroup.add(trF)
+        }
+        const trB = makeMesh(iW, tieHU, T, bodyColor, 'Travesaño Trasero', 'structural')
+        trB.position.set(xOffset, yBase + H - tieHU / 2, BT + T / 2)
+        mGroup.add(trB)
+      } else {
+        const tp = makeMesh(iW, T, D, bodyColor, 'Techo', 'structural')
+        tp.position.set(xOffset, yBase + H - T / 2, D / 2)
+        mGroup.add(tp)
+      }
 
       // === BOTTOM ===
       const bp = makeMesh(iW, T, D, bodyColor, 'Base', 'structural')
@@ -1557,8 +1598,14 @@ export default function Viewer3D({
 
       // === DRAWERS ===
       const nD = cfg.numDrawers || 0
-      const isHorizontal = cfg.drawerLayout === 'horizontal'
-      const maxDH = (H - BH - 2 * T) / (isHorizontal ? Math.ceil(nD / 2) : nD)
+      // ★ 2026-10-15 — columnas REALES del motor (drawerColumns 2..4; 'horizontal' = 2). Antes se
+      //   hardcodeaba 2 y el motor ya soportaba hasta 4 (más las inferidas por divisores).
+      const dCols = nD > 1
+        ? ((cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) ? Math.floor(cfg.drawerColumns)
+          : (cfg.drawerLayout === 'horizontal' ? 2 : 1))
+        : 1
+      const isHorizontal = dCols > 1
+      const maxDH = (H - BH - 2 * T) / (isHorizontal ? Math.ceil(nD / dCols) : nD)
       const dH = Math.min((cfg.drawerHeight || 180) * SCALE, maxDH)
       let curY = yBase + BH + T
 
@@ -1669,12 +1716,76 @@ export default function Viewer3D({
         mGroup.add(ap)
       }
 
-      if (nD > 0 && !isDeskViz) {
+      // ★ 2026-10-15 — base sin puertas / cómoda pura: el MOTOR alinea y estira las gavetas
+      //   (zona/n, pegadas bajo el tampo). El visor las apilaba desde abajo con drawerHeight +
+      //   SEP → hueco + tiras que no existen en el despiece. Se dibujan desde las piezas.
+      const engDrawerFronts = isEnginePayload ? design.pieces.filter(q => q.type === 'drawer_front' && q.drawerGroupId) : []
+      const fromEngine = nD > 0 && !isDeskViz && engDrawerFronts.length > 0 &&
+        !(cfg.moduleType !== 'base' && (cfg.hasDoors || (cfg.numShelves || 0) > 0)) &&
+        !(cfg.hasDoors && cfg.moduleType === 'base' && (cfg.doorType === 'sliding' || cfg.ovenPanel))
+      // ★ 2026-10-15 — BASE MIXTO (gavetas + puertas): frentes, SEP, puertas, estantes y divisores
+      //   se dibujan desde el despiece del motor → 1:1 en mm, sin luces dobles de T.
+      const engineDrives = fromEngine && cfg.moduleType === 'base' && !!cfg.hasDoors
+      if (fromEngine) {
+        const toVx = (xm) => xOffset + xm * SCALE - W / 2
+        for (const f of engDrawerFronts) {
+          const dKey = `${design.id}-${f.drawerGroupId}`
+          const fm = makeMesh(f.width * SCALE, f.height * SCALE, T, frontColor, f.name, 'drawer_front', dKey)
+          fm.position.set(toVx(f.x), yBase + f.y * SCALE, D - T / 2)
+          mGroup.add(fm)
+          if (!skipDrawerBox) {
+            const lat = design.pieces.find(q => q.drawerGroupId === f.drawerGroupId && /^Lateral Caj/i.test(q.name))
+            const bot = design.pieces.find(q => q.drawerGroupId === f.drawerGroupId && q.type === 'drawer_bottom')
+            if (lat && bot) addDrawerBox(toVx(f.x), yBase + f.y * SCALE, bot.width * SCALE, lat.height * SCALE, boxDepthU, zCenter, dKey)
+          }
+        }
+        // Montantes entre columnas de gavetas (DIV-GAV): vienen del despiece.
+        for (const mp of design.pieces.filter(q => /^DIV-GAV-/.test(String(q.id)))) {
+          const mm = makeMesh(T, mp.height * SCALE, iD - 1, bodyColor, mp.name, 'structural')
+          mm.position.set(toVx(mp.x), yBase + mp.y * SCALE, zCenter)
+          mGroup.add(mm)
+        }
+        // Separador SÓLO si el motor lo emitió (SEP / PRIV_SEP): espejo 1:1 del despiece.
+        for (const sp of design.pieces.filter(q => /^(SEP|PRIV_SEP)-/.test(String(q.id)))) {
+          const sm = makeMesh(sp.width * SCALE, T, iD, bodyColor, sp.name, 'shelf')
+          sm.position.set(toVx(sp.x), yBase + sp.y * SCALE, zCenter)
+          mGroup.add(sm)
+        }
+        if (engineDrives) {
+          if (cfg.showDoors !== false) {
+            for (const dp of design.pieces.filter(q => q.type === 'standard_door')) {
+              const dm = makeMesh(dp.width * SCALE, dp.height * SCALE, T, frontColor, dp.name, 'standard_door')
+              dm.position.set(toVx(dp.x), yBase + dp.y * SCALE, D - T / 2)
+              mGroup.add(dm)
+            }
+          }
+          for (const sh of design.pieces.filter(q => /^PRAT-/.test(String(q.id)))) {
+            const shm = makeMesh(sh.width * SCALE, T, sh.height * SCALE, bodyColor, sh.name, 'shelf')
+            shm.position.set(toVx(sh.x), yBase + sh.y * SCALE, zCenter)
+            mGroup.add(shm)
+          }
+          for (const dv of design.pieces.filter(q => /^DIV-(?!GAV)/.test(String(q.id)))) {
+            const dvm = makeMesh(T, dv.height * SCALE, iD - 1, bodyColor, dv.name, 'structural')
+            dvm.position.set(toVx(dv.x), yBase + dv.y * SCALE, zCenter)
+            mGroup.add(dvm)
+          }
+        }
+        // Estantes (si los hay) quedan en el hueco libre BAJO las gavetas pegadas al tampo.
+        curY = yBase + Math.max(BH + T, Math.min(...engDrawerFronts.map(f => (f.y - f.height / 2) * SCALE)))
+      }
+
+      if (nD > 0 && !isDeskViz && !fromEngine) {
         if (isHorizontal) {
-          // VULN-06 FIX: Descuenta la mitad del espesor del divisor central (T / 2)
-          const colW = (iW - T) / 2
-          const drawersPerCol = Math.ceil(nD / 2)
-          for (let col = 0; col < 2; col++) {
+          // VULN-06 FIX (2026-10-15 generalizado a N columnas): cada montante entre columnas
+          // ocupa T → colW = (iW − (cols−1)·T)/cols, igual que drawerW del motor.
+          const colW = (iW - (dCols - 1) * T) / dCols
+          const drawersPerCol = Math.ceil(nD / dCols)
+          for (let c = 1; c < dCols; c++) {
+            const mont = makeMesh(T, drawersPerCol * dH, iD - 1, bodyColor, `Montante Gavetas ${dCols > 2 ? c : 'Central'}`, 'structural')
+            mont.position.set(xOffset - iW / 2 + c * (colW + T) - T / 2, yBase + BH + T + drawersPerCol * dH / 2, zCenter)
+            mGroup.add(mont)
+          }
+          for (let col = 0; col < dCols; col++) {
             let colY = yBase + BH + T
             const startX = xOffset - iW / 2 + colW / 2 + col * (colW + T)
             for (let i = 0; i < drawersPerCol; i++) {
@@ -1694,7 +1805,7 @@ export default function Viewer3D({
               colY += dH
             }
           }
-          curY += Math.ceil(nD / 2) * dH
+          curY += drawersPerCol * dH
         } else {
           for (let i = 0; i < nD; i++) {
             const dKey = `${design.id}-d${i}` // A1 FIX: clave estable por design.id, no por posición
@@ -1712,6 +1823,10 @@ export default function Viewer3D({
         }
 
         // VULN-07 FIX: Repisa separadora colocada inmediatamente sobre cajones (igual que closetEngine.js)
+        // ★ 2026-10-15: en clóset (gavetas abajo + puertas/estantes arriba) el motor deja
+        //   DRAWER_TOP_CLEARANCE (16mm) entre el borde superior del último frente y la SEP:
+        //   frente = pitch − 3 junta − 2 holgura ⇒ la SEP sube (16 − 3 − 2) = 11mm sobre el pitch.
+        if (cfg.moduleType !== 'base' && (cfg.hasDoors || (cfg.numShelves || 0) > 0)) curY += 11 * SCALE
         if (curY < yBase + H - T) {
           const tapa = makeMesh(iW, T, iD, bodyColor, 'Repisa Separadora (encima gavetas)', 'shelf')
           tapa.position.set(xOffset, curY + T / 2, zCenter)
@@ -1721,7 +1836,7 @@ export default function Viewer3D({
       }
 
       // === DOORS ===
-      if (cfg.hasDoors && cfg.showDoors !== false) {
+      if (cfg.hasDoors && cfg.showDoors !== false && !engineDrives) {
         const nDoors = cfg.numDoors || 2
         const doorW = iW / nDoors
         const doorH = H - (curY - yBase) - T
@@ -1740,7 +1855,7 @@ export default function Viewer3D({
       // When drawers exist (any layout), divider goes from above drawers to top only.
       // When no drawers, divider spans full internal height.
       const nDiv = cfg.numDividers || 0
-      if (nDiv > 0) {
+      if (nDiv > 0 && !engineDrives) {
         let divStartY, divHeight
         if (nD > 0) {
           // Divider only in the shelf/door zone ABOVE the drawers
@@ -1764,7 +1879,7 @@ export default function Viewer3D({
 
       // === SHELVES ===
       const nS = cfg.numShelves || 0
-      if (nS > 0) {
+      if (nS > 0 && !engineDrives) {
         const remainingH = H - (curY - yBase) - T
         const spacing = remainingH / (nS + 1)
         for (let i = 0; i < nS; i++) {

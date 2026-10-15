@@ -4,6 +4,7 @@
  */
 
 const { parseNaturalLanguage } = require('../engine/nlParser');
+const openrouterClient = require('./openrouterClient');
 const geminiClient = require('./geminiClient');
 const claudeClient = require('./claudeClient');
 const ollamaClient = require('./ollamaClient');
@@ -82,8 +83,9 @@ async function aiOrchestrator(prompt, agentRole = 'chat', context = {}) {
 
 const { coerceEngineParams, validateOrchestratorResponse } = require('./paramContract');
 
-// Orden de intento: Tier 1: Google AI Studio (geminiClient), Tier 2: Ollama local, Tier 3: regex local.
+// Orden de intento: Tier 1: OpenRouter (DeepSeek V3), Tier 2: Google AI Studio, Tier 3: Ollama local, Tier 4: regex local.
 const PROVIDER_CHAIN = [
+    { name: 'openrouter', client: openrouterClient },
     { name: 'gemini', client: geminiClient },
     { name: 'ollama', client: ollamaClient },
 ];
@@ -257,8 +259,10 @@ async function chatDesign(history = [], userMessage = '', options = {}) {
                 message: local.reply,
                 reply: local.reply,
                 params: null,
+                design: null,
                 specAdjustments: [],
                 source: 'greeting',
+                isGreeting: true
             };
         }
         if (local && local.params) {

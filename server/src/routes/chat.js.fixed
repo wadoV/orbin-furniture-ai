@@ -1,0 +1,366 @@
+/**
+ * Orbin AI — Chat Routes
+ * POST /api/chat/design   — Conversational design (AI-powered or regex fallback)
+ * POST /api/chat/parse    — Single parse with Claude (AI-enhanced NL → params)
+ */
+
+const express = require('express')
+const router  = express.Router()
+const { parseDesignIntent, chatDesign } = require('../ai/aiOrchestrator')
+const { buildOrbinChatPrompt } = require('../ai/systemPrompts')
+const { generateProject } = require('../engine/closetEngine')
+const { validateDesign } = require('../engine/validator')
+const { detectConfirmation, buildPreviewMessage } = require('./hitlPreview')
+const { TTLStore } = require('./ttlStore')
+const { requireAuth } = require('../middleware/auth')
+const { checkPlanLimit } = require('../middleware/planLimits')
+const { degradedPayload } = require('../middleware/errorHandler')
+const z = require('zod')
+
+const contextSchema = z.object({
+  userName: z.string().min(1).max(50).trim().optional(),
+  company: z.string().min(1).max(50).trim().optional(),
+  lang: z.enum(['ES', 'EN', 'PT']).optional()
+}).passthrough();
+
+// ─── Apply auth to ALL routes in this router ─────────────────────────────────
+router.use(requireAuth)
+
+
+// ─── Param Normalizer (mirrors design.js logic so chat can safely call engine) ─
+
+function normalizeDesignParams(raw) {
+  const p = { ...raw }
+
+  // Numeric coercion
+  const numFields = ['width', 'height', 'depth', 'thickness', 'numShelves', 'numDrawers', 'numDividers', 'drawerHeight', 'baseboardHeight', 'backThickness']
+  for (const f of numFields) {
+    if (p[f] !== undefined) {
+      p[f] = Number(p[f])
+      if (isNaN(p[f]) || !isFinite(p[f])) delete p[f]
+    }
+  }
+
+  // Apply defaults for missing structural fields
+  p.width         = p.width         > 0  ? p.width         : 600
+  p.height        = p.height        > 0  ? p.height        : 2200
+  p.depth         = p.depth         > 0  ? p.depth         : 580
+  p.thickness     = p.thickness     > 0  ? p.thickness     : 18
+  p.backThickness = p.backThickness > 0  ? p.backThickness : 6
+  p.numShelves    = p.numShelves    != null ? Number(p.numShelves)    : 1
+  p.numDrawers    = p.numDrawers    != null ? Number(p.numDrawers)    : 0
+  p.drawerHeight  = p.drawerHeight  > 0  ? p.drawerHeight  : 180
+  p.baseboard     = p.baseboard     ?? true
+  p.baseboardHeight = p.baseboardHeight > 0 ? p.baseboardHeight : 100
+
+  // Clamp to safe ranges (don't reject — clamp silently so chat never crashes engine)
+  if (p.width  < 100)  p.width  = 100
+  if (p.width  > 6000) p.width  = 6000
+  if (p.height < 200)  p.height = 200
+  if (p.height > 3500) p.height = 3500
+  if (p.depth  < 100)  p.depth  = 100
+  if (p.depth  > 1000) p.depth  = 1000
+
+  // type → moduleType mapping
+  if (!p.moduleType) {
+    const typeMap = { kitchen_low: 'base', kitchen_high: 'aereo', kitchen_island: 'base', closet: 'standard' }
+    p.moduleType = typeMap[p.type] || 'standard'
+  }
+
+  // Cross-field: thickness must be less than half the width
+  if (p.thickness <= 0 || p.thickness >= p.width / 2) {
+    p.thickness = Math.min(18, Math.floor(p.width / 4))
+  }
+  // Cross-field: baseboard height must be less than total height
+  if (p.baseboard && p.baseboardHeight >= p.height) {
+    p.baseboardHeight = Math.min(100, Math.floor(p.height / 4))
+  }
+
+  return p
+}
+
+// In-memory session store (replace with Redis/Supabase for production).
+// ★ 2026-07-23: migrado de `new Map()` a TTLStore — el Map crecía sin límite
+//   (leak → OOM en proceso long-running). TTL 60min, tope 5000 sesiones.
+const sessions = new TTLStore({ ttlMs: 60 * 60 * 1000, maxEntries: 5000 })
+
+// ADITIVO 2026-07-23: caché de propuestas pendientes de confirmación.
+// SÓLO es resiliencia secundaria — la fuente autoritativa es el echo del cliente
+// (req.body.proposedParams). Nunca se depende de que sobreviva entre turnos.
+// TTL corto (15min): una propuesta no confirmada caduca y libera memoria.
+const pendingProposals = new TTLStore({ ttlMs: 15 * 60 * 1000, maxEntries: 5000 })
+
+// ─── POST /api/chat/design ────────────────────────────────────────────────────
+
+// GATE DE PLAN [2026-08-02]: la Fase 2 del HITL (confirmFlow + action:'confirm')
+// es DETERMINISTA y stateless — genera el despiece sin tocar ningún proveedor de
+// IA (contrato congelado en chatDesign.e2e.test.js). Cobrarle cuota sería cobrar
+// por trabajo que no cuesta tokens, y encima rompería la confirmación de un
+// usuario free que ya gastó su llamada en la Fase 1: pediría el diseño, se le
+// propondría, y al confirmar recibiría un 403. Se cobra la Fase 1, no la Fase 2.
+const consumesAI = (req) => !(req.body?.confirmFlow === true && req.body?.action === 'confirm')
+
+router.post('/design', checkPlanLimit('chat.design', { when: consumesAI }), async (req, res) => {
+  try {
+    // ADITIVO 2026-10-12: un req.body ausente/no-objeto nunca debe llegar a la desestructuración.
+    const reqBody = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {}
+    const { message, sessionId, autoGenerate = true, lang, userName, company } = reqBody
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ success: false, error: 'El campo "message" es obligatorio.' })
+    }
+
+    // Validar parámetros de contexto con Zod
+    const contextValidation = contextSchema.safeParse(req.body)
+    if (!contextValidation.success) {
+      return res.status(400).json({ success: false, error: 'Parámetros de contexto inválidos.' })
+    }
+
+    const validContext = contextValidation.data
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADITIVO 2026-07-23 — MODO "VALIDACIÓN Y PROPUESTA PREVIA" (HITL 2 fases)
+    // Opt-in vía req.body.confirmFlow === true. Si el flag NO viene, el handler
+    // sigue exactamente igual que antes (cero regresión para el cliente actual).
+    //
+    // FASE 2 (confirmación): el cliente reenvía la propuesta con action:'confirm'
+    // y proposedParams. Es STATELESS: no depende de que el server retenga estado
+    // entre turnos (clave para Railway multi-instancia / redeploy).
+    // ═══════════════════════════════════════════════════════════════════════
+    const confirmFlow = req.body.confirmFlow === true
+    if (confirmFlow) {
+      const verdict = detectConfirmation({ action: req.body.action, message })
+      const echoed = (req.body.proposedParams && typeof req.body.proposedParams === 'object')
+        ? req.body.proposedParams
+        : (req.body.sessionId ? pendingProposals.get(req.body.sessionId) : null)
+
+      // ── FASE 2: generar el despiece definitivo ────────────────────────────
+      if (verdict === 'confirm' && echoed) {
+        try {
+          const safeParams = normalizeDesignParams(echoed)
+          const design = generateProject(safeParams)
+          if (sessionId) pendingProposals.delete(sessionId)
+          return res.json({
+            success: true,
+            phase: 'generated',
+            status: 'confirmed',
+            reply: (design && design.success)
+              ? { ES: 'Diseño generado. Lo agregué al lienzo.', PT: 'Projeto gerado. Adicionei ao canvas.', EN: 'Design generated and added to the canvas.' }[validContext.lang || 'ES']
+              : { ES: 'No pude generar el despiece.', PT: 'Não consegui gerar o plano.', EN: 'Could not generate the cut list.' }[validContext.lang || 'ES'],
+            design,
+            params: safeParams,
+            source: 'engine-confirmed',
+          })
+        } catch (engineErr) {
+          console.error('[chat/design] Fase 2 engine error:', engineErr.message)
+          return res.status(200).json({
+            success: false, phase: 'generated', status: 'error',
+            error: 'No pudimos generar el diseño confirmado. Revisá los parámetros.',
+          })
+        }
+      }
+
+      // ── Cancelación explícita: limpiar propuesta pendiente ───────────────
+      if (verdict === 'cancel') {
+        if (sessionId) pendingProposals.delete(sessionId)
+        return res.json({
+          success: true, phase: 'cancelled', status: 'cancelled',
+          reply: { ES: 'Cancelado. Contame qué ajustamos.', PT: 'Cancelado. Diga o que ajustamos.', EN: 'Cancelled. Tell me what to adjust.' }[validContext.lang || 'ES'],
+        })
+      }
+      // Si no es confirmación/cancelación → cae a FASE 1 (propuesta) más abajo.
+    }
+
+    // Retrieve or create session history
+    const history = sessions.get(sessionId) || []
+
+    const options = (validContext.lang || validContext.userName || validContext.company)
+      ? { systemPrompt: buildOrbinChatPrompt({ userName: validContext.userName, company: validContext.company, lang: validContext.lang }) }
+      : {}
+    const result = await chatDesign(history, message, options)
+
+    // GUARD DEFENSIVO ADITIVO: Saludo o mensaje conversacional sin diseño (BLINDAJE QUIRÚRGICO)
+    const greetingsRegex = /^(hola|buen(d|s)*\s*(d[ií]a|tardes|noches)|saludos|buenas|hey|hello|hi|¿?c[oó]mo\s*est[aá]s\??|¿?qu[eé]\s*tal\??)$/i;
+    const conversationOnlyRegex = /^(gracias?|thank|no sé|no se|no entiendo|i don'?t|help|ayuda|perdón|sorry|explícame|por favor|please|me podés|puedes|te gusta|dime|tengo una|pregunta|qu[eé] opinas|qu[eé] te parece)$/i;
+    
+    const isGreetingDetected = result.isGreeting || result.source === 'greeting' 
+      || (!result.params && greetingsRegex.test(message.trim()))
+      || conversationOnlyRegex.test(message.trim())
+    
+    const isConversationalOnly = !result.params || isGreetingDetected || 
+      (result.message && !result.message.includes('Diseñé') && !result.message.includes('clóset') && !result.message.match(/\d+×\d+×\d+/)) ||
+      (result.params && Object.keys(result.params).length === 0)
+    
+    if (isConversationalOnly) {
+      const reply = result.message || result.reply || "¡Hola! Soy Orbin, tu asistente técnico de diseño. ¿Qué mueble deseas proyectar hoy?"
+      
+      // Update history con la respuesta definitiva del saludo
+      const newHistory = [
+        ...history,
+        { role: 'user',      content: message },
+        { role: 'assistant', content: reply },
+      ]
+      const trimmed = newHistory.slice(-20)
+      if (sessionId) sessions.set(sessionId, trimmed)
+
+      return res.status(200).json({
+        success: true,
+        message: reply,
+        reply: reply,
+        params: null,
+        design: null,
+        source: result.source || 'greeting',
+        isGreeting: true
+      })
+    }
+
+    // Update history
+    const newHistory = [
+      ...history,
+      { role: 'user',      content: message },
+      { role: 'assistant', content: result.message },
+    ]
+    // Keep last 20 turns to stay within context limits
+    const trimmed = newHistory.slice(-20)
+    if (sessionId) sessions.set(sessionId, trimmed)
+
+    const response = {
+      success: true,
+      reply:   result.message,
+      source:  result.source,
+    }
+
+    // ADITIVO 2026-07-20: supuestos declarados por la capa NLP (dimensiones no
+    // dichas por el cliente, valores clampeados, llaves fuera de contrato).
+    // Se propagan SIEMPRE, aunque el motor no llegue a correr.
+    const nlpAdjustments = Array.isArray(result.specAdjustments) ? result.specAdjustments : []
+    if (nlpAdjustments.length) response.specAdjustments = nlpAdjustments
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FASE 1 (propuesta previa): confirmFlow activo + hay params extraídos.
+    // Corre el motor SÓLO para validar estructuralmente; NO devuelve el payload
+    // pesado que dispararía el render 3D. Responde previsualización textual y
+    // ESPERA la confirmación del usuario (Fase 2). 100% aditivo: si confirmFlow
+    // no viene, este bloque se salta y el flujo legacy queda idéntico.
+    // ═══════════════════════════════════════════════════════════════════════
+    if (confirmFlow && result.params && typeof result.params === 'object') {
+      let safeParams, validation = null
+      try {
+        safeParams = normalizeDesignParams(result.params)
+        const probe = generateProject(safeParams)   // cálculo sólo-validación
+        const mergedAdjustments = [...nlpAdjustments, ...((probe && probe.specAdjustments) || [])]
+        validation = (probe && probe.success)
+          ? validateDesign(probe)
+          : { status: 'RECHAZADO', errors: [probe && probe.details || 'Error del motor'], warnings: [] }
+
+        const preview = buildPreviewMessage({
+          params: safeParams, validation, specAdjustments: mergedAdjustments, lang: validContext.lang,
+        })
+
+        if (preview.viable && sessionId) pendingProposals.set(sessionId, safeParams)
+
+        return res.json({
+          success: true,
+          phase: 'proposal',
+          status: preview.viable ? 'awaiting_confirmation' : 'rejected',
+          reply: preview.text,
+          // proposedParams = fuente autoritativa que el cliente reenvía al confirmar.
+          proposedParams: preview.viable ? safeParams : undefined,
+          validation: { status: validation.status, errors: validation.errors, warnings: validation.warnings },
+          specAdjustments: mergedAdjustments,
+          source: result.source,
+        })
+      } catch (probeErr) {
+        console.error('[chat/design] Fase 1 validación:', probeErr.message)
+        return res.json({
+          success: true, phase: 'proposal', status: 'rejected',
+          reply: 'No pude validar la propuesta. Revisá las medidas e intentá de nuevo.',
+          source: result.source,
+        })
+      }
+    }
+
+    // If params were extracted and autoGenerate is on, run the engine
+    if (result.params && typeof result.params === 'object' && autoGenerate) {
+      try {
+        const safeParams = normalizeDesignParams(result.params)
+        response.design  = generateProject(safeParams)
+        response.params  = safeParams
+        // Fusiona supuestos NLP + ajustes de fabricación del motor en una sola lista.
+        if (response.design && response.design.success) {
+          response.design.specAdjustments = [...nlpAdjustments, ...(response.design.specAdjustments || [])]
+          response.design.hasSpecAdjustments = response.design.specAdjustments.length > 0
+          response.specAdjustments = response.design.specAdjustments
+          // ★ FIX 2026-07-23 (Galería): el chat no adjuntaba `validation`, así que el
+          //   guard fail-closed de la Biblioteca Verificada bloqueaba SIEMPRE el guardado
+          //   ("validation_missing"). Se corre el validador y se adjunta, igual que
+          //   design.js → habilita "Guardar en Galería" para diseños hechos por chat.
+          try {
+            const v = validateDesign(response.design)
+            response.design.validation = { status: v.status, errors: v.errors, warnings: v.warnings, summary: v.summary }
+            response.validation = response.design.validation
+          } catch (valErr) {
+            console.warn('[chat/design] validación no disponible:', valErr.message)
+          }
+        }
+      } catch (engineErr) {
+        console.error('[chat/design] Engine error:', engineErr.message)
+        response.engineError = engineErr.message
+      }
+    } else if (result.params && typeof result.params === 'object') {
+      response.params = normalizeDesignParams(result.params)
+    } else {
+      // ★ Manejado por GUARDA DEFENSIVA TEMPRANA (arriba) - este código ya no debería ejecutarse
+      // response.params = null
+      // response.design = null
+    }
+
+    // BLOQUE 2 (HITL): flag determinista. Si la IA propuso un módulo (hay params),
+    // se marca pending_validation y el cliente NO persiste nada hasta que el usuario
+    // confirme. No depende de que el modelo emita el flag por su cuenta.
+    if (result.params && typeof result.params === 'object') response.status = 'pending_validation'
+
+    res.json(response)
+  } catch (err) {
+    // FIX #8 (QA 2026-06-26): exponía err.message crudo (puede incluir detalle
+    // interno de la llamada a Gemini/Ollama). El detalle real ya queda logueado
+    // arriba; al usuario le mostramos un mensaje seguro y genérico.
+    console.error('[chat/design] Error:', err)
+    // ADITIVO 2026-10-12: el chat NUNCA devuelve 500. El cliente mapea cualquier status ≥500 a
+    // "El servidor tuvo un problema inesperado" y el panel queda mudo. Se responde 200 con un
+    // payload degradado pero VÁLIDO (success:false, params/design null, reply legible).
+    const L = (req.body && ['ES', 'PT', 'EN'].includes(req.body.lang)) ? req.body.lang : 'ES'
+    const reply = {
+      ES: 'No pude procesar tu mensaje en este momento. Probá de nuevo en unos segundos o indicame ancho, alto y profundidad en mm.',
+      PT: 'Não consegui processar sua mensagem agora. Tente novamente em instantes ou informe largura, altura e profundidade em mm.',
+      EN: 'I could not process your message right now. Try again in a few seconds or tell me width, height and depth in mm.',
+    }[L]
+    return res.status(200).json({ ...degradedPayload(), reply, params: null, design: null, source: 'error-fallback' })
+  }
+})
+
+// ─── POST /api/chat/parse ─────────────────────────────────────────────────────
+
+// GATE DE PLAN [2026-08-02]: esta ruta SÍ llama al modelo (parseDesignIntent →
+// cascada de proveedores). A diferencia de design.js POST /parse, que es regex local.
+router.post('/parse', checkPlanLimit('chat.parse'), async (req, res) => {
+  try {
+    const { text } = (req.body && typeof req.body === 'object') ? req.body : {}
+    if (!text) return res.status(400).json({ success: false, error: 'El campo "text" es obligatorio.' })
+
+    const result = await parseDesignIntent(text)
+    res.json({ success: true, ...result })
+  } catch (err) {
+    console.error('[chat/parse] Error:', err)
+    // ADITIVO 2026-10-12: sin 500 (ver /design). params:null = "no se pudo interpretar".
+    return res.status(200).json({ ...degradedPayload(), params: null, error: 'No pudimos interpretar el texto. Intentá de nuevo.' })
+  }
+})
+
+// ─── DELETE /api/chat/session/:id ────────────────────────────────────────────
+
+router.delete('/session/:id', (req, res) => {
+  sessions.delete(req.params.id)
+  res.json({ success: true })
+})
+
+module.exports = router

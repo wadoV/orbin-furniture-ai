@@ -33,6 +33,13 @@ const ENGINE_PARAM_KEYS = [
   //   silencio ("llaves fuera de contrato") y el LLM nunca podía pedir una cava.
   'drawerFrontStyle', 'puxadorCavaAereo', 'tamponadoInferior', 'cavaOverhang',
   'ovenPanel', 'ovenNicheHeight', 'topTieRails', 'tieRailHeight', 'slidingSheetOverlap',
+  // ★ ADITIVO V4.7 (Joinery & Uniones avanzadas)
+  'joineryType', 'dovetailCount', 'tenonProportion',
+  // ★ ADITIVO V4.7 (Stacking Matrix: direct vs suspended)
+  'stackingMode', 'gapAboveBase',
+  // ★ ADITIVO 2026-10-13 — Sistema maestro de gavetas (Padrão Brasil)
+  'drawerDistributionMode', 'drawerFrontHeights', 'drawerStackAlignment', 'drawerBottomStyle',
+  'drawerColumnIndex', 'divideDrawers', 'cavaCncWidth', 'cavaCncDepth',
 ]
 
 // ─── 2. Alias → llave canónica del motor ─────────────────────────────────────
@@ -59,7 +66,26 @@ const KEY_ALIASES = {
   doorOverlapBottom: 'puxadorCavaAereo',
   ovenFalseDoor: 'ovenPanel',
   falseDoor: 'ovenPanel',
+  // ★ ADITIVO 2026-10-12 (módulo de horno) — sinónimos de "puerta falsa" y "zócalo" que emite el LLM
+  hasFalseDoor: 'ovenPanel',
+  blindFront: 'ovenPanel',
+  frenteCiego: 'ovenPanel',
+  puertaFalsa: 'ovenPanel',
+  plinthHeight: 'baseboardHeight',
+  zocaloHeight: 'baseboardHeight',
+  // ★ ADITIVO 2026-10-13 — Sistema maestro de gavetas
+  gavetasCava: 'drawerFrontStyle',
+  drawerStyle: 'drawerFrontStyle',
+  estiloFrente: 'drawerFrontStyle',
+  distribucionGavetas: 'drawerDistributionMode',
+  alturasGavetas: 'drawerFrontHeights',
+  alineacionGavetas: 'drawerStackAlignment',
+  fondoGaveta: 'drawerBottomStyle',
 }
+
+// ★ ADITIVO 2026-10-12 — tipologías de horno que el LLM emite como moduleType/type/subType.
+//   No existen en el enum del motor: antes caían a 'standard' (clóset) y el horno se perdía.
+const OVEN_TYPES = ['oven', 'oven_cavity', 'oven_module', 'horno', 'forno', 'modulo_horno', 'nicho_horno']
 
 // ─── Enums cerrados ──────────────────────────────────────────────────────────
 const ENUMS = {
@@ -70,6 +96,11 @@ const ENUMS = {
   handleType: ['standard', 'gola', 'push'],
   edgeBandingType: ['thin', 'thick'],
   baseType: ['recessed', 'legs', 'none'],
+  stackingMode: ['direct', 'suspended'],
+  // ★ ADITIVO 2026-10-13 — Sistema maestro de gavetas
+  drawerDistributionMode: ['equal', 'custom', 'kitchen_standard', 'closet_bottom'],
+  drawerStackAlignment: ['auto', 'top', 'bottom'],
+  drawerBottomStyle: ['grooved_6mm', 'screwed_15mm'],
 }
 
 // ─── Defaults comerciales de marcenaria (usados SOLO ante ausencia) ──────────
@@ -112,6 +143,8 @@ const RANGES = {
   ovenNicheHeight: [300, 1200],
   tieRailHeight: [30, 200],
   slidingSheetOverlap: [0, 300],
+  dovetailCount: [1, 20],
+  gapAboveBase: [0, 1200],
 }
 
 const BOOL_KEYS = ['hasDoors', 'hasCountertop', 'hasHangingRod', 'hasLed', 'baseboard', 'drawerPrivacyPanel', 'hasPedestal', 'puxadorCava45',
@@ -176,6 +209,11 @@ function coerceEngineParams(raw, opts = {}) {
   // 2.b — moduleType primero (define los defaults comerciales del resto)
   let moduleType = typeof norm.moduleType === 'string' ? norm.moduleType.toLowerCase().trim() : null
   const typeMap = { kitchen_low: 'base', kitchen_high: 'aereo', kitchen_island: 'base', closet: 'standard' }
+  // ★ ADITIVO 2026-10-12: horno declarado como tipología → base + ovenPanel (no clóset).
+  const _lc = (v) => (typeof v === 'string' ? v.toLowerCase().trim() : '')
+  const ovenDeclared = [norm.moduleType, norm.type, src.subType, src.subtype, src.moduleSubType].some(v => OVEN_TYPES.includes(_lc(v)))
+  if (OVEN_TYPES.includes(moduleType)) moduleType = 'base'
+  if (!moduleType && OVEN_TYPES.includes(_lc(norm.type))) moduleType = 'base'
   if (!moduleType && typeof norm.type === 'string') moduleType = typeMap[norm.type.toLowerCase()] || null
   if (!ENUMS.moduleType.includes(moduleType)) moduleType = 'standard'
   out.moduleType = moduleType
@@ -192,6 +230,15 @@ function coerceEngineParams(raw, opts = {}) {
     //   0 legítimo, así que 1.5 pasaría silencioso → aéreo a 1.5 mm del piso.
     //   Dominio DISJUNTO: ninguna altura de instalación real cae entre 0 y 10 mm, así que
     //   interpretar ese tramo como metros es seguro y no colisiona con el 0 = "apoyado".
+    // ★ ADITIVO 2026-10-12 — zócalo en CENTÍMETROS crudos ("rodapié de 12cm" → 12). Ningún zócalo
+    //   real mide 3–29 mm, así que ese tramo se lee como cm (12 → 120mm). Dominio disjunto.
+    if (k === 'baseboardHeight' && n !== null && n >= 3 && n < 30) {
+      specAdjustments.push({
+        code: 'NLP_UNIT_INFERRED', severity: 'warning', field: k,
+        message: `"baseboardHeight" recibido como ${n}. Se interpretó como ${Math.round(n * 10)}mm (${n}cm).`,
+      })
+      n = Math.round(n * 10)
+    }
     if (k === 'mountHeight' && n !== null && n > 0 && n < 10) {
       const asMM = Math.round(n * 1000)
       specAdjustments.push({
@@ -240,6 +287,9 @@ function coerceEngineParams(raw, opts = {}) {
     if (b !== null) out[k] = b
   }
 
+  // ★ ADITIVO 2026-10-12: tipología de horno sin flag explícito → ovenPanel (un ovenPanel explícito manda).
+  if (ovenDeclared && out.ovenPanel === undefined) out.ovenPanel = true
+
   // 2.f — enums
   for (const [k, allowed] of Object.entries(ENUMS)) {
     if (k === 'moduleType' || norm[k] === undefined) continue
@@ -256,8 +306,12 @@ function coerceEngineParams(raw, opts = {}) {
 
   // 2.g — strings libres que el motor sí lee
   for (const k of ['doorStyle', 'doorFinish', 'topStyle', 'backStyle', 'alturaTraviesaCava', 'slidingDoorSheets', 'puxadorCava45', 'tamponado',
-                   'materialBody', 'materialFront', 'countertopMaterial']) {
+                   'materialBody', 'materialFront', 'countertopMaterial', 'joineryType']) {
     if (typeof norm[k] === 'string' && norm[k].trim()) out[k] = norm[k].trim()
+  }
+  if (norm.tenonProportion !== undefined) {
+    const tp = parseFloat(norm.tenonProportion)
+    if (Number.isFinite(tp) && tp > 0 && tp < 1) out.tenonProportion = tp
   }
   if (norm.drawerColumns !== undefined) {
     const c = Math.floor(Number(norm.drawerColumns))
@@ -275,6 +329,10 @@ function coerceEngineParams(raw, opts = {}) {
     })
   }
   if (out.hasDoors === false) { out.numDoors = 0; out.doorType = 'none' }
+  // ★ ADITIVO 2026-10-12 — si numDoors=0 (explícito o inferido) y hasDoors no se forzó,
+  //   sincronizar: el módulo no tiene puertas. Evita que el auto-fit de gavetas use la
+  //   rama "mixta" (budget 83%) en un gavetero puro.
+  if (out.numDoors === 0 && out.hasDoors === undefined) out.hasDoors = false
   if (out.numDrawers > 0 && !out.drawerLayout) out.drawerLayout = 'vertical'
 
   return { params: out, specAdjustments, dropped }

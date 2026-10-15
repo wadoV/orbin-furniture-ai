@@ -28,6 +28,8 @@ const PIECE_NAMES = {
   'lateral izquierdo':   ['Lateral Izquierdo', 'Lateral Esquerda', 'Left Side Panel'],
   'lateral derecho':     ['Lateral Derecho', 'Lateral Direita', 'Right Side Panel'],
   'lateral central':     ['Lateral Central', 'Lateral Central', 'Center Divider'],
+  'montante gavetas':    ['Montante Gavetas', 'Montante Gavetas', 'Drawer Upright'],
+  'montante gavetas central': ['Montante Gavetas Central', 'Montante Central das Gavetas', 'Center Drawer Upright'],
   'techo':               ['Techo', 'Tampo Superior', 'Top Panel'],
   'base inferior':       ['Base Inferior', 'Base Inferior', 'Bottom Panel'],
   'fondo':               ['Fondo', 'Fundo', 'Back Panel'],

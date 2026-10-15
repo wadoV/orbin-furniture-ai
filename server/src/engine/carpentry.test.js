@@ -121,7 +121,7 @@ describe('Funciones puras — módulo de horno', () => {
     assert.equal(r.ok, true)
     assert.equal(r.shelf.topY, 882 - C.OVEN_NICHE_HEIGHT)
     assert.equal(r.shelf.centerY, r.shelf.topY - T / 2)
-    assert.equal(r.falseDoor.width, 794)
+    assert.equal(r.falseDoor.width, 758)   // ★ 2026-10-12: retranqueada entre laterales W−2T−6
     // la puerta falsa llega justo hasta la cara inferior de la repisa
     const top = r.falseDoor.centerY + r.falseDoor.height / 2
     assert.equal(top, r.shelf.topY - T)
@@ -148,12 +148,13 @@ describe('PDF 12/10 — caso 1: módulo de horno 800×900×520', () => {
     const shelf = one(r.design, 'REPISA-HORNO')
     const fake = one(r.design, 'PORTA-FALSA')
     assert.equal(byPrefix(r.design, 'PORTA-0').length, 0, 'no debe haber puertas con bisagra')
-    assert.equal(fake.width, 800 - 6)
+    assert.equal(fake.width, 800 - 2 * T - 6) // ★ 2026-10-12: puerta falsa retranqueada entre laterales
     assert.match(fake.notes, /PANEL FIJO/)
     // la puerta falsa queda sobrepuesta: cara frontal en D exacto (overlay), igual que una puerta real
     assert.equal(fake.z, 520 - T + T / 2 + 0)   // CD + T/2, con CD = D − T
     // la repisa sostiene el horno: nicho libre = ovenNicheHeight sobre su cara superior
-    assert.equal(shelf.y + T / 2, (r.params.hasCountertop ? 900 : 900 - T) - C.OVEN_NICHE_HEIGHT)
+    // ★ 2026-10-12: el nicho se mide desde la cara INFERIOR de la estructura superior (travesaño 70 / techo T)
+    assert.equal(shelf.y + T / 2, (r.params.hasCountertop ? 900 - 70 : 900 - T) - C.OVEN_NICHE_HEIGHT)
   })
   it('sin bisagras en el BOM (puerta fija) y con escuadras de fijación', () => {
     const types = (r.design.bom || r.design.hardware || []).map(b => b.type)
@@ -177,7 +178,8 @@ describe('PDF 12/10 — caso 2: módulo pia 1200×900×520 con cava 45° y rodap
     assert.equal(r.params.baseboardHeight, 120)
   })
   it('las puertas descuentan exactamente 30mm de luz bajo el tampo', () => {
-    const nominal = 900 - 120 - T                           // H − rodapié − techo
+    // ★ 2026-10-12 — ahora cava45 activa plinthReveal=3 (regla R3 del taller).
+    const nominal = 900 - 120 - 3 - T
     const expected = nominal - C.CAVA_TOP_CLEARANCE - HARDWARE.DOOR_GAP_H
     const doors = byPrefix(r.design, 'PORTA-0')
     assert.equal(doors.length, 2)
@@ -209,7 +211,13 @@ describe('PDF 12/10 — caso 3: gavetero 700×900×520, 3 gavetas con cava 45°'
   it('cada frente cede 30mm de luz de agarre', () => {
     const fronts = byPrefix(r.design, 'GAV-FF')
     assert.equal(fronts.length, 3)
-    const expected = (r.params.drawerHeight || 180) - 2 * HARDWARE.DRAWER_FRONT_GAP - C.CAVA_TOP_CLEARANCE
+    // ★ SEMÁNTICA 2026-10-13: cava45 aplica 30mm de luz de agarre bajo el tampo
+    const moduleHeight = 900, baseboardHeight = 120, thickness = 18
+    const availableHeight = moduleHeight - baseboardHeight - 2 * thickness
+    // ★ 2026-10-15: la zona descuenta las 2 juntas de 3mm entre filas (antes la pila se pasaba
+    //   6mm del vano y el frente pisaba la base). 744 − 6 = 738 → 246 − 30 − 4 = 212mm.
+    const perDrawerHeight = Math.floor((availableHeight - 2 * 3) / 3)
+    const expected = perDrawerHeight - C.CAVA_TOP_CLEARANCE - 2 * HARDWARE.DRAWER_FRONT_GAP // 212mm
     for (const f of fronts) assert.equal(f.height, expected)
   })
   it('techo macizo reemplazado por travesaños de amarre de 50mm (frontal + trasero)', () => {
@@ -349,7 +357,11 @@ describe('Cero regresión — con los flags apagados no aparece ninguna pieza nu
   })
   it('gavetas sin cava: frente histórico (casillero − 2·holgura)', () => {
     const d = generateProject(CFGS[4])
-    for (const f of byPrefix(d, 'GAV-FF')) assert.equal(f.height, 180 - 2 * HARDWARE.DRAWER_FRONT_GAP)
+    // ★ SEMÁNTICA 2026-10-15: clóset (gavetas abajo + puertas/estantes arriba) → cada fila mide
+    //   drawerHeight (180 por defecto), NO zona/numDrawers (antes: 3 frentes de 684mm que
+    //   pisaban la SEP y las puertas). Pitch = drawerHeight; frente = pitch − 3 junta − 2·holgura.
+    const expected = 180 - 3 - 2 * HARDWARE.DRAWER_FRONT_GAP // 173mm
+    for (const f of byPrefix(d, 'GAV-FF')) assert.equal(f.height, expected)
   })
   it('traslape de corredizas por defecto = 100 (el vigente), parametrizable a 30', () => {
     const base = generateProject(CFGS[3])

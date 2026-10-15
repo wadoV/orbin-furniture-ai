@@ -40,6 +40,7 @@ for (const f of walk(path.join(ROOT, 'server', 'src'), ['.js'])) {
 // 3) Cada router montado debe exportar (evita el bug de billing: router vacío → 404)
 const routesDir = path.join(ROOT, 'server', 'src', 'routes');
 for (const f of walk(routesDir, ['.js'])) {
+  if (f.endsWith('.test.js')) continue;
   const txt = fs.readFileSync(f, 'utf8');
   if (!/module\.exports\s*=/.test(txt) && !/export\s+default/.test(txt))
     errors.push(`ROUTER SIN EXPORT (se montaría vacío → 404): ${path.relative(ROOT, f)}`);

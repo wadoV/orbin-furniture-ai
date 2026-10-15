@@ -37,18 +37,60 @@ export function findBaseForAerial(modules = [], aerialConfig = {}) {
   return byWidth.length ? byWidth[byWidth.length - 1] : bases[bases.length - 1]
 }
 
+// ── Apilamiento Directo e Instalación Suspendida (V4.7 ADITIVO) ───────────
+
+/**
+ * Calcula la altura de montaje (mountHeight) según el modo de apilamiento:
+ * - 'direct': sobremueble apoyado directamente (gap = 0mm + grosor de encimera si existe).
+ * - 'suspended': aéreo estándar (gap por defecto = 600mm, configurable).
+ *
+ * @param {object} baseModule  Módulo inferior sobre el que se apila
+ * @param {object} [options]
+ * @param {'direct'|'suspended'} [options.mode='suspended'] Modo de apilamiento
+ * @param {number} [options.gap=600] Luz vertical o salpicadero en mm
+ * @param {number} [options.countertopThickness=0] Espesor de encimera si aplica
+ * @returns {number} mountHeight en mm
+ */
+export function calculateStackingMountHeight(baseModule, { mode = 'suspended', gap = AERIAL_GAP_MM, countertopThickness = 0 } = {}) {
+  const baseCfg = baseModule?.configuration || baseModule || {}
+  const baseH = Number(baseCfg.height) || 900
+  const ctThick = baseCfg.hasCountertop
+    ? (Number(baseCfg.countertopThickness) || Number(countertopThickness) || 25)
+    : Number(countertopThickness || 0)
+
+  if (mode === 'direct') {
+    return Math.round(baseH + ctThick)
+  }
+
+  const verticalGap = (gap !== undefined && gap !== null && !isNaN(Number(gap)))
+    ? Number(gap)
+    : AERIAL_GAP_MM
+
+  return Math.round(baseH + ctThick + verticalGap)
+}
+
 // Núcleo: el aéreo hereda x/ancho de la base y se calcula su elevación vertical.
 // baseModule puede traer _centerXMM inyectado por el llamador (App).
 export function calculateAerialAlignment(baseModule, aerialConfig = {}) {
   const baseCfg = baseModule?.configuration || baseModule || {}
   const baseW = Number(baseCfg.width)  || 600
-  const baseH = Number(baseCfg.height) || 900
   const baseCenterXMM = Number(baseModule?._centerXMM ?? baseCfg._centerXMM ?? 0)
+
+  const mode = aerialConfig.stackingMode === 'direct' ? 'direct' : 'suspended'
+  const customGap = aerialConfig.gapAboveBase !== undefined ? Number(aerialConfig.gapAboveBase) : AERIAL_GAP_MM
+
+  const mountHeight = calculateStackingMountHeight(baseModule, {
+    mode,
+    gap: customGap,
+    countertopThickness: baseCfg.countertopThickness
+  })
+
   return {
     ...aerialConfig,
     width:       baseW,                       // ancho nominal idéntico
     _centerXMM:  baseCenterXMM,               // hereda X horizontal (centro, mm)
-    mountHeight: baseH + AERIAL_GAP_MM,       // elevación = altura base + gap 600mm
+    mountHeight,                              // elevación calculada
     _stackedOnId: baseModule?.id || null,     // trazabilidad
   }
 }
+

@@ -330,9 +330,10 @@ function applyCarpentryFlags(text, result, notes, specAdjustments) {
   if (has(/\b(?:sin|sem|no\s+(?:lleva|tiene|usa))\s+(?:el\s+|o\s+)?(?:rodap\w*|z[oó]calo|plinto)/i)) {
     result.baseboard = false; notes.push('Sin rodapié')
   } else {
-    const bh = text.match(/(?:rodap\w*|z[oó]calo|plinto)\s*(?:debe\s+ser\s+|ser\s+|es\s+|de\s+|:\s*)*(\d+(?:[.,]\d+)?)\s*mm/i)
+    const bh = text.match(/(?:rodap\w*[éêe]?s?|z[oó]calo|plinto)\s*(?:debe\s+ser\s+|ser\s+|es\s+|de\s+|:\s*)*(\d+(?:[.,]\d+)?)\s*(mm|cm)\b/i)
     if (bh) {
-      const v = Math.round(parseFloat(bh[1].replace(',', '.')))
+      let v = Math.round(parseFloat(bh[1].replace(',', '.')))
+      if (bh[2].toLowerCase() === 'cm') v = Math.round(v * 10)   // 12cm → 120mm
       if (v >= 30 && v <= 300) { result.baseboard = true; result.baseboardHeight = v; notes.push('Rodapié ' + v + 'mm') }
     }
   }

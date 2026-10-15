@@ -6,14 +6,16 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    chunkSizeWarningLimit: 550,
     rollupOptions: {
       output: {
         manualChunks: {
-          three:   ['three'],
-          react:   ['react', 'react-dom'],
-          socket:  ['socket.io-client'],
-          pdf:     ['jspdf'],
-          icons:   ['lucide-react'],
+          vendor_three: ['three'],
+          vendor_react: ['react', 'react-dom'],
+          vendor_socket: ['socket.io-client'],
+          vendor_pdf: ['jspdf', 'html2canvas'],
+          vendor_icons: ['lucide-react'],
+          vendor_supabase: ['@supabase/supabase-js'],
         },
       },
     },

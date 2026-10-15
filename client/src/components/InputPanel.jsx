@@ -272,6 +272,11 @@ const DEFAULTS = {
   drawerFrontStyle: 'flat',
   cavaCncWidth: 140,
   cavaCncDepth: 35,
+  // ★ ADITIVO 2026-10-13 — Sistema maestro de gavetas (Padrão Brasil)
+  drawerDistributionMode: 'equal',
+  drawerFrontHeights: null,
+  drawerStackAlignment: 'auto',
+  drawerBottomStyle: 'grooved_6mm',
   // ★ 2026-10-11: mountHeight en DEFAULTS con sentinel null (espejo de closetEngine DEFAULTS).
   //   Sin esto, reset() dejaba mountHeight=undefined → el campo del aéreo usaba siempre
   //   AEREO_MOUNT.DEFAULT y no reflejaba el estado real tras un reset del formulario.
@@ -700,6 +705,47 @@ export default function InputPanel({ onGenerate, loading, currentConfig, onUpdat
                   value={params.cavaCncDepth || 35}
                   onChange={setParam}
                   type="number" min={20} max={50} step={5} suffix="mm"
+                />
+              </div>
+            )}
+            {/* ★ ADITIVO 2026-10-13 — Sistema maestro de gavetas (Padrão Brasil) */}
+            {params.numDrawers > 0 && (
+              <div className="space-y-3 p-3 bg-surface-3/50 border border-white/10 rounded-lg animate-in fade-in duration-200">
+                <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-2">
+                  {t('drawer_system_config', 'Configuración avanzada de gavetas')}
+                </p>
+                <SELECT
+                  label={t('drawer_stack_alignment', 'Alineación de pila')}
+                  name="drawerStackAlignment"
+                  value={params.drawerStackAlignment || 'auto'}
+                  onChange={(k, v) => setParam('drawerStackAlignment', v)}
+                  options={[
+                    { value: 'auto', label: t('drawer_align_auto', 'Automático por tipología') },
+                    { value: 'top', label: t('drawer_align_top', 'Superior (Cocina)') },
+                    { value: 'bottom', label: t('drawer_align_bottom', 'Inferior (Clóset)') },
+                  ]}
+                />
+                <SELECT
+                  label={t('drawer_distribution', 'Distribución de frentes')}
+                  name="drawerDistributionMode"
+                  value={params.drawerDistributionMode || 'equal'}
+                  onChange={(k, v) => setParam('drawerDistributionMode', v)}
+                  options={[
+                    { value: 'equal', label: t('drawer_dist_equal', 'Alturas iguales') },
+                    { value: 'custom', label: t('drawer_dist_custom', 'Alturas personalizadas') },
+                    { value: 'kitchen_standard', label: t('drawer_dist_kitchen', 'Estándar cocina (2 × 150 + resto)') },
+                    { value: 'closet_bottom', label: t('drawer_dist_closet', 'Estándar clóset (abajo)') },
+                  ]}
+                />
+                <SELECT
+                  label={t('drawer_bottom_style', 'Construcción de fondo')}
+                  name="drawerBottomStyle"
+                  value={params.drawerBottomStyle || 'grooved_6mm'}
+                  onChange={(k, v) => setParam('drawerBottomStyle', v)}
+                  options={[
+                    { value: 'grooved_6mm', label: t('drawer_bottom_grooved', 'Ranurado 6mm (estándar)') },
+                    { value: 'screwed_15mm', label: t('drawer_bottom_screwed', 'Atornillado 15mm (carga pesada)') },
+                  ]}
                 />
               </div>
             )}
