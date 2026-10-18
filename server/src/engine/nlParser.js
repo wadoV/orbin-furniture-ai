@@ -68,7 +68,7 @@ const { RANGES, COMMERCIAL_DEFAULTS } = require('../ai/paramContract')
 const WARDROBE_WORDS = ['armario', 'armário', 'ropero', 'guarda-roupa', 'guarda roupa', 'closet', 'placard', 'wardrobe']
 const MODULE_TYPE_RULES = [
   { moduleType: 'base',  type: 'kitchen_low',
-    kw: ['cocina baja', 'cozinha baixa', 'modulo bajo', 'módulo bajo', 'mueble bajo', 'bajo de cocina', 'mueble base', 'módulo base', 'modulo base', 'base de cocina', 'gabinete base', 'balcão', 'balcao'],
+    kw: ['cocina baja', 'cozinha baixa', 'modulo bajo', 'módulo bajo', 'mueble bajo', 'bajo de cocina', 'mueble base', 'módulo base', 'modulo base', 'base de cocina', 'cocina base', 'cozinha base', 'gabinete base', 'balcão', 'balcao'],
     defaults: { height: 900, depth: 600 }, extra: { hasCountertop: true }, note: 'Tipo: Módulo Bajo' },
   { moduleType: 'aereo', type: 'kitchen_high',
     kw: ['cocina alta', 'cozinha alta', 'aereo', 'aéreo', 'módulo aéreo', 'modulo aereo', 'módulo alto', 'modulo alto', 'suspendido'],
@@ -106,12 +106,17 @@ function detectModuleRule(text) {
   return null
 }
 
+// ★ 2026-10-18: contexto mm por petición. Si el texto trae un número de 4 cifras sin unidad
+//   (p.ej. "1050 de ancho"), los valores sin unidad de esa petición son mm, no metros.
+let _mmContext = false
+
 function resolveDimension(rawStr, hasMMSuffix, field, moduleType, specAdjustments) {
   const cleanStr = String(rawStr).replace(',', '.').trim()
   const n = parseFloat(cleanStr)
   if (!Number.isFinite(n)) return null
 
   if (hasMMSuffix) return Math.round(n)
+  if (_mmContext) return Math.round(n)
 
   const mm = n
   const cm = n * 10
@@ -180,8 +185,11 @@ function extractDimensionTriple(text, moduleType, specAdjustments) {
   const regex = /(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*[x*x×]\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*[x*x×]\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?/i
   const m = text.match(regex)
   if (m) {
+    // ★ 2026-10-18: sin unidades y ancho ≥ 1000 → mm (un ancho de 1000 cm no existe): "1050 x 300 x 400" = mm
+    const groupMM = !m[2] && !m[4] && !m[6] && parseFloat(m[1].replace(',', '.')) >= 1000
     const parsePart = (valStr, partUnit, field) => {
       const val = parseFloat(valStr.replace(',', '.'))
+      if (groupMM) return Math.round(val)
       const unit = partUnit || m[6] || m[4] || m[2]
       if (unit) {
         if (unit === 'm') return Math.round(val * 1000)
@@ -379,6 +387,12 @@ function applyCarpentryFlags(text, result, notes, specAdjustments) {
 }
 
 function parseNaturalLanguage(input) {
+  // ★ 2026-10-18: "2 metros" / "2.10 mts" se normalizan a mm antes de extraer medidas
+  if (typeof input === 'string') {
+    input = input.replace(/(\d+(?:[.,]\d+)?)\s*(?:metros?|mts?)\b/gi,
+      (_, n) => Math.round(parseFloat(n.replace(',', '.')) * 1000) + 'mm')
+    _mmContext = /\b\d{4}\b(?!\s*(?:mm|cm|m\b))/i.test(input)
+  }
   if (!input || typeof input !== 'string') {
     return { params: { ...DEFAULTS }, confidence: 0, interpreted: 'Entrada vazia — usando padroes.', specAdjustments: [] }
   }
@@ -553,6 +567,15 @@ function parseNaturalLanguage(input) {
 
   const shelves = extractCount(text, ['prateleira', 'estante', 'shelf', 'shelves', 'repisa', 'prateleiras'])
   if (shelves > 0) { result.numShelves = shelves; notes.push(shelves + ' prateleira(s)'); confidence += 5 }
+
+  // ★ 2026-10-18: "gavetas horizontales/apaisadas" → layout horizontal (antes se perdía y quedaba vertical)
+  if (drawers > 1 && detectFeature(text, ['horizontal', 'apaisad', 'acostad'])) {
+    result.drawerLayout = 'horizontal'; notes.push('Layout: Horizontal')
+  }
+  // ★ 2026-10-18: si pide gavetas y no menciona estantes, no se agregan estantes (el default del motor es 2)
+  if (drawers > 0 && shelves === 0 && result.height && result.height <= 1000 && !detectFeature(text, ['estante', 'prateleira', 'shelf', 'repisa'])) {
+    result.numShelves = 0
+  }
 
   const dividers = extractCount(text, ['divisor', 'divisória', 'divisoria', 'divider', 'lateral interno', 'separador'])
   if (dividers > 0) { result.numDividers = dividers; notes.push(dividers + ' divisor(es)'); confidence += 5 }

@@ -544,7 +544,14 @@ function autoDrawerCols(numDrawers, widthMM, T) {
       // ADITIVO 2026-07-19: drawerColumns también aplica al auto-fit de la pila
       const afCols = (cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) ? Math.floor(cfg.drawerColumns) : null
       const isH = (cfg.drawerLayout === 'horizontal' && cfg.numDrawers > 1) || (afCols !== null && cfg.numDrawers > 1)
-      const cols = (afCols !== null && cfg.numDrawers > 1) ? afCols : (isH ? autoDrawerCols(cfg.numDrawers, cfg.width, cfg.thickness) : 1)
+      let cols = (afCols !== null && cfg.numDrawers > 1) ? afCols : (isH ? autoDrawerCols(cfg.numDrawers, cfg.width, cfg.thickness) : 1)
+      if (isH && afCols === null && cfg.numDrawers > 1) {
+        // ★ 2026-10-18: si la altura sólo admite pocas filas, subir columnas (frente más estrecho)
+        //   antes que descartar gavetas. Se guarda para que fillCols y el layout usen lo mismo.
+        const rowsFit = Math.max(1, Math.floor(availableHeight / (CLEAR + MINH)))
+        cols = Math.min(cfg.numDrawers, Math.max(cols, Math.ceil(cfg.numDrawers / rowsFit)))
+        cfg._autoCols = cols
+      }
       let rows = Math.ceil(cfg.numDrawers / cols)
       // ¿Cómoda pura? (solo gavetas: sin estantes ni puertas) → las gavetas LLENAN
       //   el interior, sin dejar hueco abierto arriba. CLEAR (16mm) es la holgura de
@@ -819,7 +826,7 @@ function autoDrawerCols(numDrawers, widthMM, T) {
   //   juntas de 3mm entre filas. Antes: n gavetas en 2-3 columnas llegaban sólo a media altura
   //   (zona/n), y la pila de n filas excedía la zona por (n−1)·3mm → frente pisaba techo/base 7-8mm.
   const fillCols = (numDrawers > 1)
-    ? ((cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) ? Math.floor(cfg.drawerColumns) : (drawerLayout === 'horizontal' ? autoDrawerCols(numDrawers, W, T) : 1))
+    ? ((cfg.drawerColumns >= 2 && cfg.drawerColumns <= 4) ? Math.floor(cfg.drawerColumns) : (drawerLayout === 'horizontal' ? (cfg._autoCols || autoDrawerCols(numDrawers, W, T)) : 1))
     : 1
   const fillRows = Math.max(1, Math.ceil(numDrawers / fillCols))
   const drawerZoneHeight = (drawerTopFlush
@@ -868,7 +875,7 @@ function autoDrawerCols(numDrawers, widthMM, T) {
   const isHorizontal = (drawerLayout === 'horizontal' && numDrawers > 1) || (explicitCols !== null && numDrawers > 1)
   // ★ 2026-10-18: en horizontal sin drawerColumns, cols = las que caben con frente ≥300 mm
   //   (antes fijo en 2 → con 3 gavetas el motor descartaba una en silencio).
-  const cols = (explicitCols !== null && numDrawers > 1) ? explicitCols : (isHorizontal ? autoDrawerCols(numDrawers, W, T) : 1)
+  const cols = (explicitCols !== null && numDrawers > 1) ? explicitCols : (isHorizontal ? (cfg._autoCols || autoDrawerCols(numDrawers, W, T)) : 1)
   const drawersPerCol = Math.ceil(numDrawers / cols)
   const drawerW = cols > 1 ? (internalWidth - (cols - 1) * T) / cols : internalWidth
 
