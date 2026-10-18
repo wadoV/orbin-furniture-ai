@@ -36,19 +36,16 @@ const assert = require('node:assert/strict')
 const NEVER = () => new Promise(() => {})
 
 const geminiClient = require('./geminiClient')
-const ollamaClient = require('./ollamaClient')
 assert.equal(typeof geminiClient.chatDesign, 'function',
   'geminiClient.chatDesign debe existir: si cambió el nombre, este candado quedó ciego')
 
 geminiClient.chatDesign = NEVER
 geminiClient.parseDesignIntent = NEVER
-ollamaClient.chatDesign = NEVER
-ollamaClient.parseDesignIntent = NEVER
 
 const { chatDesign, parseDesignIntent } = require('./aiOrchestrator')
 
 const DEADLINE_MS = Number(process.env.AI_PROVIDER_TIMEOUT_MS)
-const PROVIDERS = 3                      // gemini · vertex · ollama
+const PROVIDERS = 2                      // gemini · openrouter (ollama retirado 2026-10-18)
 const CEILING_MS = DEADLINE_MS * PROVIDERS + 2000   // margen de CI lento
 
 describe('Cascada de IA — deadline por proveedor', () => {

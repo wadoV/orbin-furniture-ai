@@ -7,7 +7,6 @@ const { parseNaturalLanguage } = require('../engine/nlParser');
 const openrouterClient = require('./openrouterClient');
 const geminiClient = require('./geminiClient');
 const claudeClient = require('./claudeClient');
-const ollamaClient = require('./ollamaClient');
 
 // Factory de Modelos por Agente/Tarea
 const AGENT_STRATEGY = {
@@ -47,12 +46,9 @@ async function executeTask(prompt, strategy, agentRole, context) {
 
 async function handleFallback(prompt, agentRole, context, originalError) {
     console.warn(`[Fallback] Contingencia para ${agentRole}. Error: ${originalError.message}`);
-    try {
-        return await ollamaClient.call(prompt, 'llama3', context);
-    } catch (ollamaError) {
-        console.error(`[Fallback] Ollama también falló:`, ollamaError.message);
-        return "El sistema se encuentra experimentando interrupciones. Por favor, intenta nuevamente en unos minutos.";
-    }
+    // Ollama retirado de la cadena (2026-10-18): no hay servicio local en producción.
+    console.error(`[Fallback] Sin proveedor de contingencia: ${originalError.message}`);
+    return "El sistema se encuentra experimentando interrupciones. Por favor, intenta nuevamente en unos minutos.";
 }
 
 async function aiOrchestrator(prompt, agentRole = 'chat', context = {}) {
@@ -83,11 +79,11 @@ async function aiOrchestrator(prompt, agentRole = 'chat', context = {}) {
 
 const { coerceEngineParams, validateOrchestratorResponse } = require('./paramContract');
 
-// Orden de intento: Tier 1: OpenRouter (DeepSeek V3), Tier 2: Google AI Studio, Tier 3: Ollama local, Tier 4: regex local.
+// Orden de intento: Tier 1: Gemini (rápido con prompt completo), Tier 2: OpenRouter (DeepSeek), Tier 3: regex local.
+// Ollama retirado (2026-10-18): sin servicio local, cada intento fallaba al instante.
 const PROVIDER_CHAIN = [
-    { name: 'openrouter', client: openrouterClient },
-    { name: 'gemini', client: geminiClient },
-    { name: 'ollama', client: ollamaClient },
+    { name: 'gemini',     client: geminiClient,     deadlineMs: Number(process.env.AI_PROVIDER_TIMEOUT_MS) || Number(process.env.GEMINI_DEADLINE_MS) || 18000 },
+    { name: 'openrouter', client: openrouterClient, deadlineMs: Number(process.env.AI_PROVIDER_TIMEOUT_MS) || Number(process.env.OPENROUTER_DEADLINE_MS) || 12000 },
 ];
 
 // ── DEADLINE POR PROVEEDOR (aditivo 2026-08-02) ─────────────────────────────
@@ -129,20 +125,16 @@ function withDeadline(promise, providerName, ms = PROVIDER_TIMEOUT_MS) {
 // con un deadline único la cascada lo cortaba siempre y caía al regex. Su deadline
 // se deriva de OLLAMA_TIMEOUT_MS (+2s de margen sobre el abort del propio cliente).
 // Si AI_PROVIDER_TIMEOUT_MS está seteada explícitamente (tests), manda para todos.
-const OLLAMA_TIMEOUT_MS = require('./ollama_config').timeoutMs;
-const DEADLINE_BY_PROVIDER = {
-    ollama: process.env.AI_PROVIDER_TIMEOUT_MS ? PROVIDER_TIMEOUT_MS : OLLAMA_TIMEOUT_MS + 2000,
-};
 
 // Breaker: si un proveedor responde cuota agotada/clave inválida, se salta durante
 // un cooldown en vez de quemar un round-trip (hasta 12s) por cada mensaje del chat.
-const QUOTA_COOLDOWN_MS = Number(process.env.AI_QUOTA_COOLDOWN_MS) || 5 * 60 * 1000;
+const QUOTA_COOLDOWN_MS = Number(process.env.AI_QUOTA_COOLDOWN_MS) || 60 * 1000;
 const QUOTA_ERROR_RE = /\b429\b|quota|RESOURCE_EXHAUSTED|rate.?limit|exceeded your current/i;
 const cooldownUntil = new Map();
 
 async function runChain(method, args) {
     const errors = [];
-    for (const { name, client } of PROVIDER_CHAIN) {
+    for (const { name, client, deadlineMs } of PROVIDER_CHAIN) {
         if (typeof client?.[method] !== 'function') continue;
         if ((cooldownUntil.get(name) || 0) > Date.now()) {
             errors.push(`${name}: en cooldown por cuota`);
@@ -153,7 +145,7 @@ async function runChain(method, args) {
             const out = await withDeadline(
                 Promise.resolve(client[method](...args)),
                 name,
-                DEADLINE_BY_PROVIDER[name] || PROVIDER_TIMEOUT_MS,
+                deadlineMs || PROVIDER_TIMEOUT_MS,
             );
             if (out) return { out, provider: name };
         } catch (err) {

@@ -9,7 +9,7 @@ const { FURNITURE_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT } = require('./systemPrompts
 // fetch() sin señal NO tiene timeout: un socket que no responde cuelga la
 // petición para siempre. El orquestador ya impone un deadline, pero el cliente
 // debe cortar su propio socket para no filtrar conexiones.
-const FETCH_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 10000
+const FETCH_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 15000
 
 /** Lee el cuerpo de error sin asumir que es JSON (un 502 de proxy es HTML). */
 async function describeHttpError(response) {
@@ -38,6 +38,7 @@ async function callGemini(systemPrompt, userMessage) {
       topP: 0.8,
       topK: 40,
       maxOutputTokens: 2048,
+      thinkingConfig: { thinkingBudget: 0 },
     }
   }
 
