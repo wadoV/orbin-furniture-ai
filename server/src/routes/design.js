@@ -254,6 +254,17 @@ const ENGINE_INPUT_KEYS = [
   'hasCountertop', 'countertopThickness', 'countertopOverhang',
   'materialId', 'materialBody', 'materialFront',
   'hangingRod', 'slideType', 'edgeBanding', 'grainDirection',
+  'edgeBandThickness',
+  // ★ 2026-10-18 (QA): sin estos campos la galería regeneraba otro mueble (p.ej. horizontal → vertical).
+  'drawerLayout', 'drawerColumns', 'drawerDistributionMode', 'drawerStackAlignment', 'drawerFrontStyle',
+  'drawerBottomStyle', 'drawerPrivacyPanel', 'doorStyle', 'topStyle', 'tamponado', 'baseType', 'legHeight',
+  'pedestalWidth', 'nicheHeight', 'handleType', 'hasHangingRod', 'doorFinish', 'hasLed', 'countertopMaterial',
+  'mountHeight', 'slidingDoorSheets', 'topTieRails', 'tieRailHeight', 'slidingSheetOverlap', 'fijacion',
+  'panelVista', 'drawerRailHeight',
+  // ★ 2026-10-19 (QA cocina): sin estas claves el horno y los nichos se perdían al reproducir desde la galería.
+  'ovenPanel', 'ovenNicheHeight', 'nicheHeight', 'countertopThickness', 'baseboardHeight',
+  // ★ 2026-10-19 (QA cava 45°): sin estas claves la cava se perdía al reproducir desde la galería.
+  'puxadorCava45', 'puxadorCavaAereo', 'tamponadoInferior', 'cavaOverhang', 'alturaTraviesaCava', 'cavaCncWidth', 'cavaCncDepth',
 ]
 
 function pickEngineParams(source = {}) {
@@ -366,9 +377,12 @@ router.post('/save-viable', requireAuth, async (req, res) => {
       design_name,
       module_type:     generated.configuration?.moduleType || generated.type || 'standard',
       category,
-      parametric_json: engineParams,          // ← replayable: generateProject(parametric_json)
+      // ★ 2026-10-18 (QA): se guarda la configuración RESUELTA por el motor (incluye thickness y
+      //   defaults/auto-fit). Guardar los params crudos violaba viable_designs_geometry_sane.
+      parametric_json: pickEngineParams(generated.configuration || engineParams),  // ← replayable
       snapshot_json:   { design: generated, validation },
       engine_version:  generated.version || null,
+      status:          'validated',  // ★ 2026-10-19: pasó la compuerta (validator VALIDADO)
     }
 
     const { data, error } = await sb
@@ -408,7 +422,7 @@ router.get('/viable', requireAuth, async (req, res) => {
 
     let query = sb
       .from('viable_designs')
-      .select('id, design_name, module_type, category, parametric_json, engine_version, created_at')
+      .select('id, design_name, module_type, category, parametric_json, engine_version, created_at, status')
       .order('created_at', { ascending: false })
       .limit(50)
 

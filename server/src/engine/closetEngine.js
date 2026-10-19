@@ -17,7 +17,7 @@ const FurnitureMath = require('../ai/furnitureMathSpecs')
 // ★ Ley física (chapa + herrajes): FUENTE ÚNICA en ./constants.
 //   Generador y validador leen el MISMO MATERIAL y el MISMO HARDWARE para evitar
 //   que el motor genere piezas que su propio validador rechaza (P0 resuelto 2026-07-19).
-const { MATERIAL, HARDWARE, BASEBOARD, PANEL_VISTA, AEREO, STRUCTURAL_LIMITS } = require('./constants')
+const { MATERIAL, HARDWARE, BASEBOARD, PANEL_VISTA, AEREO, STRUCTURAL_LIMITS, EDGE_BANDING } = require('./constants')
 
 // ★ RODAPIÉ UNIVERSAL 2026-07-20 — recuo con guard de fondo.
 //   El zócalo frontal se coloca en `z = D − T/2 − inset` y el trasero en `z = T/2 + inset`.
@@ -90,6 +90,7 @@ const DEFAULTS = {
   drawerLayout: 'vertical',
   hasDoors: true, numDoors: 2, doorType: 'hinged',
   edgeBandingType: 'thin',
+  edgeBandThickness: null,   // mm de cinta de canto; null = derivar (thick→2.0, si no 0.5). Ver resolveEdgeBandThickness
   baseboard: true, baseboardHeight: BASEBOARD.DEFAULT_HEIGHT,
   baseType: 'recessed', legHeight: 100,
   topStyle: null,   // null = auto por moduleType ('base'→overlay, resto→inset)
@@ -269,6 +270,34 @@ function pickSlideDepth(availableDepth) {
   return best
 }
 
+// ★ 2026-10-17 — ESPESOR DE CINTA PARAMÉTRICO.
+//   El despiece descuenta, por cada lado canteado, el espesor REAL de la cinta. Antes
+//   era 1.0mm fijo para todo el mundo, sin relación con la cinta que usa el taller.
+//   Precedencia: edgeBandThickness numérico > edgeBandingType 'thick' (2.0) > 0.5.
+//   Acepta "0,5" (coma decimal). Un valor inválido NO se corrige en silencio: cae al
+//   valor derivado y deja un specAdjustment (EDGE_THICKNESS_INVALID) visible en UI/PDF.
+//   El `edgeBanding.thickness` por pieza sigue mandando sobre este valor (ver generateCutList).
+function resolveEdgeBandThickness(cfg) {
+  const { DEFAULT_MM, MIN_MM, MAX_MM, THICK_PVC } = EDGE_BANDING
+  const derived = cfg && cfg.edgeBandingType === 'thick' ? THICK_PVC : DEFAULT_MM
+  const raw = cfg ? cfg.edgeBandThickness : undefined
+  if (raw === undefined || raw === null || raw === '') return { value: derived, adjustment: null }
+  const n = typeof raw === 'number' ? raw
+          : typeof raw === 'string' ? Number(raw.trim().replace(',', '.'))
+          : NaN
+  if (!Number.isFinite(n) || n < MIN_MM || n > MAX_MM) {
+    return {
+      value: derived,
+      adjustment: {
+        code: 'EDGE_THICKNESS_INVALID', severity: 'warning', field: 'edgeBandThickness',
+        params: { value: String(raw), min: MIN_MM, max: MAX_MM, applied: derived },
+        message: `Espesor de cinta "${raw}" no válido (admitido ${MIN_MM}–${MAX_MM}mm). Se usó ${derived}mm.`
+      }
+    }
+  }
+  return { value: Math.round(n * 100) / 100, adjustment: null }
+}
+
 function generateCutList(pieces, defaultEdgeThickness = 1.0) {
   const list = []
   for (const piece of pieces) {
@@ -305,7 +334,8 @@ function generateCutList(pieces, defaultEdgeThickness = 1.0) {
         cutHeight:      netCutHeight,
         thickness:      piece.thickness,
         grainDirection: piece.grainDirection,
-        edgeBanding:    piece.edgeBanding
+        edgeBanding:    piece.edgeBanding,
+        ...(piece.notes ? { notes: piece.notes } : {})
       })
     }
   }
@@ -462,8 +492,21 @@ function generateDeskFurniture(cfg) {
 
 // ─── Main Engine ─────────────────────────────────────────────────────────────
 
+// ★ 2026-10-18: columnas automáticas para gavetas en layout horizontal. Antes: fijo en 2 en
+//   tres sitios; con ancho amplio y 3 gavetas el auto-ajuste de altura descartaba una gaveta
+//   en silencio. Frente mínimo ~300 mm; máximo 4 columnas (contrato drawerColumns).
+function autoDrawerCols(numDrawers, widthMM, T) {
+  const inner = Number(widthMM) - 2 * Number(T)
+  if (!isFinite(inner) || inner <= 0) return Math.min(numDrawers, 2)
+  // ★ 2026-10-18 (QA): frente mínimo 200 mm (antes 300). Con 4 gavetas en 1050 mm → 4 columnas en una fila
+  //   (horizontal = lado a lado). Las filas extra salen sólo si la altura no alcanza (rowsFit en el auto-fit).
+  return Math.min(numDrawers, 4, Math.max(2, Math.floor((inner + Number(T)) / (200 + Number(T)))))
+}
+
 function generateFurniture(params) {
   const cfg = { ...DEFAULTS, ...params }
+  // ★ 2026-10-18 (QA): sin puertas no hay conteo de puertas (el default 2 quedaba en la galería).
+  if (cfg.hasDoors === false) cfg.numDoors = 0
   validateStructuralDimensions(cfg)
 
   // ── ADITIVO 2026-07-19: topología escritorio — rama dedicada, path viejo intacto
@@ -491,15 +534,6 @@ function generateFurniture(params) {
   } else {
     if (baseType === 'none') { cfg.baseboard = false }
     else if (baseType === 'legs') { cfg.baseboard = true; cfg.baseboardHeight = legHeight }
-// ★ 2026-10-18: columnas automáticas para gavetas en layout horizontal. Antes: fijo en 2 en
-//   tres sitios; con ancho amplio y 3 gavetas el auto-ajuste de altura descartaba una gaveta
-//   en silencio. Frente mínimo ~300 mm; máximo 4 columnas (contrato drawerColumns).
-function autoDrawerCols(numDrawers, widthMM, T) {
-  const inner = Number(widthMM) - 2 * Number(T)
-  if (!isFinite(inner) || inner <= 0) return Math.min(numDrawers, 2)
-  return Math.min(numDrawers, 4, Math.max(2, Math.floor((inner + Number(T)) / (300 + Number(T)))))
-}
-
   }
   cfg.baseType = baseType
   cfg.legHeight = legHeight
@@ -775,9 +809,12 @@ function autoDrawerCols(numDrawers, widthMM, T) {
   if (tamp === 'right' || tamp === 'both')
     pieces.push(makePiece(nextId('TAMP-R'), 'Tampão Lateral Der', 'tamponado', tampDepth, tampLatH, tampT, 1, W + tampT/2, tampLatY, CD/2 + tampFlushExtra/2, 'vertical', { front: true }, `Tapatornillos ${tampT}mm — incluido en ancho acabado ${W_FIN}mm`))
 
+  // ★ ADITIVO 2026-10-19 — puxador cava 45° (puertas bajas): ranura de agarre libre.
+  //   Los travesaños no pueden ocupar el frente entre tampo y puerta: se retranquean 100mm.
+  const cavaSlotSetback = (cfg.puxadorCava45 && (cfg.numDoors || 0) > 0 && !isAereo) ? 100 : 0
   if (useTieRails) {
     if (!drawerTopFlush) pieces.push(makePiece(nextId('TRAV-F'), 'Travesaño Frontal', 'tie_strip', internalWidth - PV, tieH, T, 1, W/2, H - tieH/2, T/2 + 20, 'horizontal', { front: true }, 'Refuerzo Estructural'))
-    pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero', 'tie_strip', internalWidth - PV, tieH, T, 1, W/2, H - tieH/2, D - BT - T/2, 'horizontal', { front: true }, 'Refuerzo Estructural'))
+    pieces.push(makePiece(nextId('TRAV-B'), 'Travesaño Trasero', 'tie_strip', internalWidth - PV, tieH, T, 1, W/2, H - tieH/2, D - BT - T/2 - cavaSlotSetback, 'horizontal', { front: true }, 'Refuerzo Estructural'))
   } else {
     // COHERENCIA OBLIGATORIA: si el lateral se acortó (overlay), la tapa se apoya
     // encima y debe cubrir el ancho COMPLETO. Con W−2T quedaría flotando dejando
@@ -890,17 +927,22 @@ function autoDrawerCols(numDrawers, widthMM, T) {
   // ★ AUDIT FIX 2026-07-19 (aditivo): con columnas de gavetas no existía montante:
   // las corredicas interiores no tenían superficie de fijación (mueble no montable).
   // Genera cols−1 montantes que ocupan el gap de T entre columnas.
-  if (cols > 1) {
-    const gavZoneH = drawersPerCol * safeDrawerHeight
-    if (gavZoneH > 0) {
-      for (let c = 1; c < cols; c++) {
-        pieces.push(makePiece(
-          nextId('DIV-GAV'), `Montante Gavetas ${cols > 2 ? c : 'Central'}`, 'divider',
-          internalDepth, gavZoneH, T, 1,
-          T + c * (drawerW + T) - T/2, drawerYStart + gavZoneH/2, D/2,
-          'vertical', { front: true }, 'Fijación de corredicas — obligatorio entre columnas'
-        ))
-      }
+  // ★ 2026-10-18 FIX: el montante es un lateral INTERNO vertical que va de la cara superior de la
+  //   base (BH3+T) a la cara inferior del techo (H−T), no sólo la altura de una gaveta (antes 148 mm
+  //   en un vano de 164). Así cubre toda la altura interna y queda fijado a base y techo.
+  // ★ 2026-10-18 (QA): el montante sube hasta la cara inferior de la repisa separadora si existe
+  //   (sepBottom, fijado tras el bloque del separador); si no, hasta la cara inferior del techo.
+  const pushDividers = (montTop) => {
+    const montBot = BH3 + T
+    const montH = montTop - montBot
+    if (montH <= 0) return
+    for (let c = 1; c < cols; c++) {
+      pieces.push(makePiece(
+        nextId('DIV-GAV'), `Montante Gavetas ${cols > 2 ? c : 'Central'}`, 'divider',
+        internalDepth, montH, T, 1,
+        T + c * (drawerW + T) - T/2, (montBot + montTop)/2, D/2,
+        'vertical', { front: true }, 'Lateral interno entre columnas de gavetas — fijación de corredicas'
+      ))
     }
   }
 
@@ -1036,6 +1078,7 @@ function autoDrawerCols(numDrawers, widthMM, T) {
 
   // HARD_CONSTRAINT: Structural closure required for all drawer modules
   // ★ ADITIVO 2026-10-13 — Cierre estructural OBLIGATORIO para clósets
+  let sepBottom = null   // cara inferior de la repisa separadora colocada (null si no hay)
   if (numDrawers > 0 && !drawerTopFlush) {
     // Calcular posición optimizada del separador
     let sepY
@@ -1070,6 +1113,7 @@ function autoDrawerCols(numDrawers, widthMM, T) {
         W/2, sepY, internalDepth/2 + BT, 'horizontal', { front: true },
         `Separador estructural gavetas/estantes${separatorType === 'SEP' ? ' • Clóset: aislación obligatoria' : ''}`
       ))
+      sepBottom = sepY - T/2
       shelfYStart = baseMixed ? BH3 + T : (drawerAlignment === 'bottom' ? sepY + T + 10 : shelfYStart + T + 10)
       if (baseMixed) baseMixedZoneTop = sepY - T/2
     }
@@ -1084,6 +1128,9 @@ function autoDrawerCols(numDrawers, widthMM, T) {
       }]
     }
   }
+
+  // ★ montantes entre columnas de gavetas (tras el separador, para no atravesarlo)
+  if (cols > 1) pushDividers(sepBottom !== null ? sepBottom : (H - T))
 
   // BUG FIX #9: dynamic shelf spacing — distribute evenly in available zone.
   if (baseMixed && baseMixedZoneTop === null) baseMixedZoneTop = drawerYStart   // SEP omitida: el vano llega al bloque
@@ -1217,6 +1264,25 @@ function autoDrawerCols(numDrawers, widthMM, T) {
           cfg.specAdjustments.push(warning)
         }
       }
+    } else if (cfg.doorType === 'lift') {
+      // ★ ADITIVO 2026-10-18 — PUERTA ELEVABLE (pistón neumático). Reglas: liftDoorRules.js.
+      //   Hoja sobrepuesta que ocupa todo el vano útil del aéreo; nº de hojas =
+      //   máx(numDoors, ceil(W / MAX_LEAF_WIDTH)). Sin gavetas (lo valida checkLiftModule).
+      const { LIFT_DOOR } = require('./liftDoorRules')
+      const nLeaves = Math.max(numDoors || 1, Math.ceil(W / LIFT_DOOR.MAX_LEAF_WIDTH))
+      const liftOffset = nicheH > 0 ? nicheH + T : 0
+      const liftH = H - BH3 - liftOffset - HARDWARE.DOOR_GAP_H
+      const liftY = BH3 + liftOffset + liftH / 2 + HARDWARE.DOOR_GAP_H / 2
+      const leafW = (W / nLeaves) - HARDWARE.DOOR_GAP_W
+      for (let i = 0; i < nLeaves; i++) {
+        const xPos = (W / nLeaves) / 2 + i * (W / nLeaves)
+        pieces.push(makePiece(
+          nextId('PORTA'), `Puerta elevable ${i + 1}`, 'standard_door',
+          leafW, liftH, T, 1,
+          xPos, liftY, CD + T / 2,
+          'vertical', { all: true }, 'Pistón neumático (elevable) — par por hoja. Eje de apertura: borde superior (hoja sube hacia arriba)', 'standard_door'
+        ))
+      }
     } else {
       // Lógica original: puertas sobrepuestas (hinged)
       // ★ FIX 2026-10-15: en clóset `totalDrawerH` eran MILÍMETROS (bloque + base + SEP); antes era
@@ -1259,13 +1325,15 @@ function autoDrawerCols(numDrawers, widthMM, T) {
           : (BH3 + plinthReveal + doorLift + nicheOffset + doorH/2 - (plinthReveal > 0 ? HARDWARE.DOOR_GAP_H/2 : 0))
         const leafPieceH = aereoLeafH !== null ? aereoLeafH : (doorH - HARDWARE.DOOR_GAP_H)
 
+        // ★ ADITIVO 2026-10-19 — cava 45° explícita en la hoja (bisel + labio) para taller y CNC
+        const cavaDoorNote = (cavaBase || aereoCava) ? ' | Cava 45°: bisel superior + labio plano 3mm (usinaje CNC)' : ''
         for (let i = 0; i < n; i++) {
           const xPos = (W/n)/2 + i*(W/n)
           pieces.push(makePiece(
             nextId('PORTA'), `Puerta ${i + 1}`, 'standard_door',
             leafW, leafPieceH, T, 1,
             xPos, doorY, CD + T/2,   // cara frontal en CD+T: con overlay = D exacto; en legacy = D+T
-            'vertical', { all: true }, 'Bisagra Reforzada', 'standard_door'
+            'vertical', { all: true }, 'Bisagra Reforzada' + cavaDoorNote, 'standard_door'
           ))
         }
 
@@ -1277,7 +1345,7 @@ function autoDrawerCols(numDrawers, widthMM, T) {
           const railPiece = makePiece(
             nextId('TRAV-CAVA'), 'Traviesa Respaldo Cava 45°', 'travesano',
             cavaBase.rail.width, cavaBase.rail.height, T, 1,
-            W/2, FurnitureMath.carpentry.railCenterY(railTopY, cavaBase.rail.height), CD - T/2,
+            W/2, FurnitureMath.carpentry.railCenterY(railTopY, cavaBase.rail.height), CD - T/2 - 100,
             'horizontal', { front: true },
             'Cierre visual y anti-polvo tras la luz de cava (30mm bajo el tampo)', 'travesano'
           )
@@ -1333,6 +1401,25 @@ function autoDrawerCols(numDrawers, widthMM, T) {
         W/2, lay.shelf.centerY, internalDepth/2 + BT, 'horizontal', { front: true },
         `Soporta el horno — fija, estructural. Nicho libre ${cfg.ovenNicheHeight || FurnitureMath.carpentry.OVEN_NICHE_HEIGHT}mm sobre la repisa`
       ))
+      // ★ ADITIVO 2026-10-19 — HORNO CERRADO: tapa de cierre SOBRE el nicho (no dentro), para no
+      //   reducir el hueco comercial del horno. Con travesaños: va en su franja, entre caras interiores
+      //   (z: T+20 … D−BT−T). Sin travesaños: tapa superior de espesor T a ras del techo.
+      if (useTieRails) {
+        const tapaZ0 = T + 20, tapaZ1 = D - BT - T
+        pieces.push(makePiece(
+          nextId('TAPA-HORNO'), 'Tapa Superior Nicho Horno', 'repisa',
+          internalWidth - 2 - PV, tapaZ1 - tapaZ0, T, 1,
+          W/2, (H - tieH) + T/2, (tapaZ0 + tapaZ1) / 2, 'horizontal', { front: true },
+          'Cierre superior del nicho del horno — fija, sin apertura. Va entre travesaños'
+        ))
+      } else {
+        pieces.push(makePiece(
+          nextId('TAPA-HORNO'), 'Tapa Superior Nicho Horno', 'repisa',
+          internalWidth - 2 - PV, internalDepth, T, 1,
+          W/2, H - T/2, internalDepth/2 + BT, 'horizontal', { front: true },
+          'Cierre superior del nicho del horno — fija, sin apertura. Cierra el módulo por arriba'
+        ))
+      }
       pieces.push(makePiece(
         nextId('PORTA-FALSA'), 'Puerta Falsa (panel fijo sobrepuesto)', 'standard_door',
         lay.falseDoor.width, lay.falseDoor.height, T, 1,
@@ -1486,7 +1573,7 @@ function estimateNesting(cutList) {
   return result
 }
 
-function generateHardwareBOM(cfg) {
+function generateHardwareBOM(cfg, pieces = []) {
   const { numDrawers, numShelves, depth, hasDoors, doorType } = cfg
   const bom = []
 
@@ -1539,6 +1626,25 @@ function generateHardwareBOM(cfg) {
     }
   }
 
+  // ★ ADITIVO 2026-10-18 — PUERTA ELEVABLE: pistones a gas + herraje de elevación por hoja.
+  //   Hojas identificadas por nombre (mismo criterio que liftDoorRules.checkLiftModule).
+  const liftLeaves = (pieces || []).filter(p => p.type === 'standard_door' && String(p.name || '').startsWith('Puerta elevable'))
+  if (liftLeaves.length > 0) {
+    const { LIFT_DOOR, leafMassKg } = require('./liftDoorRules')
+    const maxMassKg = Math.max(...liftLeaves.map(p => leafMassKg(p.width, p.height, p.thickness ?? cfg.thickness ?? 18)))
+    bom.push({ type: 'Pistón a Gas', description: `Pistón a gas clase <= ${LIFT_DOOR.MAX_LEAF_MASS_KG} kg (masa estimada hoja máx. ${maxMassKg.toFixed(1)} kg)`, quantity: liftLeaves.length * 2, unit: 'un' })
+    bom.push({ type: 'Herraje Elevable', description: 'Juego de bisagra y soportes de elevación por hoja', quantity: liftLeaves.length, unit: 'un' })
+  }
+
+  // ★ ADITIVO 2026-10-19 — puerta abatible con cava 45°: orden CNC explícita en BOM
+  //   (antes solo existía en la rama corredera → cava abatible sin orden de usinaje).
+  const cavaHingedBom = hasDoors && doorType === 'hinged' && (
+    (cfg.puxadorCava45 && cfg.moduleType !== 'aereo') ||
+    (cfg.puxadorCavaAereo && cfg.moduleType === 'aereo'))
+  if (cavaHingedBom) {
+    const nCavaDoors = cfg.numDoors || 1
+    bom.push({ type: 'Usinagem CNC', description: 'Mecanizado Cava 45° (bisel + labio 3mm) — ' + nCavaDoors + ' hoja(s)', quantity: nCavaDoors, unit: 'un' })
+  }
   bom.push({ type: 'Parafuso Confirmat', description: 'Confirmat o7x50mm fixacao estrutural', quantity: 24, unit: 'un' })
 
   // Defensa en profundidad: aéreo NUNCA lleva patas, aunque baseType llegara 'legs'.
@@ -1609,14 +1715,19 @@ function generateProject(params) {
   try {
     const cfg = { ...DEFAULTS, ...params }
     const { pieces, config, internalDimensions } = generateFurniture(cfg)
-    const cutList = generateCutList(pieces)
+    // ★ 2026-10-17 — el despiece descuenta el espesor de cinta ELEGIDO (no un 1.0 fijo).
+    //   Se publica el valor resuelto en `configuration` para que UI, export y regen lo lean.
+    const edge = resolveEdgeBandThickness(config)
+    config.edgeBandThickness = edge.value
+    const cutList = generateCutList(pieces, edge.value)
     const nesting = estimateNesting(cutList)
-    const hardware = generateHardwareBOM(config)
+    const hardware = generateHardwareBOM(config, pieces)
 
     // ── Transparencia de fabricación ─────────────────────────────────────────
     // Toda desviación respecto al pedido del cliente viaja en specAdjustments,
     // para que UI y PDF puedan mostrarla. Nada se corrige en silencio.
     const specAdjustments = [...(config.specAdjustments || [])]
+    if (edge.adjustment) specAdjustments.push(edge.adjustment)
     for (const group of nesting) {
       if (group.oversizedPieces && group.oversizedPieces.length) {
         specAdjustments.push({
