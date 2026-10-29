@@ -21,7 +21,8 @@ Orbin/
 │   └── ux_ui_critic.md          ← UI/UX quality review
 └── rules/                  ← Hard constraints (always apply)
     ├── parametric_constraints.md  ← Dimensions, tolerances, structural limits
-    └── coding_standards.md        ← Stack conventions, clean code, UX standards
+    ├── coding_standards.md        ← Stack conventions, clean code, UX standards
+    └── execution_directives.md   ← Agent workflow, NO IMPLEMENTADO boundaries, gates
 ```
 
 ## Active Skills (load before related tasks)
@@ -53,6 +54,8 @@ Next step: add `react-router-dom` locale prefix + `hreflang` meta tags in `index
 Canonical URL pattern: `orbin.app/pt/armario-sob-medida` | `/es/armario-a-medida` | `/en/custom-closet`.
 
 ## Hard Rules (always enforced)
+- Before modifying the repo: `rules/execution_directives.md` (NO IMPLEMENTADO boundaries,
+  validation gates, explicit-path git commits). Never invent fields or relax constants.
 - MDF/MDP plate max: 2750mm × 1840mm. No single piece may exceed this.
 - Default thickness: 18mm structure · 6mm backs.
 - Drawer clearance: 13mm per side (26mm total) for telescopic slides.
